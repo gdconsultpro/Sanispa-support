@@ -8,9 +8,6 @@ export function AppShell({ children, compact = false }: { children: React.ReactN
           <Link href="/" className="text-xl font-bold tracking-wide text-sanispa-navy">
             SANISPA
           </Link>
-          <Link href="/admin" className="rounded-md border border-sanispa-line px-3 py-2 text-sm font-semibold text-sanispa-steel focus-ring">
-            Admin
-          </Link>
         </div>
       </header>
       <div className={`mx-auto w-full max-w-5xl px-4 ${compact ? "py-5" : "py-8"}`}>{children}</div>
