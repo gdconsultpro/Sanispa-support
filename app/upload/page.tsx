@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { StepHeader } from "@/components/StepHeader";
-import { photoRequirements } from "@/lib/questions";
+import { isPhotoRequired, photoRequirements } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
 import { emptyDraft, readDraft, writeDraft } from "@/lib/storage";
 
@@ -38,9 +38,9 @@ export default function UploadPage() {
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const missingRequired = photoRequirements.some((photo) => photo.required && !draft.photos[photo.id]);
+    const missingRequired = photoRequirements.some((photo) => isPhotoRequired(photo.id, draft.problemType) && !draft.photos[photo.id]);
     if (missingRequired) {
-      setError("La photo du clavier et la photo du compartiment technique sont obligatoires.");
+      setError("La photo du clavier est obligatoire pour une panne électrique.");
       return;
     }
     writeDraft(draft);
@@ -61,7 +61,7 @@ export default function UploadPage() {
             <span className="mb-3 flex items-center gap-3 text-sm font-bold text-sanispa-navy">
               <Camera size={20} aria-hidden="true" />
               {photo.label}
-              {photo.required ? <span className="text-sanispa-blue">*</span> : null}
+              {isPhotoRequired(photo.id, draft.problemType) ? <span className="text-sanispa-blue">*</span> : null}
             </span>
             <input
               className="focus-ring block w-full rounded-md border border-sanispa-line bg-sanispa-ice px-3 py-3 text-sm"

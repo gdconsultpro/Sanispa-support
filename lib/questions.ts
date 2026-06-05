@@ -102,11 +102,15 @@ export const questionSets: Record<ProblemType, Question[]> = {
 };
 
 export const photoRequirements = [
-  { id: "keyboard", label: "Photo du clavier", required: true },
-  { id: "technical_bay", label: "Photo du compartiment technique", required: true },
+  { id: "keyboard", label: "Photo du clavier", required: false },
+  { id: "technical_bay", label: "Photo du compartiment technique", required: false },
   { id: "serial_plate", label: "Photo de la plaque signalétique si disponible", required: false },
   { id: "visible_problem", label: "Photo du problème si visible", required: false }
 ];
+
+export function isPhotoRequired(photoId: string, problemType?: ProblemType | "") {
+  return photoId === "keyboard" && problemType === "electrique";
+}
 
 export const remotePlans = [
   { id: "photo", name: "Diagnostic photo", price: 49, stripeEnv: "STRIPE_PRICE_DIAGNOSTIC_PHOTO" },

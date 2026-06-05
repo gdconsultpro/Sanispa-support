@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { photoRequirements, problemTypes, questionSets } from "@/lib/questions";
+import { isPhotoRequired, photoRequirements, problemTypes, questionSets } from "@/lib/questions";
 import { sendDiagnosticNotification } from "@/lib/email";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { ProblemType } from "@/lib/types";
@@ -25,9 +25,9 @@ const payloadSchema = z.object({
 export async function POST(request: Request) {
   try {
     const payload = payloadSchema.parse(await request.json());
-    const missingPhoto = photoRequirements.some((photo) => photo.required && !payload.photos[photo.id]);
+    const missingPhoto = photoRequirements.some((photo) => isPhotoRequired(photo.id, payload.problemType as ProblemType) && !payload.photos[photo.id]);
     if (missingPhoto) {
-      return NextResponse.json({ error: "Photos obligatoires manquantes." }, { status: 400 });
+      return NextResponse.json({ error: "La photo du clavier est obligatoire pour une panne électrique." }, { status: 400 });
     }
 
     const supabase = getSupabaseAdmin();
