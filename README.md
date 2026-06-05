@@ -27,6 +27,8 @@ STRIPE_PRICE_ASSISTANCE_PREMIUM=
 RESEND_API_KEY=
 ADMIN_NOTIFICATION_EMAIL=
 EMAIL_FROM=
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
 ```
 
 ## Configuration Supabase
@@ -109,6 +111,13 @@ Photos optionnelles :
 ## Dashboard admin
 
 Disponible sur `/admin`.
+
+Le dashboard est protege par identifiant et mot de passe. Ajouter dans les variables d'environnement :
+
+```bash
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
+```
 
 Il affiche :
 
