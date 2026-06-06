@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0A2342"/>
+  <text x="256" y="238" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="76" font-weight="800" fill="#ffffff">SANI</text>
+  <text x="256" y="328" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="76" font-weight="800" fill="#ffffff">SPA</text>
+  <path d="M126 372c54 28 106 28 156 0s102-28 154 0" fill="none" stroke="#145DA0" stroke-width="22" stroke-linecap="round"/>
+</svg>

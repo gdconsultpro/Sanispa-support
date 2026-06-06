@@ -1,0 +1,33 @@
+{
+  "name": "SANISPA Diagnostic",
+  "short_name": "SANISPA",
+  "description": "Pré-diagnostic de pannes de spas avec photos et suivi SANISPA.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F7FA",
+  "theme_color": "#0A2342",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Démarrer un diagnostic",
+      "short_name": "Diagnostic",
+      "url": "/diagnostic"
+    }
+  ]
+}
