@@ -30,6 +30,8 @@ export default function ResumePage() {
     writeDraft(next);
   }
 
+  const availableRemotePlans = draft.problemType === "traitement-eau" ? remotePlans : remotePlans.filter((plan) => plan.id !== "water");
+
   async function submit() {
     if (!draft.choice) {
       setError("Veuillez choisir une orientation avant de valider.");
@@ -95,7 +97,7 @@ export default function ResumePage() {
               <div>
                 <h2 className="font-bold text-sanispa-navy">Accompagnement à distance payant</h2>
                 <p className="mt-2 text-sm leading-6 text-sanispa-steel">
-                  Un technicien SANISPA analyse vos photos et vos réponses, puis vous guide étape par étape à distance.
+                  Un technicien SANISPA analyse vos photos et vos réponses, puis vous guide étape par étape à distance. Pour le traitement d'eau, l'assistant peut vous accompagner à partir d'une photo de bandelette ou des valeurs relevées.
                 </p>
                 <p className="mt-3 rounded-md bg-sanispa-ice p-3 text-sm font-semibold text-sanispa-navy">
                   L'accompagnement à distance est une prestation d'analyse et de conseil. Il ne garantit pas la réparation du spa.
@@ -103,7 +105,7 @@ export default function ResumePage() {
               </div>
             </div>
             <div className="mt-4 grid gap-2">
-              {remotePlans.map((plan) => (
+              {availableRemotePlans.map((plan) => (
                 <button
                   key={plan.id}
                   type="button"

@@ -11,7 +11,7 @@ export type ProblemType =
 
 export type ChoiceType = "intervention" | "devis" | "remote";
 
-export type PaymentPlan = "photo" | "guided" | "premium";
+export type PaymentPlan = "photo" | "guided" | "premium" | "water";
 
 export type DiagnosticStatus = "nouvelle" | "en analyse" | "devis envoyé" | "RDV demandé" | "terminé";
 

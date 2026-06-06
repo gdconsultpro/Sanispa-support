@@ -128,6 +128,7 @@ export function isPhotoRequired(photoId: string, problemType?: ProblemType | "")
 }
 
 export const remotePlans = [
+  { id: "water", name: "Assistant traitement d'eau", price: 19, stripeEnv: "STRIPE_PRICE_WATER_ASSISTANT" },
   { id: "photo", name: "Diagnostic photo", price: 49, stripeEnv: "STRIPE_PRICE_DIAGNOSTIC_PHOTO" },
   { id: "guided", name: "Assistance guidée", price: 89, stripeEnv: "STRIPE_PRICE_ASSISTANCE_GUIDED" },
   { id: "premium", name: "Assistance premium", price: 129, stripeEnv: "STRIPE_PRICE_ASSISTANCE_PREMIUM" }

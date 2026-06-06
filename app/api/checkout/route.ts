@@ -6,7 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 const checkoutSchema = z.object({
   diagnosticId: z.string().uuid(),
-  paymentPlan: z.enum(["photo", "guided", "premium"])
+  paymentPlan: z.enum(["photo", "guided", "premium", "water"])
 });
 
 export async function POST(request: Request) {
@@ -26,10 +26,15 @@ export async function POST(request: Request) {
     const stripe = getStripe();
     const supabase = getSupabaseAdmin();
 
+    const successUrl =
+      payload.paymentPlan === "water"
+        ? `${origin}/assistant-eau?session_id={CHECKOUT_SESSION_ID}`
+        : `${origin}/confirmation?session_id={CHECKOUT_SESSION_ID}`;
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [{ price, quantity: 1 }],
-      success_url: `${origin}/confirmation?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: successUrl,
       cancel_url: `${origin}/paiement`,
       metadata: {
         diagnostic_id: payload.diagnosticId,
