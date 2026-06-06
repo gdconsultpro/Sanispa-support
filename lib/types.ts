@@ -20,6 +20,8 @@ export type CustomerInfo = {
   phone: string;
   email: string;
   address: string;
+  postalCode: string;
+  city: string;
   spaBrand: string;
   spaModel: string;
   spaYear: string;

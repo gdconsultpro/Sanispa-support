@@ -117,7 +117,7 @@ function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
         <strong>Nom :</strong> ${escapeHtml(payload.customer.name)}<br />
         <strong>Telephone :</strong> ${escapeHtml(payload.customer.phone)}<br />
         <strong>Email :</strong> ${escapeHtml(payload.customer.email)}<br />
-        <strong>Adresse :</strong> ${escapeHtml(payload.customer.address)}
+        <strong>Adresse / secteur :</strong> ${escapeHtml(payload.customer.address)}
       </p>
       <h2>Spa</h2>
       <p>

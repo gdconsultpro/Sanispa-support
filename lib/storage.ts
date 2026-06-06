@@ -7,6 +7,8 @@ export const emptyDraft: DiagnosticDraft = {
   phone: "",
   email: "",
   address: "",
+  postalCode: "",
+  city: "",
   spaBrand: "",
   spaModel: "",
   spaYear: "",

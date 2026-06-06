@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { BackLink } from "@/components/BackLink";
 import { DiagnosticSummary } from "@/components/Summary";
+import { ShopLinks } from "@/components/ShopLinks";
 import { StepHeader } from "@/components/StepHeader";
 import { remotePlans } from "@/lib/questions";
 import { DiagnosticDraft, PaymentPlan } from "@/lib/types";
@@ -91,6 +92,8 @@ export default function ResumePage() {
             button="Demander un devis"
             onClick={() => setChoice("devis")}
           />
+          <ShopLinks problemType={draft.problemType} />
+
           <div className={`rounded-md border bg-white p-4 ${draft.choice === "remote" ? "border-sanispa-blue" : "border-sanispa-line"}`}>
             <div className="flex gap-3">
               <CreditCard size={22} className="mt-1 text-sanispa-blue" aria-hidden="true" />

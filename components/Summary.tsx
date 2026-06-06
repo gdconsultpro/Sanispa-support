@@ -15,7 +15,9 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
           <SummaryLine label="Nom" value={draft.name} />
           <SummaryLine label="Téléphone" value={draft.phone} />
           <SummaryLine label="Email" value={draft.email} />
-          <SummaryLine label="Adresse" value={draft.address} />
+          <SummaryLine label="Adresse" value={draft.address || "Non renseignée"} />
+          <SummaryLine label="Code postal" value={draft.postalCode} />
+          <SummaryLine label="Ville" value={draft.city} />
         </dl>
       </section>
 
@@ -26,7 +28,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
           <SummaryLine label="Modèle" value={draft.spaModel || "Non connu"} />
           <SummaryLine label="Année" value={draft.spaYear} />
           <SummaryLine label="Installation" value={draft.installationType} />
-          <SummaryLine label="Alimentation" value={draft.powerSupply} />
+          {draft.powerSupply ? <SummaryLine label="Alimentation" value={draft.powerSupply} /> : null}
         </dl>
       </section>
 

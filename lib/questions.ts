@@ -16,6 +16,13 @@ const yesNo = ["Oui", "Non"];
 
 export const questionSets: Record<ProblemType, Question[]> = {
   electrique: [
+    {
+      id: "power_supply_known",
+      label: "Alimentation connue",
+      type: "radio",
+      required: true,
+      options: ["230V", "400V", "Je ne sais pas"]
+    },
     { id: "trip", label: "Le spa disjoncte-t-il ?", type: "radio", required: true, options: yesNo },
     {
       id: "trip_moment",
@@ -147,7 +154,7 @@ export function isPhotoRequired(photoId: string, problemType?: ProblemType | "")
 
 export const remotePlans = [
   { id: "water", name: "Assistant traitement d'eau", price: 19, stripeEnv: "STRIPE_PRICE_WATER_ASSISTANT" },
-  { id: "photo", name: "Diagnostic photo", price: 49, stripeEnv: "STRIPE_PRICE_DIAGNOSTIC_PHOTO" },
-  { id: "guided", name: "Assistance guidée", price: 89, stripeEnv: "STRIPE_PRICE_ASSISTANCE_GUIDED" },
-  { id: "premium", name: "Assistance premium", price: 129, stripeEnv: "STRIPE_PRICE_ASSISTANCE_PREMIUM" }
+  { id: "photo", name: "Assistance téléphonique", price: 49, stripeEnv: "STRIPE_PRICE_DIAGNOSTIC_PHOTO" },
+  { id: "guided", name: "Assistance guidée via photos", price: 89, stripeEnv: "STRIPE_PRICE_ASSISTANCE_GUIDED" },
+  { id: "premium", name: "Assistance vidéo / visio", price: 129, stripeEnv: "STRIPE_PRICE_ASSISTANCE_PREMIUM" }
 ] as const;

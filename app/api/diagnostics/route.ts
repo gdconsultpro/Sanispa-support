@@ -9,12 +9,14 @@ const payloadSchema = z.object({
   name: z.string().min(1),
   phone: z.string().min(1),
   email: z.string().email(),
-  address: z.string().min(1),
-  spaBrand: z.string().min(1),
+  address: z.string().optional(),
+  postalCode: z.string().min(1),
+  city: z.string().min(1),
+  spaBrand: z.string().optional(),
   spaModel: z.string().optional(),
   spaYear: z.string().min(1),
   installationType: z.enum(["interieur", "exterieur"]),
-  powerSupply: z.enum(["230V", "400V", "je ne sais pas"]),
+  powerSupply: z.enum(["230V", "400V", "je ne sais pas", ""]).optional(),
   problemType: z.enum(problemTypes.map((item) => item.value) as [string, ...string[]]),
   answers: z.record(z.string()).default({}),
   photos: z.record(z.string()).default({}),
@@ -32,6 +34,10 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseAdmin();
+    const addressParts = [payload.address, payload.postalCode, payload.city].filter(Boolean);
+    const customerAddress = addressParts.join(" - ");
+    const answerPowerSupply = payload.answers.power_supply_known;
+    const powerSupply = answerPowerSupply === "Je ne sais pas" ? "je ne sais pas" : payload.powerSupply || answerPowerSupply || "je ne sais pas";
 
     const { data: customer, error: customerError } = await supabase
       .from("customers")
@@ -39,12 +45,12 @@ export async function POST(request: Request) {
         name: payload.name,
         phone: payload.phone,
         email: payload.email,
-        address: payload.address,
-        spa_brand: payload.spaBrand,
+        address: customerAddress,
+        spa_brand: payload.spaBrand || "Non renseignée",
         spa_model: payload.spaModel || null,
         spa_year: payload.spaYear,
         installation_type: payload.installationType,
-        power_supply: payload.powerSupply
+        power_supply: powerSupply
       })
       .select("id")
       .single();
@@ -113,8 +119,8 @@ export async function POST(request: Request) {
           name: payload.name,
           phone: payload.phone,
           email: payload.email,
-          address: payload.address,
-          spaBrand: payload.spaBrand,
+          address: customerAddress,
+          spaBrand: payload.spaBrand || "Non renseignée",
           spaModel: payload.spaModel || null,
           spaYear: payload.spaYear
         },
