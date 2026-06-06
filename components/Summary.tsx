@@ -1,10 +1,11 @@
-import { photoRequirements, problemTypes, questionSets, remotePlans } from "@/lib/questions";
+import { getPhotoRequirements, problemTypes, questionSets, remotePlans } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
 
 export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
   const problemLabel = problemTypes.find((item) => item.value === draft.problemType)?.label ?? "Non renseigné";
   const questions = draft.problemType ? questionSets[draft.problemType] : [];
   const plan = remotePlans.find((item) => item.id === draft.paymentPlan);
+  const photos = getPhotoRequirements(draft.problemType);
 
   return (
     <div className="space-y-4">
@@ -46,7 +47,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
       <section className="rounded-md border border-sanispa-line bg-white p-4">
         <h2 className="mb-3 text-lg font-bold">Photos jointes</h2>
         <dl className="grid gap-3 text-sm text-sanispa-steel">
-          {photoRequirements.map((photo) => (
+          {photos.map((photo) => (
             <SummaryLine key={photo.id} label={photo.label} value={draft.photos[photo.id] ? "Ajoutée" : "Non ajoutée"} />
           ))}
         </dl>

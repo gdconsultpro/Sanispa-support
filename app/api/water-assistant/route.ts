@@ -63,9 +63,15 @@ function buildContext(draft: any) {
     .map((question) => `${question.label}: ${draft.answers?.[question.id] || "Non renseigné"}`)
     .join("\n");
 
-  const photoInfo = draft.photos?.visible_problem
-    ? "Une photo du problème ou de la bandelette semble disponible dans le dossier."
-    : "Aucune photo de bandelette indiquée dans le brouillon local.";
+  const waterPhotos = [
+    draft.photos?.water_test ? "photo de bandelette ou relevé" : null,
+    draft.photos?.filters ? "photo du ou des filtres" : null,
+    draft.photos?.water_overview ? "photo générale du spa en eau" : null
+  ].filter(Boolean);
+
+  const photoInfo = waterPhotos.length
+    ? `Photos disponibles: ${waterPhotos.join(", ")}.`
+    : "Aucune photo spécifique au traitement d'eau indiquée dans le brouillon local.";
 
   return [
     `Client: ${draft.name || "Non renseigné"}`,

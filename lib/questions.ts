@@ -116,12 +116,30 @@ export const questionSets: Record<ProblemType, Question[]> = {
   ]
 };
 
-export const photoRequirements = [
+type PhotoRequirement = {
+  id: string;
+  label: string;
+  required: boolean;
+  problemTypes?: ProblemType[];
+};
+
+export const photoRequirements: PhotoRequirement[] = [
   { id: "keyboard", label: "Photo du clavier", required: false },
   { id: "technical_bay", label: "Photo du compartiment technique", required: false },
   { id: "serial_plate", label: "Photo de la plaque signalétique si disponible", required: false },
-  { id: "visible_problem", label: "Photo du problème si visible", required: false }
+  { id: "visible_problem", label: "Photo du problème si visible", required: false },
+  { id: "water_test", label: "Photo de la bandelette ou du relevé d'analyse", required: false, problemTypes: ["traitement-eau"] },
+  { id: "filters", label: "Photo du ou des filtres", required: false, problemTypes: ["traitement-eau"] },
+  { id: "water_overview", label: "Photo générale du spa en eau", required: false, problemTypes: ["traitement-eau"] }
 ];
+
+export function getPhotoRequirements(problemType?: ProblemType | "") {
+  if (problemType === "traitement-eau") {
+    return photoRequirements.filter((photo) => photo.problemTypes?.includes("traitement-eau"));
+  }
+
+  return photoRequirements.filter((photo) => !photo.problemTypes);
+}
 
 export function isPhotoRequired(photoId: string, problemType?: ProblemType | "") {
   return photoId === "keyboard" && problemType === "electrique";

@@ -7,7 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { BackLink } from "@/components/BackLink";
 import { StepHeader } from "@/components/StepHeader";
-import { isPhotoRequired, photoRequirements } from "@/lib/questions";
+import { getPhotoRequirements, isPhotoRequired } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
 import { emptyDraft, readDraft, writeDraft } from "@/lib/storage";
 
@@ -21,6 +21,8 @@ export default function UploadPage() {
     setDraft(stored);
     if (!stored.problemType) router.push("/diagnostic");
   }, [router]);
+
+  const photos = getPhotoRequirements(draft.problemType);
 
   function handleFile(photoId: string, file?: File) {
     if (!file) return;
@@ -39,7 +41,7 @@ export default function UploadPage() {
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const missingRequired = photoRequirements.some((photo) => isPhotoRequired(photo.id, draft.problemType) && !draft.photos[photo.id]);
+    const missingRequired = photos.some((photo) => isPhotoRequired(photo.id, draft.problemType) && !draft.photos[photo.id]);
     if (missingRequired) {
       setError("La photo du clavier est obligatoire pour une panne électrique.");
       return;
@@ -58,7 +60,7 @@ export default function UploadPage() {
       <BackLink href="/questionnaire" />
 
       <form onSubmit={submit} className="space-y-4 rounded-md border border-sanispa-line bg-white p-4 shadow-soft sm:p-6">
-        {photoRequirements.map((photo) => (
+        {photos.map((photo) => (
           <label key={photo.id} className="block rounded-md border border-sanispa-line p-4">
             <span className="mb-3 flex items-center gap-3 text-sm font-bold text-sanispa-navy">
               <Camera size={20} aria-hidden="true" />
