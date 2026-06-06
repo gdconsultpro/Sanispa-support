@@ -22,7 +22,8 @@ create table if not exists diagnostics (
   status text not null default 'nouvelle' check (status in ('nouvelle', 'en analyse', 'devis envoyé', 'RDV demandé', 'terminé')),
   choice text check (choice in ('intervention', 'devis', 'remote')),
   payment_plan text check (payment_plan in ('photo', 'guided', 'premium')),
-  payment_status text
+  payment_status text,
+  archived_at timestamptz
 );
 
 create table if not exists diagnostic_answers (
@@ -59,6 +60,7 @@ create index if not exists diagnostics_customer_id_idx on diagnostics(customer_i
 create index if not exists diagnostic_answers_diagnostic_id_idx on diagnostic_answers(diagnostic_id);
 create index if not exists diagnostic_photos_diagnostic_id_idx on diagnostic_photos(diagnostic_id);
 create index if not exists payments_diagnostic_id_idx on payments(diagnostic_id);
+create index if not exists diagnostics_archived_at_idx on diagnostics(archived_at);
 
 insert into storage.buckets (id, name, public)
 values ('diagnostic-photos', 'diagnostic-photos', true)

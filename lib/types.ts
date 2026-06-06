@@ -55,6 +55,7 @@ export type AdminDiagnostic = {
   problem_type: string;
   choice: string | null;
   payment_status: string | null;
+  archived_at: string | null;
   customers: {
     name: string;
     phone: string;

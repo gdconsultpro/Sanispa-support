@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { AdminActions } from "@/components/AdminActions";
 import { StepHeader } from "@/components/StepHeader";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { AdminDiagnostic } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
-  const { diagnostics, error } = await loadDiagnostics();
+export default async function AdminPage({ searchParams }: { searchParams?: Promise<{ archived?: string }> }) {
+  const params = await searchParams;
+  const showArchived = params?.archived === "1";
+  const { diagnostics, error } = await loadDiagnostics(showArchived);
 
   return (
     <AppShell compact>
@@ -24,9 +27,20 @@ export default async function AdminPage() {
         </div>
       ) : null}
 
+      <div className="mb-5 flex gap-2">
+        <Link href="/admin" className={`rounded-md border px-4 py-2 text-sm font-bold focus-ring ${!showArchived ? "border-sanispa-blue bg-white text-sanispa-navy" : "border-sanispa-line text-sanispa-steel"}`}>
+          Actives
+        </Link>
+        <Link href="/admin?archived=1" className={`rounded-md border px-4 py-2 text-sm font-bold focus-ring ${showArchived ? "border-sanispa-blue bg-white text-sanispa-navy" : "border-sanispa-line text-sanispa-steel"}`}>
+          Archivées
+        </Link>
+      </div>
+
       <div className="grid gap-4">
         {diagnostics.length === 0 && !error ? (
-          <div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">Aucune demande enregistrée pour le moment.</div>
+          <div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">
+            {showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
+          </div>
         ) : null}
 
         {diagnostics.map((diagnostic) => (
@@ -80,6 +94,8 @@ export default async function AdminPage() {
                 </div>
               </section>
             </div>
+
+            <AdminActions diagnosticId={diagnostic.id} archived={Boolean(diagnostic.archived_at)} />
           </article>
         ))}
       </div>
@@ -87,7 +103,7 @@ export default async function AdminPage() {
   );
 }
 
-async function loadDiagnostics(): Promise<{ diagnostics: AdminDiagnostic[]; error: string | null }> {
+async function loadDiagnostics(showArchived: boolean): Promise<{ diagnostics: AdminDiagnostic[]; error: string | null }> {
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
@@ -99,6 +115,7 @@ async function loadDiagnostics(): Promise<{ diagnostics: AdminDiagnostic[]; erro
         problem_type,
         choice,
         payment_status,
+        archived_at,
         customers (
           name,
           phone,
@@ -117,6 +134,7 @@ async function loadDiagnostics(): Promise<{ diagnostics: AdminDiagnostic[]; erro
           public_url
         )
       `)
+      .filter("archived_at", showArchived ? "not.is" : "is", null)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
