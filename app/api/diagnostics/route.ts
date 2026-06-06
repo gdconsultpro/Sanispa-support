@@ -70,6 +70,7 @@ export async function POST(request: Request) {
       .single();
 
     if (diagnosticError) throw diagnosticError;
+    console.log("[SANISPA diagnostic] dossier créé", { diagnosticId: diagnostic.id, email: payload.email });
 
     const problemType = payload.problemType as ProblemType;
     const questions = questionSets[problemType];
@@ -112,38 +113,71 @@ export async function POST(request: Request) {
       if (photosError) throw photosError;
     }
 
-    try {
-      const emailPayload = {
-        diagnosticId: diagnostic.id,
-        customer: {
-          name: payload.name,
-          phone: payload.phone,
-          email: payload.email,
-          address: customerAddress,
-          spaBrand: payload.spaBrand || "Non renseignée",
-          spaModel: payload.spaModel || null,
-          spaYear: payload.spaYear
-        },
-        problemType: payload.problemType,
-        choice: payload.choice,
-        paymentPlan: payload.paymentPlan || null,
-        answers: answerRows.map((answer) => ({
-          question_label: answer.question_label,
-          answer: answer.answer
-        })),
-        photos: photoRows.map((photo) => ({
-          photo_type: photo.photo_type,
-          public_url: photo.public_url
-        }))
-      };
+    const emailPayload = {
+      diagnosticId: diagnostic.id,
+      customer: {
+        name: payload.name,
+        phone: payload.phone,
+        email: payload.email,
+        address: customerAddress,
+        spaBrand: payload.spaBrand || "Non renseignée",
+        spaModel: payload.spaModel || null,
+        spaYear: payload.spaYear
+      },
+      problemType: payload.problemType,
+      choice: payload.choice,
+      paymentPlan: payload.paymentPlan || null,
+      status: payload.choice === "remote" ? "En attente de paiement" : "Demande enregistrée",
+      appUrl: process.env.NEXT_PUBLIC_APP_URL,
+      dossierUrl: `${process.env.NEXT_PUBLIC_APP_URL || ""}/espace-client`,
+      summaryPdfUrl: `${process.env.NEXT_PUBLIC_APP_URL || ""}/espace-client`,
+      answers: answerRows.map((answer) => ({
+        question_label: answer.question_label,
+        answer: answer.answer
+      })),
+      photos: photoRows.map((photo) => ({
+        photo_type: photo.photo_type,
+        public_url: photo.public_url
+      }))
+    };
 
+    try {
       await sendDiagnosticNotification(emailPayload);
-      await sendCustomerConfirmation(emailPayload);
-    } catch (emailError) {
-      console.error(emailError);
+    } catch (adminEmailError) {
+      console.error("[SANISPA email admin] erreur notification admin", adminEmailError);
     }
 
-    return NextResponse.json({ diagnosticId: diagnostic.id });
+    let customerEmailSent = false;
+    let customerEmailError: string | null = null;
+
+    if (payload.choice === "remote") {
+      await supabase
+        .from("diagnostics")
+        .update({ customer_email_status: "pending_payment", customer_email_error: null })
+        .eq("id", diagnostic.id);
+    } else {
+      try {
+        console.log("[SANISPA email client] appel confirmation client après dossier", {
+          diagnosticId: diagnostic.id,
+          to: payload.email,
+          choice: payload.choice
+        });
+        await sendCustomerConfirmation(emailPayload);
+        customerEmailSent = true;
+        await supabase
+          .from("diagnostics")
+          .update({ customer_email_status: "sent", customer_email_error: null })
+          .eq("id", diagnostic.id);
+      } catch (emailError) {
+        customerEmailError = emailError instanceof Error ? emailError.message : "Erreur email client";
+        await supabase
+          .from("diagnostics")
+          .update({ customer_email_status: "error", customer_email_error: customerEmailError })
+          .eq("id", diagnostic.id);
+      }
+    }
+
+    return NextResponse.json({ diagnosticId: diagnostic.id, customerEmailSent, customerEmailError });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur serveur";
     return NextResponse.json({ error: message }, { status: 400 });

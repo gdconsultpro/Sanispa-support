@@ -54,6 +54,10 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
               <div className="grid gap-2 text-sm sm:text-right">
                 <span className="rounded-md bg-sanispa-ice px-3 py-2 font-bold text-sanispa-navy">{diagnostic.status}</span>
                 <span className="text-sanispa-steel">Paiement : {diagnostic.payment_status ?? "non requis / non payé"}</span>
+                <span className="text-sanispa-steel">Email client : {diagnostic.customer_email_status ?? "non suivi"}</span>
+                {diagnostic.customer_email_error ? (
+                  <span className="rounded-md bg-red-50 px-3 py-2 text-left text-red-700 sm:text-right">Erreur email client : {diagnostic.customer_email_error}</span>
+                ) : null}
               </div>
             </div>
 
@@ -118,6 +122,8 @@ async function loadDiagnostics(showArchived: boolean): Promise<{ diagnostics: Ad
         problem_type,
         choice,
         payment_status,
+        customer_email_status,
+        customer_email_error,
         archived_at,
         customers (
           name,

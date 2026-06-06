@@ -59,7 +59,7 @@ export default function ResumePage() {
     if (draft.choice === "remote") {
       router.push("/paiement");
     } else {
-      router.push("/confirmation");
+      router.push(payload.customerEmailSent === false ? "/confirmation?emailSent=0" : "/confirmation?emailSent=1");
     }
   }
 

@@ -15,6 +15,7 @@ export default function PaymentPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [paidAccessUrl, setPaidAccessUrl] = useState("");
+  const [appointmentAccepted, setAppointmentAccepted] = useState(false);
 
   useEffect(() => {
     const stored = readDraft();
@@ -35,10 +36,16 @@ export default function PaymentPage() {
   }, []);
 
   const plan = remotePlans.find((item) => item.id === draft.paymentPlan);
+  const isHumanAssistance = Boolean(draft.paymentPlan && draft.paymentPlan !== "water");
 
   async function checkout() {
     if (paidAccessUrl) {
       window.location.href = paidAccessUrl;
+      return;
+    }
+
+    if (isHumanAssistance && !appointmentAccepted) {
+      setError("Veuillez confirmer que l'assistance SANISPA se déroule sur rendez-vous avant de continuer.");
       return;
     }
 
@@ -84,8 +91,32 @@ export default function PaymentPage() {
             ) : null}
           </div>
         </div>
+
+        {isHumanAssistance && !paidAccessUrl ? (
+          <div className="mt-5 rounded-md border border-sanispa-blue bg-sanispa-ice p-4">
+            <h3 className="text-base font-bold text-sanispa-navy">Information importante</h3>
+            <div className="mt-3 space-y-3 text-sm leading-6 text-sanispa-steel">
+              <p>L'assistance SANISPA n'est pas instantanée.</p>
+              <p>
+                Après validation de votre paiement, notre équipe analysera votre demande puis vous contactera afin de fixer un rendez-vous adapté à votre formule
+                (téléphone, photos ou visio).
+              </p>
+              <p>Le délai de prise de contact dépend de notre planning et de l'urgence de votre demande.</p>
+            </div>
+            <label className="mt-4 flex cursor-pointer gap-3 rounded-md bg-white p-3 text-sm font-semibold text-sanispa-navy">
+              <input
+                type="checkbox"
+                checked={appointmentAccepted}
+                onChange={(event) => setAppointmentAccepted(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-sanispa-line text-sanispa-blue"
+              />
+              <span>J'ai compris que l'assistance SANISPA se déroule sur rendez-vous et non immédiatement après le paiement.</span>
+            </label>
+          </div>
+        ) : null}
+
         {error ? <p className="mt-4 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
-        <Button type="button" onClick={checkout} disabled={!plan || loading} className="mt-5 w-full sm:w-auto">
+        <Button type="button" onClick={checkout} disabled={!plan || loading || (isHumanAssistance && !appointmentAccepted && !paidAccessUrl)} className="mt-5 w-full sm:w-auto">
           {loading ? "Redirection..." : paidAccessUrl ? "Reprendre mon assistance" : "Payer avec Stripe"}
         </Button>
       </section>

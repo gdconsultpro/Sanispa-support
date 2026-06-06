@@ -23,6 +23,8 @@ create table if not exists diagnostics (
   choice text check (choice in ('intervention', 'devis', 'remote')),
   payment_plan text check (payment_plan in ('photo', 'guided', 'premium', 'water')),
   payment_status text,
+  customer_email_status text default 'pending',
+  customer_email_error text,
   archived_at timestamptz
 );
 
@@ -203,3 +205,10 @@ create policy "Users manage own client documents" on client_documents
 drop policy if exists "Service role manages client documents" on client_documents;
 create policy "Service role manages client documents" on client_documents
   for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
+
+alter table diagnostics
+add column if not exists customer_email_status text default 'pending';
+
+alter table diagnostics
+add column if not exists customer_email_error text;
