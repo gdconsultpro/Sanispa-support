@@ -58,6 +58,36 @@ export async function sendDiagnosticNotification(payload: DiagnosticEmailPayload
   return { skipped: false };
 }
 
+export async function sendCustomerConfirmation(payload: DiagnosticEmailPayload) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM || "SANISPA <onboarding@resend.dev>";
+
+  if (!apiKey || !payload.customer.email) {
+    return { skipped: true };
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to: payload.customer.email,
+      subject: "Votre demande SANISPA a bien ete prise en compte",
+      html: buildCustomerConfirmationEmail(payload)
+    })
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`Customer confirmation email failed: ${details}`);
+  }
+
+  return { skipped: false };
+}
+
 function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
   const answers = payload.answers
     .map(
@@ -106,6 +136,31 @@ function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
       <h2>Photos</h2>
       <ul>${photos}</ul>
       <p style="margin-top:24px;">Consultez le dashboard admin pour traiter la demande.</p>
+    </div>
+  `;
+}
+
+function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
+  return `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.6;max-width:680px;">
+      <h1 style="margin-bottom:16px;">Votre demande SANISPA a bien été prise en compte</h1>
+      <p>Bonjour ${escapeHtml(payload.customer.name)},</p>
+      <p>
+        Nous avons bien reçu votre demande de pré-diagnostic pour votre spa.
+        Un technicien SANISPA va analyser les informations transmises et vous contactera très prochainement
+        pour faire une analyse plus approfondie.
+      </p>
+      <p>
+        <strong>Type de panne déclaré :</strong> ${escapeHtml(payload.problemType)}<br />
+        <strong>Référence dossier :</strong> ${escapeHtml(payload.diagnosticId)}
+      </p>
+      <p>
+        Si des éléments complémentaires sont nécessaires, SANISPA vous les demandera directement par téléphone ou par email.
+      </p>
+      <p style="margin-top:24px;">
+        Merci pour votre confiance,<br />
+        <strong>L'équipe SANISPA</strong>
+      </p>
     </div>
   `;
 }

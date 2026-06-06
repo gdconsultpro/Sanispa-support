@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isPhotoRequired, photoRequirements, problemTypes, questionSets } from "@/lib/questions";
-import { sendDiagnosticNotification } from "@/lib/email";
+import { sendCustomerConfirmation, sendDiagnosticNotification } from "@/lib/email";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { ProblemType } from "@/lib/types";
 
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      await sendDiagnosticNotification({
+      const emailPayload = {
         diagnosticId: diagnostic.id,
         customer: {
           name: payload.name,
@@ -128,7 +128,10 @@ export async function POST(request: Request) {
           photo_type: photo.photo_type,
           public_url: photo.public_url
         }))
-      });
+      };
+
+      await sendDiagnosticNotification(emailPayload);
+      await sendCustomerConfirmation(emailPayload);
     } catch (emailError) {
       console.error(emailError);
     }
