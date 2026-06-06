@@ -21,7 +21,7 @@ create table if not exists diagnostics (
   problem_type text not null,
   status text not null default 'nouvelle' check (status in ('nouvelle', 'en analyse', 'devis envoyé', 'RDV demandé', 'terminé')),
   choice text check (choice in ('intervention', 'devis', 'remote')),
-  payment_plan text check (payment_plan in ('photo', 'guided', 'premium')),
+  payment_plan text check (payment_plan in ('photo', 'guided', 'premium', 'water')),
   payment_status text,
   archived_at timestamptz
 );
@@ -53,7 +53,7 @@ create table if not exists payments (
   amount integer not null,
   currency text not null default 'eur',
   status text not null default 'pending',
-  plan text not null check (plan in ('photo', 'guided', 'premium'))
+  plan text not null check (plan in ('photo', 'guided', 'premium', 'water'))
 );
 
 create index if not exists diagnostics_customer_id_idx on diagnostics(customer_id);
@@ -93,3 +93,42 @@ create policy "Public photo read access" on storage.objects
 create policy "Service role photo uploads" on storage.objects
   for all using (bucket_id = 'diagnostic-photos' and auth.role() = 'service_role')
   with check (bucket_id = 'diagnostic-photos' and auth.role() = 'service_role');
+
+
+create table if not exists water_assistance_sessions (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  diagnostic_id uuid references diagnostics(id) on delete cascade,
+  customer_email text not null,
+  customer_name text,
+  status text not null default 'pending' check (status in ('pending', 'paid', 'expired', 'refunded')),
+  resume_token text not null unique,
+  current_step text not null default 'payment',
+  expires_at timestamptz,
+  stripe_checkout_session_id text,
+  stripe_payment_intent_id text,
+  paid_at timestamptz,
+  last_activity_at timestamptz not null default now()
+);
+
+create table if not exists water_assistance_messages (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  session_id uuid not null references water_assistance_sessions(id) on delete cascade,
+  role text not null check (role in ('assistant', 'user')),
+  content text not null
+);
+
+create index if not exists water_assistance_sessions_email_idx on water_assistance_sessions(customer_email);
+create index if not exists water_assistance_sessions_diagnostic_idx on water_assistance_sessions(diagnostic_id);
+create index if not exists water_assistance_messages_session_idx on water_assistance_messages(session_id);
+
+alter table water_assistance_sessions enable row level security;
+alter table water_assistance_messages enable row level security;
+
+create policy "Service role manages water assistance sessions" on water_assistance_sessions
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
+create policy "Service role manages water assistance messages" on water_assistance_messages
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');

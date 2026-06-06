@@ -88,6 +88,59 @@ export async function sendCustomerConfirmation(payload: DiagnosticEmailPayload) 
   return { skipped: false };
 }
 
+export async function sendWaterAssistanceResumeLink({
+  to,
+  name,
+  resumeUrl,
+  expiresAt
+}: {
+  to: string;
+  name: string;
+  resumeUrl: string;
+  expiresAt: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM || "SANISPA <onboarding@resend.dev>";
+
+  if (!apiKey || !to) {
+    return { skipped: true };
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      subject: "Votre accès assistant traitement d'eau SANISPA",
+      html: `
+        <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.6;max-width:680px;">
+          <h1>Votre assistant traitement d'eau est disponible</h1>
+          <p>Bonjour ${escapeHtml(name)},</p>
+          <p>Votre paiement a bien été validé. Vous pouvez reprendre votre assistance traitement d'eau SANISPA sans repayer avec le lien ci-dessous.</p>
+          <p>
+            <a href="${escapeHtml(resumeUrl)}" style="display:inline-block;background:#0a2342;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;font-weight:bold;">
+              Reprendre mon assistance
+            </a>
+          </p>
+          <p>Ce lien est valable jusqu'au ${escapeHtml(new Date(expiresAt).toLocaleDateString("fr-FR"))}.</p>
+          <p>Merci pour votre confiance,<br /><strong>L'équipe SANISPA</strong></p>
+        </div>
+      `
+    })
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`Water assistance resume email failed: ${details}`);
+  }
+
+  return { skipped: false };
+}
+
 function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
   const answers = payload.answers
     .map(
