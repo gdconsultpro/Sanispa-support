@@ -132,3 +132,50 @@ create policy "Service role manages water assistance sessions" on water_assistan
 
 create policy "Service role manages water assistance messages" on water_assistance_messages
   for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
+
+create table if not exists client_profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references auth.users(id) on delete cascade,
+  email text not null,
+  first_name text,
+  last_name text,
+  phone text,
+  address text,
+  postal_code text,
+  city text,
+  spa_brand text,
+  spa_model text,
+  spa_year text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists customer_spas (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  brand text,
+  model text,
+  spa_year text,
+  installation_type text,
+  created_at timestamptz default now()
+);
+
+alter table client_profiles enable row level security;
+alter table customer_spas enable row level security;
+
+drop policy if exists "Users manage own profile" on client_profiles;
+create policy "Users manage own profile" on client_profiles
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "Users manage own spas" on customer_spas;
+create policy "Users manage own spas" on customer_spas
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "Service role manages client profiles" on client_profiles;
+create policy "Service role manages client profiles" on client_profiles
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
+drop policy if exists "Service role manages customer spas" on customer_spas;
+create policy "Service role manages customer spas" on customer_spas
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');

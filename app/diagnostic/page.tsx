@@ -10,6 +10,7 @@ import { StepHeader } from "@/components/StepHeader";
 import { problemTypes } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
 import { emptyDraft, readDraft, writeDraft } from "@/lib/storage";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 export default function DiagnosticPage() {
   const router = useRouter();
@@ -17,7 +18,41 @@ export default function DiagnosticPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setDraft(readDraft());
+    const savedDraft = readDraft();
+    setDraft(savedDraft);
+
+    async function prefillFromClientAccount() {
+      try {
+        const supabase = getSupabaseBrowser();
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) return;
+
+        const response = await fetch("/api/client/profile", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const result = await response.json();
+        const profile = result.profile;
+        if (!profile) return;
+
+        setDraft((current) => ({
+          ...current,
+          name: current.name || [profile.first_name, profile.last_name].filter(Boolean).join(" "),
+          phone: current.phone || profile.phone || "",
+          email: current.email || profile.email || "",
+          address: current.address || profile.address || "",
+          postalCode: current.postalCode || profile.postal_code || "",
+          city: current.city || profile.city || "",
+          spaBrand: current.spaBrand || profile.spa_brand || "",
+          spaModel: current.spaModel || profile.spa_model || "",
+          spaYear: current.spaYear || profile.spa_year || ""
+        }));
+      } catch {
+        // Le formulaire reste utilisable même si le client n'est pas connecté.
+      }
+    }
+
+    prefillFromClientAccount();
   }, []);
 
   const requiredFilled = useMemo(() => {
