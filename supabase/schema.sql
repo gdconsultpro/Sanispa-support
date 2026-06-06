@@ -179,3 +179,27 @@ create policy "Service role manages client profiles" on client_profiles
 drop policy if exists "Service role manages customer spas" on customer_spas;
 create policy "Service role manages customer spas" on customer_spas
   for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
+create table if not exists client_documents (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  diagnostic_id uuid references diagnostics(id) on delete set null,
+  spa_id uuid references customer_spas(id) on delete set null,
+  document_type text not null,
+  file_name text not null,
+  mime_type text not null,
+  file_size integer not null,
+  storage_bucket text not null default 'client-documents',
+  storage_path text not null,
+  created_at timestamptz default now()
+);
+
+alter table client_documents enable row level security;
+
+drop policy if exists "Users manage own client documents" on client_documents;
+create policy "Users manage own client documents" on client_documents
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "Service role manages client documents" on client_documents;
+create policy "Service role manages client documents" on client_documents
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
