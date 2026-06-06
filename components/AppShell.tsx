@@ -16,9 +16,6 @@ export function AppShell({ children, compact = false }: { children: React.ReactN
             <Link href="/espace-client" className="rounded-md border border-sanispa-line px-3 py-2 text-sanispa-navy focus-ring">
               Espace client
             </Link>
-            <Link href="/admin" className="rounded-md border border-sanispa-line px-3 py-2 text-sanispa-steel focus-ring">
-              Admin
-            </Link>
           </nav>
         </div>
       </header>
