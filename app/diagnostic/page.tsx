@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
+import { BackLink } from "@/components/BackLink";
 import { Field, SelectField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
 import { problemTypes } from "@/lib/questions";
@@ -54,6 +55,7 @@ export default function DiagnosticPage() {
         title="Informations client et spa"
         description="Ces éléments permettent à SANISPA d'identifier le contexte technique avant d'analyser la panne."
       />
+      <BackLink href="/" />
 
       <form onSubmit={submit} className="space-y-5 rounded-md border border-sanispa-line bg-white p-4 shadow-soft sm:p-6">
         <div className="grid gap-4 sm:grid-cols-2">

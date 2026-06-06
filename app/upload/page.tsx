@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
+import { BackLink } from "@/components/BackLink";
 import { StepHeader } from "@/components/StepHeader";
 import { isPhotoRequired, photoRequirements } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
@@ -54,6 +55,7 @@ export default function UploadPage() {
         title="Photos du spa"
         description="Ajoutez les photos nécessaires à l'analyse. Elles seront envoyées vers le stockage Supabase lors de la validation finale."
       />
+      <BackLink href="/questionnaire" />
 
       <form onSubmit={submit} className="space-y-4 rounded-md border border-sanispa-line bg-white p-4 shadow-soft sm:p-6">
         {photoRequirements.map((photo) => (

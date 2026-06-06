@@ -5,8 +5,12 @@ export function AppShell({ children, compact = false }: { children: React.ReactN
     <main className="min-h-screen bg-sanispa-ice">
       <header className="border-b border-sanispa-line bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
-          <Link href="/" className="text-xl font-bold tracking-wide text-sanispa-navy">
-            SANISPA
+          <Link href="/" className="inline-flex items-center focus-ring">
+            <img
+              src="https://www.sani-spa.fr/wp-contenus/uploads/2015/02/sani-spa-bottom-retina.png"
+              alt="SANISPA"
+              className="h-10 w-auto object-contain"
+            />
           </Link>
         </div>
       </header>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
+import { BackLink } from "@/components/BackLink";
 import { Field, TextAreaField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
 import { problemTypes, questionSets } from "@/lib/questions";
@@ -57,6 +58,7 @@ export default function QuestionnairePage() {
         title={`Questionnaire ${problemLabel}`}
         description="Répondez aux questions visibles. Elles sont adaptées au type de panne sélectionné."
       />
+      <BackLink href="/diagnostic" />
 
       <form onSubmit={submit} className="space-y-4 rounded-md border border-sanispa-line bg-white p-4 shadow-soft sm:p-6">
         {questions.map((question) => {

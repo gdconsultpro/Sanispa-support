@@ -4,6 +4,7 @@ import { CreditCard } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
+import { BackLink } from "@/components/BackLink";
 import { StepHeader } from "@/components/StepHeader";
 import { remotePlans } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";

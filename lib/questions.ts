@@ -53,6 +53,13 @@ export const questionSets: Record<ProblemType, Question[]> = {
   ],
   fuite: [
     { id: "visible_leak", label: "La fuite est-elle visible ?", type: "radio", required: true, options: yesNo },
+    {
+      id: "spa_access",
+      label: "Le spa est-il accessible ?",
+      type: "radio",
+      required: true,
+      options: ["Oui sur les 4 côtés", "Non, seulement sur certains côtés", "Encastré ou semi-encastré"]
+    },
     { id: "fast_drop", label: "Le niveau d'eau baisse-t-il rapidement ?", type: "radio", required: true, options: yesNo },
     { id: "running_only", label: "Le spa fuit-il uniquement lorsqu'il fonctionne ?", type: "radio", required: true, options: yesNo },
     {
@@ -68,7 +75,14 @@ export const questionSets: Record<ProblemType, Question[]> = {
     { id: "water_color", label: "Aspect de l'eau", type: "radio", required: true, options: ["Claire", "Trouble", "Verte", "Moussante", "Odeur forte"] },
     { id: "last_treatment", label: "Date approximative du dernier traitement", type: "text", required: true },
     { id: "filter_cleaned", label: "Le filtre a-t-il été nettoyé récemment ?", type: "radio", required: true, options: yesNo },
-    { id: "product_used", label: "Produit utilisé", type: "text" }
+    {
+      id: "product_used",
+      label: "Produits utilisés",
+      type: "radio",
+      required: true,
+      options: ["Chlore", "Brome", "Oxygène actif", "Aqua finess", "O-care", "Zodiac (mineral)", "Autre"]
+    },
+    { id: "ph_level", label: "pH mesuré", type: "radio", required: true, options: ["Moins de 7", "Entre 7 et 7,8", "Plus de 7,8", "Je ne sais pas"] }
   ],
   pompe: [
     { id: "pump_starts", label: "La pompe démarre-t-elle ?", type: "radio", required: true, options: ["Oui", "Non", "Par intermittence"] },
@@ -77,6 +91,7 @@ export const questionSets: Record<ProblemType, Question[]> = {
     { id: "pump_details", label: "Précisions utiles", type: "textarea" }
   ],
   "clavier-ecran": [
+    { id: "keyboard_type", label: "Type de clavier", type: "radio", required: true, options: ["Clavier à touches", "Clavier tactile", "Je ne sais pas"] },
     { id: "screen_on", label: "L'écran s'allume-t-il ?", type: "radio", required: true, options: yesNo },
     { id: "buttons_work", label: "Les touches répondent-elles ?", type: "radio", required: true, options: ["Oui", "Non", "Partiellement"] },
     { id: "error_message", label: "Code ou message affiché", type: "text" },
@@ -86,7 +101,7 @@ export const questionSets: Record<ProblemType, Question[]> = {
     { id: "filter_age", label: "Âge approximatif du filtre", type: "text", required: true },
     { id: "flow_issue", label: "Débit faible ou absent ?", type: "radio", required: true, options: ["Faible", "Absent", "Normal"] },
     { id: "filter_cleaned", label: "Le filtre a-t-il été nettoyé récemment ?", type: "radio", required: true, options: yesNo },
-    { id: "alert", label: "Une alerte filtration est-elle affichée ?", type: "radio", required: true, options: yesNo }
+    { id: "screen_error", label: "Message d'erreur affiché à l'écran", type: "text" }
   ],
   "bruit-anormal": [
     { id: "noise_location", label: "Zone d'où semble venir le bruit", type: "text", required: true },

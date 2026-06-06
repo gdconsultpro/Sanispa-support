@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
+import { BackLink } from "@/components/BackLink";
 import { DiagnosticSummary } from "@/components/Summary";
 import { StepHeader } from "@/components/StepHeader";
 import { remotePlans } from "@/lib/questions";
@@ -66,6 +67,7 @@ export default function ResumePage() {
         title="Résumé et orientation"
         description="Vérifiez les informations, puis choisissez la suite souhaitée pour votre demande SANISPA."
       />
+      <BackLink href="/upload" />
 
       <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
         <DiagnosticSummary draft={draft} />
