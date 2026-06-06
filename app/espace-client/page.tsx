@@ -58,7 +58,9 @@ export default function EspaceClientPage() {
   const [spas, setSpas] = useState<Spa[]>([]);
   const [spaForm, setSpaForm] = useState({ brand: "", model: "", spa_year: "", installation_type: "" });
   const [loading, setLoading] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -102,15 +104,27 @@ export default function EspaceClientPage() {
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
-    const response = await fetch("/api/client/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(profile)
-    });
-    const data = await response.json();
-    if (data.profile) {
+    setError("");
+    setSavingProfile(true);
+
+    try {
+      const response = await fetch("/api/client/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(profile)
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.profile) {
+        throw new Error(data.error || "Enregistrement impossible.");
+      }
+
       setProfile(data.profile);
       setMessage("Informations enregistrées.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Enregistrement impossible pour le moment.");
+    } finally {
+      setSavingProfile(false);
     }
   }
 
@@ -177,7 +191,10 @@ export default function EspaceClientPage() {
             <Field label="Année approximative" name="spa_year" value={profile.spa_year ?? ""} onChange={(value) => updateProfile("spa_year", value)} />
             <div className="sm:col-span-2">
               {message ? <p className="mb-3 rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">{message}</p> : null}
-              <Button type="submit">Enregistrer mes informations</Button>
+              {error ? <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+              <Button type="submit" disabled={savingProfile}>
+                {savingProfile ? "Enregistrement..." : "Enregistrer mes informations"}
+              </Button>
             </div>
           </form>
         </section>
