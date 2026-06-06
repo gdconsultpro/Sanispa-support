@@ -30,6 +30,15 @@ type Diagnostic = {
   payment_status: string | null;
 };
 
+type ClientDocument = {
+  id: string;
+  name: string;
+  date: string;
+  problemType: string;
+  status: string;
+  spa: string;
+};
+
 type Spa = {
   id: string;
   brand: string;
@@ -56,6 +65,7 @@ export default function EspaceClientPage() {
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [spas, setSpas] = useState<Spa[]>([]);
+  const [documents, setDocuments] = useState<ClientDocument[]>([]);
   const [spaForm, setSpaForm] = useState({ brand: "", model: "", spa_year: "", installation_type: "" });
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -76,19 +86,22 @@ export default function EspaceClientPage() {
         setToken(accessToken);
         const headers = { Authorization: `Bearer ${accessToken}` };
 
-        const [profileResponse, dashboardResponse, spasResponse] = await Promise.all([
+        const [profileResponse, dashboardResponse, spasResponse, documentsResponse] = await Promise.all([
           fetch("/api/client/profile", { headers }),
           fetch("/api/client/dashboard", { headers }),
-          fetch("/api/client/spas", { headers })
+          fetch("/api/client/spas", { headers }),
+          fetch("/api/client/documents", { headers })
         ]);
 
         const profileData = await profileResponse.json();
         const dashboardData = await dashboardResponse.json();
         const spasData = await spasResponse.json();
+        const documentsData = await documentsResponse.json();
 
         if (profileData.profile) setProfile(profileData.profile);
         setDiagnostics(dashboardData.diagnostics ?? []);
         setSpas(spasData.spas ?? []);
+        setDocuments(documentsData.documents ?? []);
       } finally {
         setLoading(false);
       }
@@ -177,6 +190,29 @@ export default function EspaceClientPage() {
 
       <div className="grid gap-5">
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
+          <h2 className="text-xl font-bold text-sanispa-navy">Nouvelle demande d'assistance</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Traitement de l'eau", "traitement-eau"],
+              ["Fuite", "fuite"],
+              ["Panne électrique", "electrique"],
+              ["Filtration", "filtration"],
+              ["Pompe", "pompe"],
+              ["Chauffage", "chauffage"],
+              ["Autre problème", "autre"]
+            ].map(([label, problemType]) => (
+              <Link
+                key={problemType}
+                href={`/diagnostic?problemType=${problemType}`}
+                className="rounded-md border border-sanispa-line bg-sanispa-ice px-4 py-3 text-sm font-bold text-sanispa-navy transition hover:border-sanispa-blue hover:bg-white focus-ring"
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">Mes informations</h2>
           <form onSubmit={saveProfile} className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field label="Prénom" name="first_name" value={profile.first_name ?? ""} onChange={(value) => updateProfile("first_name", value)} />
@@ -204,9 +240,22 @@ export default function EspaceClientPage() {
           <div className="mt-4 grid gap-3">
             {diagnostics.length ? diagnostics.map((diagnostic) => (
               <div key={diagnostic.id} className="rounded-md bg-sanispa-ice p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">{new Date(diagnostic.created_at).toLocaleString("fr-FR")}</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">Dossier n°{diagnostic.id.slice(0, 8).toUpperCase()}</p>
                 <p className="mt-2 font-bold text-sanispa-navy">{diagnostic.problem_type} · {diagnostic.status}</p>
-                <p className="text-sm text-sanispa-steel">Choix : {diagnostic.choice ?? "Non renseigné"} · Paiement : {diagnostic.payment_status ?? "non requis / non payé"}</p>
+                <p className="text-sm text-sanispa-steel">{new Date(diagnostic.created_at).toLocaleString("fr-FR")} · Paiement : {diagnostic.payment_status ?? "non requis / non payé"}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <a href={`/api/client/documents/${diagnostic.id}/pdf`} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
+                    Télécharger le résumé
+                  </a>
+                  <Link href={`/resume`} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-steel focus-ring">
+                    Voir le dossier
+                  </Link>
+                  {diagnostic.status !== "terminé" ? (
+                    <Link href={`/diagnostic?problemType=${diagnostic.problem_type}`} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-blue focus-ring">
+                      Reprendre
+                    </Link>
+                  ) : null}
+                </div>
               </div>
             )) : <p className="text-sanispa-steel">Aucune demande retrouvée avec cet email.</p>}
           </div>
@@ -244,7 +293,28 @@ export default function EspaceClientPage() {
 
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">Mes documents</h2>
-          <p className="mt-2 text-sanispa-steel">Factures, comptes-rendus, photos envoyées et historique d'échanges seront centralisés ici dans une prochaine évolution.</p>
+          <div className="mt-4 grid gap-3">
+            {documents.length ? documents.map((document) => (
+              <div key={document.id} className="rounded-md bg-sanispa-ice p-4">
+                <p className="font-bold text-sanispa-navy">{document.name}</p>
+                <p className="mt-1 text-sm text-sanispa-steel">{new Date(document.date).toLocaleString("fr-FR")} · {document.problemType} · {document.status}</p>
+                <p className="text-sm text-sanispa-steel">Spa : {document.spa}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <a href={`/api/client/documents/${document.id}/pdf`} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
+                    Télécharger PDF
+                  </a>
+                  <Link href={`/diagnostic?problemType=${document.problemType}`} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-steel focus-ring">
+                    Consulter
+                  </Link>
+                </div>
+              </div>
+            )) : <p className="text-sanispa-steel">Aucun document disponible pour le moment.</p>}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
+          <h2 className="text-xl font-bold text-sanispa-navy">Mes factures</h2>
+          <p className="mt-2 text-sanispa-steel">Les factures liées aux paiements seront ajoutées ici après raccordement complet avec Stripe Billing.</p>
         </section>
       </div>
     </AppShell>

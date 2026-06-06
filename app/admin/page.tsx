@@ -66,6 +66,9 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
                   <Line label="Adresse" value={diagnostic.customers?.address ?? "Non renseignée"} />
                   <Line label="Spa" value={`${diagnostic.customers?.spa_brand ?? ""} ${diagnostic.customers?.spa_model ?? ""}`.trim()} />
                 </dl>
+                <a href={`/api/client/documents/${diagnostic.id}/pdf`} className="mt-3 inline-flex rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
+                  Télécharger résumé PDF
+                </a>
               </section>
 
               <section>
