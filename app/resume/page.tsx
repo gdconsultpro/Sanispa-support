@@ -80,9 +80,9 @@ export default function ResumePage() {
           <ChoiceCard
             active={draft.choice === "intervention"}
             icon={<Home size={22} />}
-            title="Demande technique gratuite"
-            text="Votre dossier technique sera qualifié et préparé pour une future mise en relation selon votre zone géographique."
-            button="Créer une demande technique"
+            title="Trouver un technicien près de chez vous"
+            text="Décrivez votre panne en quelques minutes afin d’être mis en relation avec un technicien de votre secteur."
+            button="Trouver un technicien"
             onClick={() => setChoice("intervention")}
           />
           <ChoiceCard
