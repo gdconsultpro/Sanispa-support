@@ -138,4 +138,4 @@ Il affiche :
 
 ## Notes MVP
 
-Le dashboard est volontairement simple. Pour une mise en production, ajouter une authentification admin, des règles d'accès plus fines, une page détail dossier et une action de changement de statut.
+Le dashboard admin est protege par identifiant et mot de passe via `ADMIN_USERNAME` et `ADMIN_PASSWORD`. Pour une mise en production avancee, prevoir ensuite des roles admin plus fins et une page detail dossier plus complete.
