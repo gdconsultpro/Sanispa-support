@@ -27,6 +27,9 @@ export async function POST(request: Request) {
     if (!selectedPlan) {
       return NextResponse.json({ error: "Formule inconnue." }, { status: 400 });
     }
+    if (!selectedPlan.enabled) {
+      return NextResponse.json({ error: "Cette formule n'est plus proposée aux clients." }, { status: 400 });
+    }
 
     const price = process.env[selectedPlan.stripeEnv];
     if (!price) {

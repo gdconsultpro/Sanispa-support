@@ -13,7 +13,19 @@ export type ChoiceType = "intervention" | "devis" | "remote";
 
 export type PaymentPlan = "photo" | "guided" | "premium" | "water";
 
-export type DiagnosticStatus = "nouvelle" | "en analyse" | "devis envoyé" | "RDV demandé" | "terminé";
+export type DiagnosticStatus =
+  | "nouvelle"
+  | "en analyse"
+  | "devis envoyé"
+  | "RDV demandé"
+  | "terminé"
+  | "NEW"
+  | "AVAILABLE"
+  | "ASSIGNED"
+  | "CLOSED"
+  | "WATER_ANALYSIS";
+
+export type RequestType = "TECHNICAL_REQUEST" | "WATER_ANALYSIS";
 
 export type CustomerInfo = {
   name: string;
@@ -54,6 +66,10 @@ export type AdminDiagnostic = {
   id: string;
   created_at: string;
   status: DiagnosticStatus;
+  request_type: RequestType | null;
+  department: string | null;
+  matched_partner_ids: string[] | null;
+  matched_partners?: string[];
   problem_type: string;
   choice: string | null;
   payment_status: string | null;
@@ -77,4 +93,18 @@ export type AdminDiagnostic = {
     storage_path: string;
     public_url: string | null;
   }>;
+};
+
+export type PartnerAdminItem = {
+  id: string;
+  company_name: string;
+  contact_name: string | null;
+  email: string;
+  phone: string | null;
+  address: string | null;
+  postal_code: string | null;
+  city: string | null;
+  active: boolean;
+  created_at: string;
+  departments: string[];
 };

@@ -19,7 +19,10 @@ create table if not exists diagnostics (
   created_at timestamptz not null default now(),
   customer_id uuid not null references customers(id) on delete cascade,
   problem_type text not null,
-  status text not null default 'nouvelle' check (status in ('nouvelle', 'en analyse', 'devis envoyé', 'RDV demandé', 'terminé')),
+  request_type text not null default 'TECHNICAL_REQUEST' check (request_type in ('TECHNICAL_REQUEST', 'WATER_ANALYSIS')),
+  department text,
+  matched_partner_ids uuid[] not null default '{}',
+  status text not null default 'AVAILABLE' check (status in ('nouvelle', 'en analyse', 'devis envoyé', 'RDV demandé', 'terminé', 'NEW', 'AVAILABLE', 'ASSIGNED', 'CLOSED', 'WATER_ANALYSIS')),
   choice text check (choice in ('intervention', 'devis', 'remote')),
   payment_plan text check (payment_plan in ('photo', 'guided', 'premium', 'water')),
   payment_status text,
@@ -59,6 +62,8 @@ create table if not exists payments (
 );
 
 create index if not exists diagnostics_customer_id_idx on diagnostics(customer_id);
+create index if not exists diagnostics_department_idx on diagnostics(department);
+create index if not exists diagnostics_request_type_idx on diagnostics(request_type);
 create index if not exists diagnostic_answers_diagnostic_id_idx on diagnostic_answers(diagnostic_id);
 create index if not exists diagnostic_photos_diagnostic_id_idx on diagnostic_photos(diagnostic_id);
 create index if not exists payments_diagnostic_id_idx on payments(diagnostic_id);
@@ -212,3 +217,80 @@ add column if not exists customer_email_status text default 'pending';
 
 alter table diagnostics
 add column if not exists customer_email_error text;
+
+alter table diagnostics
+drop constraint if exists diagnostics_status_check;
+
+alter table diagnostics
+add constraint diagnostics_status_check
+check (status in ('nouvelle', 'en analyse', 'devis envoyé', 'RDV demandé', 'terminé', 'NEW', 'AVAILABLE', 'ASSIGNED', 'CLOSED', 'WATER_ANALYSIS'));
+
+alter table diagnostics
+add column if not exists request_type text not null default 'TECHNICAL_REQUEST';
+
+alter table diagnostics
+drop constraint if exists diagnostics_request_type_check;
+
+alter table diagnostics
+add constraint diagnostics_request_type_check
+check (request_type in ('TECHNICAL_REQUEST', 'WATER_ANALYSIS'));
+
+alter table diagnostics
+add column if not exists department text;
+
+alter table diagnostics
+add column if not exists matched_partner_ids uuid[] not null default '{}';
+
+create index if not exists diagnostics_department_idx on diagnostics(department);
+create index if not exists diagnostics_request_type_idx on diagnostics(request_type);
+
+create table if not exists partners (
+  id uuid primary key default gen_random_uuid(),
+  company_name text not null,
+  contact_name text,
+  email text not null,
+  phone text,
+  address text,
+  postal_code text,
+  city text,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists partner_departments (
+  id uuid primary key default gen_random_uuid(),
+  partner_id uuid not null references partners(id) on delete cascade,
+  department text not null,
+  unique(partner_id, department)
+);
+
+create table if not exists lead_purchases (
+  id uuid primary key default gen_random_uuid(),
+  request_id uuid not null references diagnostics(id) on delete cascade,
+  partner_id uuid not null references partners(id) on delete cascade,
+  amount integer not null default 1000,
+  stripe_payment_id text,
+  purchased_at timestamptz not null default now(),
+  unique(request_id, partner_id)
+);
+
+create index if not exists partner_departments_department_idx on partner_departments(department);
+create index if not exists partner_departments_partner_idx on partner_departments(partner_id);
+create index if not exists lead_purchases_request_idx on lead_purchases(request_id);
+create index if not exists lead_purchases_partner_idx on lead_purchases(partner_id);
+
+alter table partners enable row level security;
+alter table partner_departments enable row level security;
+alter table lead_purchases enable row level security;
+
+drop policy if exists "Service role manages partners" on partners;
+create policy "Service role manages partners" on partners
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
+drop policy if exists "Service role manages partner departments" on partner_departments;
+create policy "Service role manages partner departments" on partner_departments
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
+drop policy if exists "Service role manages lead purchases" on lead_purchases;
+create policy "Service role manages lead purchases" on lead_purchases
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');

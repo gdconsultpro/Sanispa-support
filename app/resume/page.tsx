@@ -31,7 +31,8 @@ export default function ResumePage() {
     writeDraft(next);
   }
 
-  const availableRemotePlans = draft.problemType === "traitement-eau" ? remotePlans : remotePlans.filter((plan) => plan.id !== "water");
+  const isWaterAnalysis = draft.problemType === "traitement-eau";
+  const availableRemotePlans = isWaterAnalysis ? remotePlans.filter((plan) => plan.enabled && plan.id === "water") : [];
 
   async function submit() {
     if (!draft.choice) {
@@ -39,7 +40,7 @@ export default function ResumePage() {
       return;
     }
     if (draft.choice === "remote" && !draft.paymentPlan) {
-      setError("Veuillez choisir une formule d'accompagnement à distance.");
+      setError("Veuillez choisir le diagnostic IA traitement d'eau.");
       return;
     }
     setSaving(true);
@@ -79,9 +80,9 @@ export default function ResumePage() {
           <ChoiceCard
             active={draft.choice === "intervention"}
             icon={<Home size={22} />}
-            title="Intervention à domicile"
-            text="Votre demande sera transmise à SANISPA. Nous vous recontacterons pour planifier une intervention."
-            button="Demander une intervention"
+            title="Demande technique gratuite"
+            text="Votre dossier technique sera qualifié et préparé pour une future mise en relation selon votre zone géographique."
+            button="Créer une demande technique"
             onClick={() => setChoice("intervention")}
           />
           <ChoiceCard
@@ -94,35 +95,37 @@ export default function ResumePage() {
           />
           <ShopLinks problemType={draft.problemType} />
 
-          <div className={`rounded-md border bg-white p-4 ${draft.choice === "remote" ? "border-sanispa-blue" : "border-sanispa-line"}`}>
-            <div className="flex gap-3">
-              <CreditCard size={22} className="mt-1 text-sanispa-blue" aria-hidden="true" />
-              <div>
-                <h2 className="font-bold text-sanispa-navy">Accompagnement à distance payant</h2>
-                <p className="mt-2 text-sm leading-6 text-sanispa-steel">
-                  Un technicien SANISPA analyse vos photos et vos réponses, puis vous guide étape par étape à distance. Pour le traitement d'eau, l'assistant peut vous accompagner à partir d'une photo de bandelette ou des valeurs relevées.
-                </p>
-                <p className="mt-3 rounded-md bg-sanispa-ice p-3 text-sm font-semibold text-sanispa-navy">
-                  L'accompagnement à distance est une prestation d'analyse et de conseil. Il ne garantit pas la réparation du spa.
-                </p>
+          {isWaterAnalysis ? (
+            <div className={`rounded-md border bg-white p-4 ${draft.choice === "remote" ? "border-sanispa-blue" : "border-sanispa-line"}`}>
+              <div className="flex gap-3">
+                <CreditCard size={22} className="mt-1 text-sanispa-blue" aria-hidden="true" />
+                <div>
+                  <h2 className="font-bold text-sanispa-navy">Diagnostic Traitement d'Eau IA</h2>
+                  <p className="mt-2 text-sm leading-6 text-sanispa-steel">
+                    L'assistant IA SANISPA analyse vos valeurs d'eau, votre situation et vos photos éventuelles pour vous guider étape par étape.
+                  </p>
+                  <p className="mt-3 rounded-md bg-sanispa-ice p-3 text-sm font-semibold text-sanispa-navy">
+                    Service géré uniquement par SANISPA. Aucun partenaire n'a accès aux dossiers de traitement d'eau.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2">
+                {availableRemotePlans.map((plan) => (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    onClick={() => setChoice("remote", plan.id)}
+                    className={`focus-ring flex min-h-12 items-center justify-between rounded-md border px-3 py-2 text-left text-sm font-bold ${
+                      draft.paymentPlan === plan.id ? "border-sanispa-blue bg-sanispa-ice text-sanispa-navy" : "border-sanispa-line bg-white text-sanispa-steel"
+                    }`}
+                  >
+                    <span>{plan.name}</span>
+                    <span>{plan.price} €</span>
+                  </button>
+                ))}
               </div>
             </div>
-            <div className="mt-4 grid gap-2">
-              {availableRemotePlans.map((plan) => (
-                <button
-                  key={plan.id}
-                  type="button"
-                  onClick={() => setChoice("remote", plan.id)}
-                  className={`focus-ring flex min-h-12 items-center justify-between rounded-md border px-3 py-2 text-left text-sm font-bold ${
-                    draft.paymentPlan === plan.id ? "border-sanispa-blue bg-sanispa-ice text-sanispa-navy" : "border-sanispa-line bg-white text-sanispa-steel"
-                  }`}
-                >
-                  <span>{plan.name}</span>
-                  <span>{plan.price} €</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          ) : null}
 
           {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
           <Button type="button" onClick={submit} disabled={saving} className="w-full">

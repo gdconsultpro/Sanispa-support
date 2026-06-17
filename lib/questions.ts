@@ -153,8 +153,8 @@ export function isPhotoRequired(photoId: string, problemType?: ProblemType | "")
 }
 
 export const remotePlans = [
-  { id: "water", name: "Assistant traitement d'eau", price: 19, stripeEnv: "STRIPE_PRICE_WATER_ASSISTANT" },
-  { id: "photo", name: "Assistance téléphonique", price: 49, stripeEnv: "STRIPE_PRICE_DIAGNOSTIC_PHOTO" },
-  { id: "guided", name: "Assistance guidée via photos", price: 89, stripeEnv: "STRIPE_PRICE_ASSISTANCE_GUIDED" },
-  { id: "premium", name: "Assistance vidéo / visio", price: 129, stripeEnv: "STRIPE_PRICE_ASSISTANCE_PREMIUM" }
+  { id: "water", name: "Diagnostic Traitement d'Eau IA", price: 9, stripeEnv: "STRIPE_PRICE_WATER_ASSISTANT", enabled: true },
+  { id: "photo", name: "Assistance téléphonique", price: 49, stripeEnv: "STRIPE_PRICE_DIAGNOSTIC_PHOTO", enabled: false, archived: true },
+  { id: "guided", name: "Assistance guidée via photos", price: 89, stripeEnv: "STRIPE_PRICE_ASSISTANCE_GUIDED", enabled: false, archived: true },
+  { id: "premium", name: "Assistance vidéo / visio", price: 129, stripeEnv: "STRIPE_PRICE_ASSISTANCE_PREMIUM", enabled: false, archived: true }
 ] as const;

@@ -1,6 +1,6 @@
 # SANISPA Diagnostic MVP
 
-Web app mobile-first pour le pré-diagnostic de pannes de spas : questionnaire guidé, photos obligatoires, résumé, demande d'intervention, demande de devis et accompagnement à distance payé par Stripe.
+Web app mobile-first pour le SAV SANISPA : comptes clients, spas enregistrés, demandes techniques gratuites, diagnostic IA de traitement d'eau payé par Stripe, documents, administration et fondations partenaires.
 
 ## Installation
 
@@ -21,14 +21,14 @@ NEXT_PUBLIC_SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
-STRIPE_PRICE_DIAGNOSTIC_PHOTO=
-STRIPE_PRICE_ASSISTANCE_GUIDED=
-STRIPE_PRICE_ASSISTANCE_PREMIUM=
+STRIPE_PRICE_WATER_ASSISTANT=
 RESEND_API_KEY=
 ADMIN_NOTIFICATION_EMAIL=
 EMAIL_FROM=
+EMAIL_REPLY_TO=
 ADMIN_USERNAME=
 ADMIN_PASSWORD=
+WATER_ASSISTANCE_VALIDITY_DAYS=30
 ```
 
 ## Configuration Supabase
@@ -46,20 +46,26 @@ Tables créées :
 - `diagnostic_answers`
 - `diagnostic_photos`
 - `payments`
+- `client_profiles`
+- `client_spas`
+- `client_documents`
+- `water_assistance_sessions`
+- `water_assistance_messages`
+- `partners`
+- `partner_departments`
+- `lead_purchases`
 
 ## Configuration Stripe
 
-Créer trois produits/prix Stripe :
+Créer un produit/prix Stripe :
 
-- Diagnostic photo : 49 €
-- Assistance guidée : 89 €
-- Assistance premium : 129 €
+- Diagnostic Traitement d'Eau IA : 9 €
 
-Copier les identifiants de prix dans :
+Copier l'identifiant de prix dans :
 
-- `STRIPE_PRICE_DIAGNOSTIC_PHOTO`
-- `STRIPE_PRICE_ASSISTANCE_GUIDED`
-- `STRIPE_PRICE_ASSISTANCE_PREMIUM`
+- `STRIPE_PRICE_WATER_ASSISTANT`
+
+Les anciennes offres d'assistance humaine 49 €, 89 € et 129 € sont conservees dans le code comme archivees/desactivees, mais elles ne sont plus proposees au client.
 
 Configurer un webhook Stripe vers :
 
@@ -94,19 +100,11 @@ En local, Resend peut utiliser `SANISPA <onboarding@resend.dev>` comme expediteu
 3. Questionnaire dynamique selon le type de panne
 4. Upload photos
 5. Résumé structuré
-6. Choix final : intervention, devis ou accompagnement à distance
-7. Paiement Stripe pour l'accompagnement
+6. Choix final : demande technique gratuite ou diagnostic IA traitement d'eau
+7. Paiement Stripe uniquement pour le diagnostic IA traitement d'eau
 8. Confirmation
 
-Photos obligatoires :
-
-- Photo du clavier
-- Photo du compartiment technique
-
-Photos optionnelles :
-
-- Plaque signalétique
-- Problème visible
+Les demandes techniques sont gratuites. Elles sont qualifiees, associees a un departement calcule depuis le code postal, puis preparees pour une future diffusion aux partenaires SANISPA.
 
 ## Dashboard admin
 

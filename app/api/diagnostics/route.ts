@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPhotoRequirements, isPhotoRequired, problemTypes, questionSets } from "@/lib/questions";
 import { sendCustomerConfirmation, sendDiagnosticNotification } from "@/lib/email";
+import { getDepartmentFromPostalCode } from "@/lib/partners";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { ProblemType } from "@/lib/types";
 
@@ -14,7 +15,7 @@ const payloadSchema = z.object({
   city: z.string().min(1),
   spaBrand: z.string().optional(),
   spaModel: z.string().optional(),
-  spaYear: z.string().min(1),
+  spaYear: z.string().optional().default(""),
   installationType: z.enum(["interieur", "exterieur"]),
   powerSupply: z.enum(["230V", "400V", "je ne sais pas", ""]).optional(),
   problemType: z.enum(problemTypes.map((item) => item.value) as [string, ...string[]]),
@@ -38,6 +39,19 @@ export async function POST(request: Request) {
     const customerAddress = addressParts.join(" - ");
     const answerPowerSupply = payload.answers.power_supply_known;
     const powerSupply = answerPowerSupply === "Je ne sais pas" ? "je ne sais pas" : payload.powerSupply || answerPowerSupply || "je ne sais pas";
+    const isWaterAnalysis = payload.problemType === "traitement-eau" && payload.choice === "remote" && payload.paymentPlan === "water";
+    const isArchivedRemotePlan = payload.choice === "remote" && payload.paymentPlan !== "water";
+
+    if (isArchivedRemotePlan) {
+      return NextResponse.json({ error: "Cette formule d'assistance n'est plus proposée. Les demandes techniques sont gratuites." }, { status: 400 });
+    }
+
+    if (payload.problemType === "traitement-eau" && payload.choice === "remote" && payload.paymentPlan !== "water") {
+      return NextResponse.json({ error: "Veuillez sélectionner le diagnostic IA traitement d'eau." }, { status: 400 });
+    }
+
+    const department = getDepartmentFromPostalCode(payload.postalCode);
+    const matchedPartnerIds = isWaterAnalysis ? [] : await findPartnerIdsForDepartment(supabase, department);
 
     const { data: customer, error: customerError } = await supabase
       .from("customers")
@@ -48,7 +62,7 @@ export async function POST(request: Request) {
         address: customerAddress,
         spa_brand: payload.spaBrand || "Non renseignée",
         spa_model: payload.spaModel || null,
-        spa_year: payload.spaYear,
+        spa_year: payload.spaYear || "Non renseignée",
         installation_type: payload.installationType,
         power_supply: powerSupply
       })
@@ -62,9 +76,12 @@ export async function POST(request: Request) {
       .insert({
         customer_id: customer.id,
         problem_type: payload.problemType,
-        status: payload.choice === "intervention" ? "RDV demandé" : "nouvelle",
+        request_type: isWaterAnalysis ? "WATER_ANALYSIS" : "TECHNICAL_REQUEST",
+        department,
+        matched_partner_ids: matchedPartnerIds,
+        status: isWaterAnalysis ? "WATER_ANALYSIS" : "AVAILABLE",
         choice: payload.choice,
-        payment_plan: payload.paymentPlan || null
+        payment_plan: isWaterAnalysis ? "water" : null
       })
       .select("id")
       .single();
@@ -126,7 +143,7 @@ export async function POST(request: Request) {
       },
       problemType: payload.problemType,
       choice: payload.choice,
-      paymentPlan: payload.paymentPlan || null,
+      paymentPlan: isWaterAnalysis ? "water" : null,
       status: payload.choice === "remote" ? "En attente de paiement" : "Demande enregistrée",
       appUrl: process.env.NEXT_PUBLIC_APP_URL,
       dossierUrl: `${process.env.NEXT_PUBLIC_APP_URL || ""}/espace-client`,
@@ -150,7 +167,7 @@ export async function POST(request: Request) {
     let customerEmailSent = false;
     let customerEmailError: string | null = null;
 
-    if (payload.choice === "remote") {
+    if (isWaterAnalysis) {
       await supabase
         .from("diagnostics")
         .update({ customer_email_status: "pending_payment", customer_email_error: null })
@@ -182,6 +199,23 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Erreur serveur";
     return NextResponse.json({ error: message }, { status: 400 });
   }
+}
+
+async function findPartnerIdsForDepartment(supabase: any, department: string) {
+  if (!department) return [];
+
+  const { data, error } = await supabase
+    .from("partner_departments")
+    .select("partner_id, partners!inner(active)")
+    .eq("department", department)
+    .eq("partners.active", true);
+
+  if (error) {
+    console.error("[SANISPA partners] impossible de charger les partenaires du département", { department, error });
+    return [];
+  }
+
+  return Array.from(new Set((data ?? []).map((row: any) => row.partner_id).filter(Boolean)));
 }
 
 function decodeDataUrl(dataUrl: string) {

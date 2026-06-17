@@ -70,7 +70,7 @@ export default function PaymentPage() {
       <StepHeader
         eyebrow="Étape 5"
         title="Paiement sécurisé"
-        description="Réglez l'accompagnement à distance choisi. Le paiement est traité par Stripe."
+        description="Réglez le diagnostic Traitement d'Eau IA. Le paiement est traité par Stripe."
       />
       <BackLink href="/resume" />
       <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
@@ -82,7 +82,7 @@ export default function PaymentPage() {
             <h2 className="text-xl font-bold text-sanispa-navy">{plan?.name ?? "Formule non sélectionnée"}</h2>
             <p className="mt-2 text-3xl font-bold text-sanispa-navy">{plan ? `${plan.price} €` : "--"}</p>
             <p className="mt-3 text-sm leading-6 text-sanispa-steel">
-              L'accompagnement à distance est une prestation d'analyse et de conseil. Il ne garantit pas la réparation du spa.
+              Le diagnostic IA traitement d'eau est une prestation d'analyse et de conseil. Il ne remplace pas une intervention technique si le problème vient du matériel.
             </p>
             {paidAccessUrl ? (
               <p className="mt-3 rounded-md bg-green-50 p-3 text-sm font-semibold text-green-700">

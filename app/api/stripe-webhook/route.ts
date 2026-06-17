@@ -41,7 +41,7 @@ export async function POST(request: Request) {
           .update({ status: "paid", stripe_payment_intent_id: String(session.payment_intent ?? "") })
           .eq("stripe_session_id", session.id);
 
-        await supabase.from("diagnostics").update({ payment_status: "paid", status: "en analyse" }).eq("id", diagnosticId);
+        await supabase.from("diagnostics").update({ payment_status: "paid", status: "WATER_ANALYSIS" }).eq("id", diagnosticId);
       }
 
       if (waterSessionId) {

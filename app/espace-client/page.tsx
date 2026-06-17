@@ -271,7 +271,7 @@ export default function EspaceClientPage() {
           <h2 className="text-xl font-bold text-sanispa-navy">Nouvelle demande d'assistance</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              ["Traitement de l'eau", "traitement-eau"],
+              ["Traitement d'eau IA", "traitement-eau"],
               ["Fuite", "fuite"],
               ["Panne électrique", "electrique"],
               ["Filtration", "filtration"],

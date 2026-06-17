@@ -346,7 +346,7 @@ function formatPlan(plan?: string | null) {
   if (plan === "photo") return "Assistance Téléphonique - 49 €";
   if (plan === "guided") return "Assistance Guidée via Photos - 89 €";
   if (plan === "premium") return "Assistance Vidéo / Visio - 129 €";
-  if (plan === "water") return "Assistant traitement d'eau - 19 €";
+  if (plan === "water") return "Diagnostic Traitement d'Eau IA - 9 €";
   return "Non applicable";
 }
 
@@ -355,7 +355,7 @@ function formatAmount(payload: DiagnosticEmailPayload) {
   if (payload.paymentPlan === "photo") return "49 €";
   if (payload.paymentPlan === "guided") return "89 €";
   if (payload.paymentPlan === "premium") return "129 €";
-  if (payload.paymentPlan === "water") return "19 €";
+  if (payload.paymentPlan === "water") return "9 €";
   return "Non applicable";
 }
 

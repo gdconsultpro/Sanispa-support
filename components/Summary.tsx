@@ -59,7 +59,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
         <section className="rounded-md border border-sanispa-line bg-white p-4">
           <h2 className="mb-3 text-lg font-bold">Orientation choisie</h2>
           <p className="text-sm font-semibold text-sanispa-navy">
-            {draft.choice === "intervention" ? "Intervention à domicile" : draft.choice === "devis" ? "Demande de devis" : "Accompagnement à distance"}
+            {draft.choice === "intervention" ? "Demande technique gratuite" : draft.choice === "devis" ? "Demande de devis" : "Diagnostic Traitement d'Eau IA"}
           </p>
           {plan ? <p className="mt-2 text-sm text-sanispa-steel">{plan.name} - {plan.price} €</p> : null}
         </section>

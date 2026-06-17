@@ -75,7 +75,7 @@ export async function POST(request: Request) {
           .update({ status: "paid", stripe_payment_intent_id: String(stripeSession.payment_intent ?? "") })
           .eq("stripe_session_id", stripeSession.id);
 
-        await supabase.from("diagnostics").update({ payment_status: "paid", status: "en analyse" }).eq("id", session.diagnostic_id);
+        await supabase.from("diagnostics").update({ payment_status: "paid", status: "WATER_ANALYSIS" }).eq("id", session.diagnostic_id);
 
         await sendWaterAssistanceResumeLink({
           to: session.customer_email,
