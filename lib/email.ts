@@ -8,6 +8,13 @@ type EmailPhoto = {
   public_url: string | null;
 };
 
+export type PartnerLeadRecipient = {
+  id: string;
+  companyName: string;
+  contactName?: string | null;
+  email: string;
+};
+
 export type DiagnosticEmailPayload = {
   diagnosticId: string;
   customer: {
@@ -29,6 +36,18 @@ export type DiagnosticEmailPayload = {
   summaryPdfUrl?: string;
   answers: EmailAnswer[];
   photos: EmailPhoto[];
+};
+
+export type PartnerLeadNotificationPayload = {
+  diagnosticId: string;
+  partners: PartnerLeadRecipient[];
+  problemType: string;
+  postalCode: string;
+  city: string;
+  department: string;
+  spaBrand?: string | null;
+  spaModel?: string | null;
+  answers: EmailAnswer[];
 };
 
 type TransactionalEmail = {
@@ -98,6 +117,71 @@ export async function sendCustomerConfirmation(payload: DiagnosticEmailPayload) 
     });
     throw error;
   }
+}
+
+export async function sendPartnerLeadNotification(payload: PartnerLeadNotificationPayload) {
+  if (!payload.partners.length) {
+    console.log("[SANISPA email partenaires] aucun partenaire actif à notifier", {
+      diagnosticId: payload.diagnosticId,
+      department: payload.department
+    });
+    return { attempted: 0, sent: 0, failed: 0 };
+  }
+
+  console.log("[SANISPA email partenaires] partenaires trouvés", {
+    diagnosticId: payload.diagnosticId,
+    department: payload.department,
+    count: payload.partners.length,
+    partnerIds: payload.partners.map((partner) => partner.id)
+  });
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const partner of payload.partners) {
+    console.log("[SANISPA email partenaires] tentative d'envoi", {
+      diagnosticId: payload.diagnosticId,
+      partnerId: partner.id,
+      to: partner.email
+    });
+
+    try {
+      const result = await sendTransactionalEmail({
+        to: partner.email,
+        subject: `Nouveau dossier technique disponible - ${payload.problemType} (${payload.department})`,
+        replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
+        html: buildPartnerLeadEmail(payload, partner)
+      });
+
+      if (result.skipped) {
+        failed += 1;
+        console.log("[SANISPA email partenaires] envoi ignoré", {
+          diagnosticId: payload.diagnosticId,
+          partnerId: partner.id,
+          to: partner.email
+        });
+      } else {
+        sent += 1;
+        console.log("[SANISPA email partenaires] succès Resend", {
+          diagnosticId: payload.diagnosticId,
+          partnerId: partner.id,
+          to: partner.email,
+          status: result.status,
+          response: result.response
+        });
+      }
+    } catch (error) {
+      failed += 1;
+      console.error("[SANISPA email partenaires] erreur Resend", {
+        diagnosticId: payload.diagnosticId,
+        partnerId: partner.id,
+        to: partner.email,
+        error: error instanceof Error ? error.message : error
+      });
+    }
+  }
+
+  return { attempted: payload.partners.length, sent, failed };
 }
 
 export async function sendWaterAssistanceResumeLink({
@@ -338,6 +422,43 @@ function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
         SANISPA<br />
         Réparation et assistance spa
       </p>
+    </div>
+  `;
+}
+
+function buildPartnerLeadEmail(payload: PartnerLeadNotificationPayload, partner: PartnerLeadRecipient) {
+  const answers = payload.answers.length
+    ? payload.answers
+        .map(
+          (answer) => `
+            <tr>
+              <td style="padding:8px;border-bottom:1px solid #d8e1ea;font-weight:700;">${escapeHtml(answer.question_label)}</td>
+              <td style="padding:8px;border-bottom:1px solid #d8e1ea;">${escapeHtml(answer.answer)}</td>
+            </tr>
+          `
+        )
+        .join("")
+    : `<tr><td style="padding:8px;border-bottom:1px solid #d8e1ea;">Aucun descriptif complémentaire renseigné.</td></tr>`;
+
+  return `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.6;max-width:720px;">
+      <h1>Nouveau dossier technique disponible</h1>
+      <p>Bonjour ${escapeHtml(partner.contactName || partner.companyName)},</p>
+      <p>Un nouveau dossier technique correspondant à votre zone est disponible sur SANISPA Support.</p>
+      <p>
+        <strong>Type de panne :</strong> ${escapeHtml(payload.problemType)}<br />
+        <strong>Code postal :</strong> ${escapeHtml(payload.postalCode)}<br />
+        <strong>Ville :</strong> ${escapeHtml(payload.city)}<br />
+        <strong>Département :</strong> ${escapeHtml(payload.department)}<br />
+        <strong>Marque :</strong> ${escapeHtml(payload.spaBrand || "Non renseignée")}<br />
+        <strong>Modèle :</strong> ${escapeHtml(payload.spaModel || "Non renseigné")}
+      </p>
+      <h2>Descriptif déclaré</h2>
+      <table style="border-collapse:collapse;width:100%;max-width:720px;">${answers}</table>
+      <p style="margin-top:24px;padding:14px;background:#eef4f8;border-radius:6px;">
+        Le dossier complet devra être débloqué depuis l'espace partenaire pour accéder aux informations détaillées.
+      </p>
+      <p>SANISPA Support</p>
     </div>
   `;
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPhotoRequirements, isPhotoRequired, problemTypes, questionSets } from "@/lib/questions";
-import { sendCustomerConfirmation, sendDiagnosticNotification } from "@/lib/email";
+import { sendCustomerConfirmation, sendDiagnosticNotification, sendPartnerLeadNotification } from "@/lib/email";
 import { getDepartmentFromPostalCode } from "@/lib/partners";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { ProblemType } from "@/lib/types";
@@ -164,6 +164,47 @@ export async function POST(request: Request) {
       console.error("[SANISPA email admin] erreur notification admin", adminEmailError);
     }
 
+    if (!isWaterAnalysis && matchedPartnerIds.length > 0) {
+      try {
+        const partners = await loadActivePartnerRecipients(supabase, matchedPartnerIds);
+        console.log("[SANISPA partenaires] notification après création dossier", {
+          diagnosticId: diagnostic.id,
+          requestType: "TECHNICAL_REQUEST",
+          department,
+          matchedPartnerIds,
+          activePartnersFound: partners.length
+        });
+
+        if (partners.length > 0) {
+          await sendPartnerLeadNotification({
+            diagnosticId: diagnostic.id,
+            partners,
+            problemType: getProblemTypeLabel(payload.problemType),
+            postalCode: payload.postalCode,
+            city: payload.city,
+            department,
+            spaBrand: payload.spaBrand || null,
+            spaModel: payload.spaModel || null,
+            answers: answerRows.map((answer) => ({
+              question_label: answer.question_label,
+              answer: answer.answer
+            }))
+          });
+        }
+      } catch (partnerEmailError) {
+        console.error("[SANISPA email partenaires] erreur globale notification partenaires", {
+          diagnosticId: diagnostic.id,
+          error: partnerEmailError instanceof Error ? partnerEmailError.message : partnerEmailError
+        });
+      }
+    } else {
+      console.log("[SANISPA partenaires] notification partenaire non appelée", {
+        diagnosticId: diagnostic.id,
+        requestType: isWaterAnalysis ? "WATER_ANALYSIS" : "TECHNICAL_REQUEST",
+        matchedPartnerCount: matchedPartnerIds.length
+      });
+    }
+
     let customerEmailSent = false;
     let customerEmailError: string | null = null;
 
@@ -201,7 +242,7 @@ export async function POST(request: Request) {
   }
 }
 
-async function findPartnerIdsForDepartment(supabase: any, department: string) {
+async function findPartnerIdsForDepartment(supabase: any, department: string): Promise<string[]> {
   if (!department) return [];
 
   const { data, error } = await supabase
@@ -215,7 +256,38 @@ async function findPartnerIdsForDepartment(supabase: any, department: string) {
     return [];
   }
 
-  return Array.from(new Set((data ?? []).map((row: any) => row.partner_id).filter(Boolean)));
+  return Array.from(new Set((data ?? []).map((row: any) => row.partner_id).filter(Boolean) as string[]));
+}
+
+async function loadActivePartnerRecipients(supabase: any, partnerIds: string[]) {
+  if (!partnerIds.length) return [];
+
+  const { data, error } = await supabase
+    .from("partners")
+    .select("id, company_name, contact_name, email, active")
+    .in("id", partnerIds)
+    .eq("active", true);
+
+  if (error) {
+    console.error("[SANISPA partenaires] impossible de charger les partenaires actifs", {
+      partnerIds,
+      error
+    });
+    return [];
+  }
+
+  return (data ?? [])
+    .filter((partner: any) => partner.email)
+    .map((partner: any) => ({
+      id: partner.id,
+      companyName: partner.company_name,
+      contactName: partner.contact_name,
+      email: partner.email
+    }));
+}
+
+function getProblemTypeLabel(problemType: string) {
+  return problemTypes.find((item) => item.value === problemType)?.label ?? problemType;
 }
 
 function decodeDataUrl(dataUrl: string) {
