@@ -257,6 +257,18 @@ create table if not exists partners (
   created_at timestamptz not null default now()
 );
 
+alter table diagnostics
+add column if not exists assigned_partner_id uuid references partners(id);
+
+alter table diagnostics
+add column if not exists assigned_at timestamptz;
+
+alter table diagnostics
+add column if not exists lead_locked_until timestamptz;
+
+create index if not exists diagnostics_assigned_partner_idx on diagnostics(assigned_partner_id);
+create index if not exists diagnostics_lead_locked_until_idx on diagnostics(lead_locked_until);
+
 create table if not exists partner_departments (
   id uuid primary key default gen_random_uuid(),
   partner_id uuid not null references partners(id) on delete cascade,
@@ -264,23 +276,59 @@ create table if not exists partner_departments (
   unique(partner_id, department)
 );
 
+create table if not exists partner_users (
+  id uuid primary key default gen_random_uuid(),
+  partner_id uuid not null references partners(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text default 'owner',
+  active boolean default true,
+  created_at timestamptz default now()
+);
+
+create unique index if not exists partner_users_partner_user_idx on partner_users(partner_id, user_id);
+create index if not exists partner_users_user_idx on partner_users(user_id);
+create index if not exists partner_users_partner_idx on partner_users(partner_id);
+
 create table if not exists lead_purchases (
   id uuid primary key default gen_random_uuid(),
   request_id uuid not null references diagnostics(id) on delete cascade,
   partner_id uuid not null references partners(id) on delete cascade,
+  status text default 'pending',
   amount integer not null default 1000,
+  stripe_checkout_session_id text,
   stripe_payment_id text,
+  stripe_payment_intent_id text,
+  paid_at timestamptz,
+  locked_until timestamptz,
   purchased_at timestamptz not null default now(),
   unique(request_id, partner_id)
 );
+
+alter table lead_purchases
+add column if not exists status text default 'pending';
+
+alter table lead_purchases
+add column if not exists stripe_checkout_session_id text;
+
+alter table lead_purchases
+add column if not exists stripe_payment_intent_id text;
+
+alter table lead_purchases
+add column if not exists paid_at timestamptz;
+
+alter table lead_purchases
+add column if not exists locked_until timestamptz;
 
 create index if not exists partner_departments_department_idx on partner_departments(department);
 create index if not exists partner_departments_partner_idx on partner_departments(partner_id);
 create index if not exists lead_purchases_request_idx on lead_purchases(request_id);
 create index if not exists lead_purchases_partner_idx on lead_purchases(partner_id);
+create unique index if not exists lead_purchases_stripe_checkout_session_idx on lead_purchases(stripe_checkout_session_id) where stripe_checkout_session_id is not null;
+create unique index if not exists lead_purchases_one_paid_per_request_idx on lead_purchases(request_id) where status = 'paid';
 
 alter table partners enable row level security;
 alter table partner_departments enable row level security;
+alter table partner_users enable row level security;
 alter table lead_purchases enable row level security;
 
 drop policy if exists "Service role manages partners" on partners;
@@ -291,6 +339,16 @@ drop policy if exists "Service role manages partner departments" on partner_depa
 create policy "Service role manages partner departments" on partner_departments
   for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
+drop policy if exists "Service role manages partner users" on partner_users;
+create policy "Service role manages partner users" on partner_users
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
 drop policy if exists "Service role manages lead purchases" on lead_purchases;
 create policy "Service role manages lead purchases" on lead_purchases
   for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
+
+-- Phase partenaire future :
+-- Lorsque l'authentification partenaire sera créée, ajouter des policies permettant
+-- à auth.uid() de lire uniquement les lignes reliées à partner_users.user_id.
+-- Pour l'instant, l'accès reste limité au service_role afin d'éviter toute fuite
+-- de leads ou de coordonnées clients avant le développement de l'espace partenaire.
