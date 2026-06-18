@@ -17,6 +17,7 @@ export default function HomePage() {
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
             <ButtonLink href="/diagnostic">Démarrer un diagnostic</ButtonLink>
             <ButtonLink href="/espace-client" variant="secondary">Mon compte</ButtonLink>
+            <ButtonLink href="/partenaire/connexion" variant="secondary">Partenaires</ButtonLink>
           </div>
         </div>
 

@@ -12,9 +12,12 @@ export function AppShell({ children, compact = false }: { children: React.ReactN
               className="h-10 w-auto object-contain"
             />
           </Link>
-          <nav className="flex items-center gap-2 text-sm font-bold">
+          <nav className="flex flex-wrap items-center justify-end gap-2 text-sm font-bold">
             <Link href="/espace-client" className="rounded-md border border-sanispa-line px-3 py-2 text-sanispa-navy focus-ring">
               Espace client
+            </Link>
+            <Link href="/partenaire/connexion" className="rounded-md border border-sanispa-line px-3 py-2 text-sanispa-navy focus-ring">
+              Partenaires
             </Link>
           </nav>
         </div>
