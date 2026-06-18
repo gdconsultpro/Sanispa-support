@@ -27,6 +27,11 @@ export async function POST(request: Request) {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
+      if (session.metadata?.type === "partner_lead_unlock") {
+        await handlePartnerLeadUnlockCompleted(session);
+        return NextResponse.json({ received: true });
+      }
+
       const diagnosticId = session.metadata?.diagnostic_id;
       const waterSessionId = session.metadata?.water_assistance_session_id;
       const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
@@ -99,11 +104,158 @@ export async function POST(request: Request) {
       }
     }
 
+    if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+      const session = event.data.object;
+      if (session.metadata?.type === "partner_lead_unlock") {
+        await handlePartnerLeadUnlockNotPaid(session, event.type === "checkout.session.expired" ? "expired" : "failed");
+      }
+    }
+
     return NextResponse.json({ received: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Webhook invalide";
     return NextResponse.json({ error: message }, { status: 400 });
   }
+}
+
+async function handlePartnerLeadUnlockCompleted(session: any) {
+  const diagnosticId = session.metadata?.diagnostic_id;
+  const partnerId = session.metadata?.partner_id;
+  const leadPurchaseId = session.metadata?.lead_purchase_id;
+
+  if (!diagnosticId || !partnerId || !leadPurchaseId) {
+    console.error("[SANISPA Stripe partenaire] metadata manquante", {
+      stripeSessionId: session.id,
+      diagnosticId,
+      partnerId,
+      leadPurchaseId
+    });
+    return;
+  }
+
+  if (session.payment_status !== "paid") {
+    console.warn("[SANISPA Stripe partenaire] session complétée mais non payée", {
+      stripeSessionId: session.id,
+      paymentStatus: session.payment_status
+    });
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  const { data: diagnostic } = await supabase
+    .from("diagnostics")
+    .select("assigned_partner_id")
+    .eq("id", diagnosticId)
+    .single();
+
+  if (diagnostic?.assigned_partner_id && diagnostic.assigned_partner_id !== partnerId) {
+    console.error("[SANISPA Stripe partenaire] lead déjà assigné à un autre partenaire", {
+      diagnosticId,
+      partnerId,
+      assignedPartnerId: diagnostic.assigned_partner_id
+    });
+    return;
+  }
+
+  const { error: purchaseError } = await supabase
+    .from("lead_purchases")
+    .update({
+      status: "paid",
+      stripe_checkout_session_id: session.id,
+      stripe_payment_intent_id: String(session.payment_intent ?? ""),
+      paid_at: now,
+      locked_until: null
+    })
+    .eq("id", leadPurchaseId)
+    .eq("request_id", diagnosticId)
+    .eq("partner_id", partnerId);
+
+  if (purchaseError) {
+    console.error("[SANISPA Stripe partenaire] erreur mise à jour lead_purchases", {
+      diagnosticId,
+      partnerId,
+      leadPurchaseId,
+      error: purchaseError.message
+    });
+    throw purchaseError;
+  }
+
+  const { error: diagnosticError } = await supabase
+    .from("diagnostics")
+    .update({
+      assigned_partner_id: partnerId,
+      assigned_at: now,
+      lead_locked_until: null,
+      status: "ASSIGNED"
+    })
+    .eq("id", diagnosticId);
+
+  if (diagnosticError) {
+    console.error("[SANISPA Stripe partenaire] erreur assignation diagnostic", {
+      diagnosticId,
+      partnerId,
+      error: diagnosticError.message
+    });
+    throw diagnosticError;
+  }
+
+  console.log("[SANISPA Stripe partenaire] lead débloqué", {
+    diagnosticId,
+    partnerId,
+    leadPurchaseId,
+    stripeSessionId: session.id
+  });
+}
+
+async function handlePartnerLeadUnlockNotPaid(session: any, status: "expired" | "failed") {
+  const diagnosticId = session.metadata?.diagnostic_id;
+  const partnerId = session.metadata?.partner_id;
+  const leadPurchaseId = session.metadata?.lead_purchase_id;
+
+  if (!diagnosticId || !partnerId || !leadPurchaseId) return;
+
+  const supabase = getSupabaseAdmin();
+  const { data: purchase } = await supabase
+    .from("lead_purchases")
+    .select("status, locked_until")
+    .eq("id", leadPurchaseId)
+    .eq("request_id", diagnosticId)
+    .eq("partner_id", partnerId)
+    .maybeSingle();
+
+  if (!purchase || purchase.status === "paid") return;
+
+  await supabase
+    .from("lead_purchases")
+    .update({ status, locked_until: null })
+    .eq("id", leadPurchaseId)
+    .neq("status", "paid");
+
+  const { data: paidPurchase } = await supabase
+    .from("lead_purchases")
+    .select("id")
+    .eq("request_id", diagnosticId)
+    .eq("status", "paid")
+    .maybeSingle();
+
+  if (!paidPurchase && purchase.locked_until) {
+    await supabase
+      .from("diagnostics")
+      .update({ lead_locked_until: null })
+      .eq("id", diagnosticId)
+      .is("assigned_partner_id", null)
+      .eq("lead_locked_until", purchase.locked_until);
+  }
+
+  console.log("[SANISPA Stripe partenaire] lead libéré après session non payée", {
+    diagnosticId,
+    partnerId,
+    leadPurchaseId,
+    status,
+    stripeSessionId: session.id
+  });
 }
 
 async function loadDiagnosticEmailPayload(supabase: any, diagnosticId: string, origin: string) {

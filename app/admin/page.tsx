@@ -98,6 +98,11 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
                       <Line label="Choix client" value={diagnostic.choice ?? "Non renseigné"} />
                       <Line label="Département" value={diagnostic.department ?? "Non calculé"} />
                       <Line label="Partenaires concernés" value={diagnostic.matched_partners?.join(", ") || "Aucun partenaire correspondant"} />
+                      <Line label="Lead acheté" value={diagnostic.lead_purchase?.status === "paid" ? "Oui" : "Non"} />
+                      <Line label="Partenaire assigné" value={diagnostic.assigned_partner ?? "Non assigné"} />
+                      <Line label="Date achat lead" value={diagnostic.lead_purchase?.paid_at ? new Date(diagnostic.lead_purchase.paid_at).toLocaleString("fr-FR") : "Non acheté"} />
+                      <Line label="Statut achat lead" value={diagnostic.lead_purchase?.status ?? "Aucun achat"} />
+                      <Line label="Stripe Checkout lead" value={diagnostic.lead_purchase?.stripe_checkout_session_id ?? "Non renseigné"} />
                       <Line label="Adresse" value={diagnostic.customers?.address ?? "Non renseignée"} />
                       <Line label="Spa" value={`${diagnostic.customers?.spa_brand ?? ""} ${diagnostic.customers?.spa_model ?? ""}`.trim()} />
                     </dl>
@@ -155,6 +160,8 @@ async function loadDiagnostics(showArchived: boolean): Promise<{ diagnostics: Ad
         request_type,
         department,
         matched_partner_ids,
+        assigned_partner_id,
+        assigned_at,
         problem_type,
         choice,
         payment_status,
@@ -184,10 +191,13 @@ async function loadDiagnostics(showArchived: boolean): Promise<{ diagnostics: Ad
 
     if (error) throw error;
     const partners = await loadPartnerNameMap(supabase);
+    const leadPurchases = await loadLeadPurchaseMap(supabase);
     const diagnostics = (data ?? []).map((item) => ({
       ...item,
       customers: Array.isArray(item.customers) ? item.customers[0] ?? null : item.customers,
-      matched_partners: (item.matched_partner_ids ?? []).map((id: string) => partners.get(id)).filter(Boolean)
+      matched_partners: (item.matched_partner_ids ?? []).map((id: string) => partners.get(id)).filter(Boolean),
+      assigned_partner: item.assigned_partner_id ? partners.get(item.assigned_partner_id) ?? item.assigned_partner_id : null,
+      lead_purchase: leadPurchases.get(item.id) ?? null
     })) as unknown as AdminDiagnostic[];
 
     return { diagnostics, error: null };
@@ -220,6 +230,22 @@ async function loadPartners(): Promise<{ partners: PartnerAdminItem[]; error: st
 async function loadPartnerNameMap(supabase: any) {
   const { data } = await supabase.from("partners").select("id, company_name");
   return new Map((data ?? []).map((partner: { id: string; company_name: string }) => [partner.id, partner.company_name]));
+}
+
+async function loadLeadPurchaseMap(supabase: any) {
+  const { data } = await supabase
+    .from("lead_purchases")
+    .select("request_id, status, paid_at, stripe_checkout_session_id")
+    .order("created_at", { ascending: false });
+
+  const purchases = new Map();
+  for (const purchase of data ?? []) {
+    if (!purchases.has(purchase.request_id) || purchase.status === "paid") {
+      purchases.set(purchase.request_id, purchase);
+    }
+  }
+
+  return purchases;
 }
 
 function Line({ label, value }: { label: string; value: string }) {

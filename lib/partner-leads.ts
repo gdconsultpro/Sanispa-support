@@ -6,6 +6,7 @@ const descriptionQuestionKeys = ["description", "pump_details", "noise_descripti
 
 export type PartnerLeadPreview = {
   id: string;
+  access: "preview";
   createdAt: string;
   problemType: string;
   problemTypeKey: string;
@@ -15,6 +16,8 @@ export type PartnerLeadPreview = {
   spaBrand: string | null;
   spaModel: string | null;
   description: string | null;
+  canUnlock: boolean;
+  lockedUntil: string | null;
 };
 
 export function sanitizePartnerLead(row: any): PartnerLeadPreview {
@@ -23,6 +26,7 @@ export function sanitizePartnerLead(row: any): PartnerLeadPreview {
 
   return {
     id: row.id,
+    access: "preview",
     createdAt: row.created_at,
     problemType: problemTypes.find((type) => type.value === row.problem_type)?.label ?? "Demande technique",
     problemTypeKey: row.problem_type,
@@ -31,8 +35,71 @@ export function sanitizePartnerLead(row: any): PartnerLeadPreview {
     city: location.city,
     spaBrand: customer?.spa_brand ?? null,
     spaModel: customer?.spa_model ?? null,
-    description: pickSafeDescription(row.diagnostic_answers ?? [])
+    description: pickSafeDescription(row.diagnostic_answers ?? []),
+    canUnlock: !isLocked(row.lead_locked_until) && !row.assigned_partner_id,
+    lockedUntil: row.lead_locked_until ?? null
   };
+}
+
+export type PartnerLeadFull = Omit<PartnerLeadPreview, "access" | "canUnlock"> & {
+  access: "full";
+  canUnlock: false;
+  status: string;
+  customer: {
+    name: string;
+    phone: string;
+    email: string;
+    address: string;
+    postalCode: string;
+    city: string;
+  };
+  spa: {
+    brand: string | null;
+    model: string | null;
+    year: string | null;
+  };
+  answers: Array<{ question: string; answer: string }>;
+  photos: Array<{ type: string; url: string | null }>;
+  documents: Array<{ id: string; name: string; type: string; url: string | null }>;
+};
+
+export function sanitizeUnlockedPartnerLead(row: any, documents: PartnerLeadFull["documents"] = []): PartnerLeadFull {
+  const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
+  const location = parseLocation(customer?.address, row.department);
+  const preview = sanitizePartnerLead(row);
+
+  return {
+    ...preview,
+    access: "full",
+    canUnlock: false,
+    status: row.status,
+    customer: {
+      name: customer?.name ?? "",
+      phone: customer?.phone ?? "",
+      email: customer?.email ?? "",
+      address: customer?.address ?? "",
+      postalCode: location.postalCode,
+      city: location.city
+    },
+    spa: {
+      brand: customer?.spa_brand ?? null,
+      model: customer?.spa_model ?? null,
+      year: customer?.spa_year ?? null
+    },
+    answers: (row.diagnostic_answers ?? []).map((answer: any) => ({
+      question: answer.question_label ?? "Question",
+      answer: answer.answer ?? ""
+    })),
+    photos: (row.diagnostic_photos ?? []).map((photo: any) => ({
+      type: photo.photo_type,
+      url: photo.public_url ?? null
+    })),
+    documents
+  };
+}
+
+export function isLocked(lockedUntil: string | null | undefined) {
+  return Boolean(lockedUntil && new Date(lockedUntil).getTime() > Date.now());
 }
 
 function parseLocation(address: string | null | undefined, department: string | null | undefined) {

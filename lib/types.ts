@@ -70,6 +70,14 @@ export type AdminDiagnostic = {
   department: string | null;
   matched_partner_ids: string[] | null;
   matched_partners?: string[];
+  assigned_partner_id: string | null;
+  assigned_at: string | null;
+  assigned_partner?: string | null;
+  lead_purchase?: {
+    status: string | null;
+    paid_at: string | null;
+    stripe_checkout_session_id: string | null;
+  } | null;
   problem_type: string;
   choice: string | null;
   payment_status: string | null;
