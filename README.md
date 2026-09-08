@@ -1,3 +1,11 @@
+# SANISPA Support — espace client et fiabilisation
+
+Voir [ACTIVATION.md](ACTIVATION.md) pour le parcours client, les migrations obligatoires et les contrôles avant déploiement.
+
+Commandes : `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm lint`, `pnpm build`, puis `pnpm dev`.
+
+La documentation historique ci-dessous décrit aussi les fonctions partenaires conservées.
+
 # SANISPA Diagnostic MVP
 
 Web app mobile-first pour le SAV SANISPA : comptes clients, spas enregistrés, demandes techniques gratuites, diagnostic IA de traitement d'eau payé par Stripe, documents, administration et fondations partenaires.
