@@ -41,7 +41,18 @@ export default function InscriptionPage() {
         password: form.password,
         options: {
           emailRedirectTo: `${window.location.origin}/connexion`,
-          data: form
+          data: {
+            firstName: form.firstName,
+            lastName: form.lastName,
+            phone: form.phone,
+            email: form.email,
+            address: form.address,
+            postalCode: form.postalCode,
+            city: form.city,
+            spaBrand: form.spaBrand,
+            spaModel: form.spaModel,
+            spaYear: form.spaYear
+          }
         }
       });
       if (error) throw error;
