@@ -26,7 +26,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
         <dl className="grid gap-3 text-sm text-sanispa-steel">
           <SummaryLine label="Marque" value={draft.spaBrand} />
           <SummaryLine label="Modèle" value={draft.spaModel || "Non connu"} />
-          <SummaryLine label="Année" value={draft.spaYear} />
+          <SummaryLine label="Année" value={draft.spaYear || "Non renseignée"} />
           <SummaryLine label="Installation" value={draft.installationType === "exterieur" ? "Extérieur" : draft.installationType === "interieur" ? "Intérieur" : "Non renseignée"} />
           {draft.powerSupply ? <SummaryLine label="Alimentation" value={draft.powerSupply} /> : null}
         </dl>
