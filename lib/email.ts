@@ -1,209 +1,188 @@
+import { createHash } from "node:crypto";
 type EmailAnswer = {
-  question_label: string;
-  answer: string;
+    question_label: string;
+    answer: string;
 };
-
 type EmailPhoto = {
-  photo_type: string;
-  public_url: string | null;
+    photo_type: string;
+    public_url: string | null;
 };
-
 export type PartnerLeadRecipient = {
-  id: string;
-  companyName: string;
-  contactName?: string | null;
-  email: string;
-};
-
-export type DiagnosticEmailPayload = {
-  diagnosticId: string;
-  customer: {
-    name: string;
-    phone: string;
+    id: string;
+    companyName: string;
+    contactName?: string | null;
     email: string;
-    address: string;
-    spaBrand: string;
-    spaModel?: string | null;
-    spaYear: string;
-  };
-  problemType: string;
-  choice: string;
-  paymentPlan?: string | null;
-  amountPaid?: number | null;
-  status?: string | null;
-  appUrl?: string;
-  dossierUrl?: string;
-  summaryPdfUrl?: string;
-  answers: EmailAnswer[];
-  photos: EmailPhoto[];
 };
-
+export type DiagnosticEmailPayload = {
+    diagnosticId: string;
+    customer: {
+        name: string;
+        phone: string;
+        email: string;
+        address: string;
+        spaBrand: string;
+        spaModel?: string | null;
+        spaYear: string;
+    };
+    problemType: string;
+    choice: string;
+    paymentPlan?: string | null;
+    amountPaid?: number | null;
+    status?: string | null;
+    appUrl?: string;
+    dossierUrl?: string;
+    summaryPdfUrl?: string;
+    answers: EmailAnswer[];
+    photos: EmailPhoto[];
+};
 export type PartnerLeadNotificationPayload = {
-  diagnosticId: string;
-  partners: PartnerLeadRecipient[];
-  problemType: string;
-  postalCode: string;
-  city: string;
-  department: string;
-  spaBrand?: string | null;
-  spaModel?: string | null;
-  answers: EmailAnswer[];
+    diagnosticId: string;
+    partners: PartnerLeadRecipient[];
+    problemType: string;
+    postalCode: string;
+    city: string;
+    department: string;
+    spaBrand?: string | null;
+    spaModel?: string | null;
+    answers: EmailAnswer[];
 };
-
 type TransactionalEmail = {
-  to: string;
-  subject: string;
-  html: string;
-  replyTo?: string;
+    to: string;
+    subject: string;
+    html: string;
+    replyTo?: string;
 };
-
 export async function sendDiagnosticNotification(payload: DiagnosticEmailPayload) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.ADMIN_NOTIFICATION_EMAIL;
-  const from = process.env.EMAIL_FROM || "SANISPA <onboarding@resend.dev>";
-
-  if (!apiKey || !to) {
-    return { skipped: true };
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from,
-      to,
-      reply_to: payload.customer.email,
-      subject: `Nouvelle demande SANISPA - ${payload.problemType}`,
-      html: buildDiagnosticEmail(payload)
-    })
-  });
-
-  if (!response.ok) {
-    const details = await response.text();
-    throw new Error(`Email notification failed: ${details}`);
-  }
-
-  return { skipped: false };
+    const apiKey = process.env.RESEND_API_KEY;
+    const to = process.env.ADMIN_NOTIFICATION_EMAIL;
+    const from = process.env.EMAIL_FROM || "SANISPA <onboarding@resend.dev>";
+    if (!apiKey || !to) {
+        return { skipped: true };
+    }
+    const response = await fetch("https://api.resend.com/emails", {
+        signal: AbortSignal.timeout(10000),
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": `admin:${payload.diagnosticId}`
+        },
+        body: JSON.stringify({
+            from,
+            to,
+            reply_to: payload.customer.email,
+            subject: `Nouvelle demande SANISPA - ${payload.problemType}`,
+            html: buildDiagnosticEmail(payload)
+        })
+    });
+    if (!response.ok) {
+        const details = await response.text();
+        throw new Error(`Email notification failed: ${details}`);
+    }
+    return { skipped: false };
 }
-
 export async function sendCustomerConfirmation(payload: DiagnosticEmailPayload) {
-  console.log("[SANISPA email client] tentative d'envoi email client", {
-    diagnosticId: payload.diagnosticId,
-    to: payload.customer.email
-  });
-
-  try {
-    const result = await sendTransactionalEmail({
-      to: payload.customer.email,
-      subject: "Confirmation de votre demande d'assistance SANISPA",
-      html: buildCustomerConfirmationEmail(payload),
-      replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL
-    });
-
-    if (result.skipped) {
-      console.log("[SANISPA email client] email client ignoré : configuration incomplète", { diagnosticId: payload.diagnosticId });
-    } else {
-      console.log("[SANISPA email client] email client envoyé", { diagnosticId: payload.diagnosticId });
-    }
-
-    return result;
-  } catch (error) {
-    console.error("[SANISPA email client] erreur email client", {
-      diagnosticId: payload.diagnosticId,
-      error: error instanceof Error ? error.message : error
-    });
-    throw error;
-  }
-}
-
-export async function sendPartnerLeadNotification(payload: PartnerLeadNotificationPayload) {
-  if (!payload.partners.length) {
-    console.log("[SANISPA email partenaires] aucun partenaire actif à notifier", {
-      diagnosticId: payload.diagnosticId,
-      department: payload.department
-    });
-    return { attempted: 0, sent: 0, failed: 0 };
-  }
-
-  console.log("[SANISPA email partenaires] partenaires trouvés", {
-    diagnosticId: payload.diagnosticId,
-    department: payload.department,
-    count: payload.partners.length,
-    partnerIds: payload.partners.map((partner) => partner.id)
-  });
-
-  let sent = 0;
-  let failed = 0;
-
-  for (const partner of payload.partners) {
-    console.log("[SANISPA email partenaires] tentative d'envoi", {
-      diagnosticId: payload.diagnosticId,
-      partnerId: partner.id,
-      to: partner.email
-    });
-
-    try {
-      const result = await sendTransactionalEmail({
-        to: partner.email,
-        subject: `Nouveau dossier technique disponible - ${payload.problemType} (${payload.department})`,
-        replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
-        html: buildPartnerLeadEmail(payload, partner)
-      });
-
-      if (result.skipped) {
-        failed += 1;
-        console.log("[SANISPA email partenaires] envoi ignoré", {
-          diagnosticId: payload.diagnosticId,
-          partnerId: partner.id,
-          to: partner.email
-        });
-      } else {
-        sent += 1;
-        console.log("[SANISPA email partenaires] succès Resend", {
-          diagnosticId: payload.diagnosticId,
-          partnerId: partner.id,
-          to: partner.email,
-          status: result.status,
-          response: result.response
-        });
-      }
-    } catch (error) {
-      failed += 1;
-      console.error("[SANISPA email partenaires] erreur Resend", {
+    console.log("[SANISPA email client] tentative d'envoi email client", {
         diagnosticId: payload.diagnosticId,
-        partnerId: partner.id,
-        to: partner.email,
-        error: error instanceof Error ? error.message : error
-      });
+        to: payload.customer.email
+    });
+    try {
+        const result = await sendTransactionalEmail({
+            to: payload.customer.email,
+            subject: "Confirmation de votre demande d'assistance SANISPA",
+            html: buildCustomerConfirmationEmail(payload),
+            replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL
+        });
+        if (result.skipped) {
+            console.log("[SANISPA email client] email client ignoré : configuration incomplète", { diagnosticId: payload.diagnosticId });
+        }
+        else {
+            console.log("[SANISPA email client] email client envoyé", { diagnosticId: payload.diagnosticId });
+        }
+        return result;
     }
-  }
-
-  return { attempted: payload.partners.length, sent, failed };
+    catch (error) {
+        console.error("[SANISPA email client] erreur email client", {
+            diagnosticId: payload.diagnosticId,
+            error: error instanceof Error ? error.message : error
+        });
+        throw error;
+    }
 }
-
-export async function sendWaterAssistanceResumeLink({
-  to,
-  name,
-  resumeUrl,
-  expiresAt
-}: {
-  to: string;
-  name: string;
-  resumeUrl: string;
-  expiresAt: string;
+export async function sendPartnerLeadNotification(payload: PartnerLeadNotificationPayload) {
+    if (!payload.partners.length) {
+        console.log("[SANISPA email partenaires] aucun partenaire actif à notifier", {
+            diagnosticId: payload.diagnosticId,
+            department: payload.department
+        });
+        return { attempted: 0, sent: 0, failed: 0 };
+    }
+    console.log("[SANISPA email partenaires] partenaires trouvés", {
+        diagnosticId: payload.diagnosticId,
+        department: payload.department,
+        count: payload.partners.length,
+        partnerIds: payload.partners.map((partner) => partner.id)
+    });
+    let sent = 0;
+    let failed = 0;
+    for (const partner of payload.partners) {
+        console.log("[SANISPA email partenaires] tentative d'envoi", {
+            diagnosticId: payload.diagnosticId,
+            partnerId: partner.id,
+            to: partner.email
+        });
+        try {
+            const result = await sendTransactionalEmail({
+                to: partner.email,
+                subject: `Nouveau dossier technique disponible - ${payload.problemType} (${payload.department})`,
+                replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
+                html: buildPartnerLeadEmail(payload, partner)
+            });
+            if (result.skipped) {
+                failed += 1;
+                console.log("[SANISPA email partenaires] envoi ignoré", {
+                    diagnosticId: payload.diagnosticId,
+                    partnerId: partner.id,
+                    to: partner.email
+                });
+            }
+            else {
+                sent += 1;
+                console.log("[SANISPA email partenaires] succès Resend", {
+                    diagnosticId: payload.diagnosticId,
+                    partnerId: partner.id,
+                    to: partner.email,
+                    status: result.status,
+                    response: result.response
+                });
+            }
+        }
+        catch (error) {
+            failed += 1;
+            console.error("[SANISPA email partenaires] erreur Resend", {
+                diagnosticId: payload.diagnosticId,
+                partnerId: partner.id,
+                to: partner.email,
+                error: error instanceof Error ? error.message : error
+            });
+        }
+    }
+    return { attempted: payload.partners.length, sent, failed };
+}
+export async function sendWaterAssistanceResumeLink({ to, name, resumeUrl, expiresAt }: {
+    to: string;
+    name: string;
+    resumeUrl: string;
+    expiresAt: string;
 }) {
-  if (!to) {
-    return { skipped: true };
-  }
-
-  return sendTransactionalEmail({
-    to,
-    subject: "Votre accès assistant traitement d'eau SANISPA",
-    replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
-    html: `
+    if (!to) {
+        return { skipped: true };
+    }
+    return sendTransactionalEmail({
+        to,
+        subject: "Votre accès assistant traitement d'eau SANISPA",
+        replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
+        html: `
       <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.6;max-width:680px;">
         <h1>Votre assistant traitement d'eau est disponible</h1>
         <p>Bonjour ${escapeHtml(name)},</p>
@@ -217,137 +196,121 @@ export async function sendWaterAssistanceResumeLink({
         <p>Merci pour votre confiance,<br /><strong>L'équipe SANISPA</strong></p>
       </div>
     `
-  });
+    });
 }
-
 async function sendTransactionalEmail({ to, subject, html, replyTo }: TransactionalEmail) {
-  const provider = (process.env.EMAIL_PROVIDER || "resend").toLowerCase();
-  const apiKey = provider === "resend" ? process.env.RESEND_API_KEY : process.env.EMAIL_API_KEY;
-  const from = process.env.EMAIL_FROM || "SANISPA <onboarding@resend.dev>";
-
-  console.log("[SANISPA email] préparation envoi", {
-    provider,
-    to,
-    from,
-    subject,
-    hasResendKey: Boolean(process.env.RESEND_API_KEY),
-    hasEmailApiKey: Boolean(process.env.EMAIL_API_KEY)
-  });
-
-  if (!apiKey || !to) {
-    console.log("[SANISPA email] envoi ignoré", {
-      provider,
-      to,
-      reason: !apiKey ? "clé API manquante" : "destinataire manquant"
-    });
-    return { skipped: true };
-  }
-
-  if (provider === "sendgrid") {
-    const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        personalizations: [{ to: [parseEmailAddress(to)] }],
-        from: parseEmailAddress(from),
-        reply_to: replyTo ? parseEmailAddress(replyTo) : undefined,
+    const provider = (process.env.EMAIL_PROVIDER || "resend").toLowerCase();
+    const apiKey = provider === "resend" ? process.env.RESEND_API_KEY : process.env.EMAIL_API_KEY;
+    const from = process.env.EMAIL_FROM || "SANISPA <onboarding@resend.dev>";
+    console.log("[SANISPA email] préparation envoi", {
+        provider,
+        to,
+        from,
         subject,
-        content: [{ type: "text/html", value: html }]
-      })
+        hasResendKey: Boolean(process.env.RESEND_API_KEY),
+        hasEmailApiKey: Boolean(process.env.EMAIL_API_KEY)
     });
-
-    if (!response.ok) {
-      const details = await response.text();
-      throw new Error(`SendGrid email failed: ${details}`);
+    if (!apiKey || !to) {
+        console.log("[SANISPA email] envoi ignoré", {
+            provider,
+            to,
+            reason: !apiKey ? "clé API manquante" : "destinataire manquant"
+        });
+        return { skipped: true };
     }
-
-    return { skipped: false };
-  }
-
-  if (provider === "mailgun") {
-    const domain = process.env.MAILGUN_DOMAIN;
-    if (!domain) throw new Error("MAILGUN_DOMAIN manquant.");
-    const form = new FormData();
-    form.append("from", from);
-    form.append("to", to);
-    form.append("subject", subject);
-    form.append("html", html);
-    if (replyTo) form.append("h:Reply-To", replyTo);
-
-    const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`
-      },
-      body: form
+    if (provider === "sendgrid") {
+        const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+            signal: AbortSignal.timeout(10000),
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                personalizations: [{ to: [parseEmailAddress(to)] }],
+                from: parseEmailAddress(from),
+                reply_to: replyTo ? parseEmailAddress(replyTo) : undefined,
+                subject,
+                content: [{ type: "text/html", value: html }]
+            })
+        });
+        if (!response.ok) {
+            const details = await response.text();
+            throw new Error(`SendGrid email failed: ${details}`);
+        }
+        return { skipped: false };
+    }
+    if (provider === "mailgun") {
+        const domain = process.env.MAILGUN_DOMAIN;
+        if (!domain)
+            throw new Error("MAILGUN_DOMAIN manquant.");
+        const form = new FormData();
+        form.append("from", from);
+        form.append("to", to);
+        form.append("subject", subject);
+        form.append("html", html);
+        if (replyTo)
+            form.append("h:Reply-To", replyTo);
+        const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+            signal: AbortSignal.timeout(10000),
+            method: "POST",
+            headers: {
+                Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`
+            },
+            body: form
+        });
+        if (!response.ok) {
+            const details = await response.text();
+            throw new Error(`Mailgun email failed: ${details}`);
+        }
+        return { skipped: false };
+    }
+    if (provider === "smtp") {
+        throw new Error("SMTP nécessite un adaptateur serveur dédié. Utilisez Resend, SendGrid ou Mailgun pour l'instant.");
+    }
+    const response = await fetch("https://api.resend.com/emails", {
+        signal: AbortSignal.timeout(10000),
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": createHash("sha256").update(`${to}|${subject}|${html}`).digest("hex")
+        },
+        body: JSON.stringify({
+            from,
+            to,
+            reply_to: replyTo,
+            subject,
+            html
+        })
     });
-
+    const resendResponse = await response.text();
+    console.log("[SANISPA email] réponse Resend", {
+        to,
+        status: response.status,
+        ok: response.ok,
+        response: resendResponse
+    });
     if (!response.ok) {
-      const details = await response.text();
-      throw new Error(`Mailgun email failed: ${details}`);
+        throw new Error(`Resend email failed: ${resendResponse}`);
     }
-
-    return { skipped: false };
-  }
-
-  if (provider === "smtp") {
-    throw new Error("SMTP nécessite un adaptateur serveur dédié. Utilisez Resend, SendGrid ou Mailgun pour l'instant.");
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from,
-      to,
-      reply_to: replyTo,
-      subject,
-      html
-    })
-  });
-
-  const resendResponse = await response.text();
-  console.log("[SANISPA email] réponse Resend", {
-    to,
-    status: response.status,
-    ok: response.ok,
-    response: resendResponse
-  });
-
-  if (!response.ok) {
-    throw new Error(`Resend email failed: ${resendResponse}`);
-  }
-
-  return { skipped: false, provider: "resend", status: response.status, response: resendResponse };
+    return { skipped: false, provider: "resend", status: response.status, response: resendResponse };
 }
-
 function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
-  const answers = payload.answers
-    .map(
-      (answer) => `
+    const answers = payload.answers
+        .map((answer) => `
         <tr>
           <td style="padding:8px;border-bottom:1px solid #d8e1ea;font-weight:700;">${escapeHtml(answer.question_label)}</td>
           <td style="padding:8px;border-bottom:1px solid #d8e1ea;">${escapeHtml(answer.answer)}</td>
         </tr>
-      `
-    )
-    .join("");
-
-  const photos = payload.photos
-    .map((photo) =>
-      photo.public_url
+      `)
+        .join("");
+    const photos = payload.photos
+        .map((photo) => photo.public_url
         ? `<li><a href="${escapeHtml(photo.public_url)}">${escapeHtml(photo.photo_type)}</a></li>`
-        : `<li>${escapeHtml(photo.photo_type)}</li>`
-    )
-    .join("");
-
-  return `
+        : `<li>${escapeHtml(photo.photo_type)}</li>`)
+        .join("");
+    return `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.5;">
       <h1>Nouvelle demande de pre-diagnostic SANISPA</h1>
       <p><strong>Dossier :</strong> ${escapeHtml(payload.diagnosticId)}</p>
@@ -378,16 +341,14 @@ function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
     </div>
   `;
 }
-
 function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
-  const baseUrl = payload.appUrl || process.env.NEXT_PUBLIC_APP_URL || "https://sanispa-support.vercel.app";
-  const firstName = payload.customer.name.split(" ")[0] || "Client SANISPA";
-  const espaceClientUrl = `${baseUrl}/espace-client`;
-  const dossierUrl = payload.dossierUrl || espaceClientUrl;
-  const summaryPdfUrl = payload.summaryPdfUrl || espaceClientUrl;
-  const isHumanAssistance = payload.choice === "remote" && payload.paymentPlan !== "water";
-
-  return `
+    const baseUrl = payload.appUrl || process.env.NEXT_PUBLIC_APP_URL || "https://sanispa-support.vercel.app";
+    const firstName = payload.customer.name.split(" ")[0] || "Client SANISPA";
+    const espaceClientUrl = `${baseUrl}/espace-client`;
+    const dossierUrl = payload.dossierUrl || espaceClientUrl;
+    const summaryPdfUrl = payload.summaryPdfUrl || espaceClientUrl;
+    const isHumanAssistance = payload.choice === "remote" && payload.paymentPlan !== "water";
+    return `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.6;max-width:720px;">
       <h1 style="margin-bottom:16px;">Confirmation de votre demande d'assistance SANISPA</h1>
       <p>Bonjour ${escapeHtml(firstName)},</p>
@@ -402,11 +363,9 @@ function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
         <strong>Montant payé :</strong> ${escapeHtml(formatAmount(payload))}<br />
         <strong>Statut :</strong> ${escapeHtml(payload.status || "Demande enregistrée")}
       </p>
-      ${
-        isHumanAssistance
-          ? `<p><strong>Notre équipe vous contactera afin de convenir d'un rendez-vous adapté à votre demande.</strong></p>`
-          : ""
-      }
+      ${isHumanAssistance
+        ? `<p><strong>Notre équipe vous contactera afin de convenir d'un rendez-vous adapté à votre demande.</strong></p>`
+        : ""}
       <p>
         <a href="${escapeHtml(espaceClientUrl)}" style="display:inline-block;background:#0a2342;color:#fff;padding:12px 16px;border-radius:6px;text-decoration:none;font-weight:bold;margin-right:8px;">
           Accéder à mon espace client
@@ -425,22 +384,18 @@ function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
     </div>
   `;
 }
-
 function buildPartnerLeadEmail(payload: PartnerLeadNotificationPayload, partner: PartnerLeadRecipient) {
-  const answers = payload.answers.length
-    ? payload.answers
-        .map(
-          (answer) => `
+    const answers = payload.answers.length
+        ? payload.answers
+            .map((answer) => `
             <tr>
               <td style="padding:8px;border-bottom:1px solid #d8e1ea;font-weight:700;">${escapeHtml(answer.question_label)}</td>
               <td style="padding:8px;border-bottom:1px solid #d8e1ea;">${escapeHtml(answer.answer)}</td>
             </tr>
-          `
-        )
-        .join("")
-    : `<tr><td style="padding:8px;border-bottom:1px solid #d8e1ea;">Aucun descriptif complémentaire renseigné.</td></tr>`;
-
-  return `
+          `)
+            .join("")
+        : `<tr><td style="padding:8px;border-bottom:1px solid #d8e1ea;">Aucun descriptif complémentaire renseigné.</td></tr>`;
+    return `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.6;max-width:720px;">
       <h1>Nouveau dossier technique disponible</h1>
       <p>Bonjour ${escapeHtml(partner.contactName || partner.companyName)},</p>
@@ -462,37 +417,42 @@ function buildPartnerLeadEmail(payload: PartnerLeadNotificationPayload, partner:
     </div>
   `;
 }
-
 function formatPlan(plan?: string | null) {
-  if (plan === "photo") return "Assistance Téléphonique - 49 €";
-  if (plan === "guided") return "Assistance Guidée via Photos - 89 €";
-  if (plan === "premium") return "Assistance Vidéo / Visio - 129 €";
-  if (plan === "water") return "Diagnostic Traitement d'Eau IA - 9 €";
-  return "Non applicable";
+    if (plan === "photo")
+        return "Assistance Téléphonique - 49 €";
+    if (plan === "guided")
+        return "Assistance Guidée via Photos - 89 €";
+    if (plan === "premium")
+        return "Assistance Vidéo / Visio - 129 €";
+    if (plan === "water")
+        return "Diagnostic Traitement d'Eau IA - 9 €";
+    return "Non applicable";
 }
-
 function formatAmount(payload: DiagnosticEmailPayload) {
-  if (typeof payload.amountPaid === "number") return `${payload.amountPaid} €`;
-  if (payload.paymentPlan === "photo") return "49 €";
-  if (payload.paymentPlan === "guided") return "89 €";
-  if (payload.paymentPlan === "premium") return "129 €";
-  if (payload.paymentPlan === "water") return "9 €";
-  return "Non applicable";
+    if (typeof payload.amountPaid === "number")
+        return `${payload.amountPaid} €`;
+    if (payload.paymentPlan === "photo")
+        return "49 €";
+    if (payload.paymentPlan === "guided")
+        return "89 €";
+    if (payload.paymentPlan === "premium")
+        return "129 €";
+    if (payload.paymentPlan === "water")
+        return "9 €";
+    return "Non applicable";
 }
-
 function parseEmailAddress(value: string) {
-  const match = value.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
-  if (match) {
-    return { name: match[1], email: match[2] };
-  }
-  return { email: value };
+    const match = value.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+    if (match) {
+        return { name: match[1], email: match[2] };
+    }
+    return { email: value };
 }
-
 function escapeHtml(value: string | number | null | undefined) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
 }

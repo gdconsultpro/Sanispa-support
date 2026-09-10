@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/supabase";
+import { getAuthenticatedUser } from "./client-auth";
 
 export type AuthenticatedPartner = {
   id: string;
@@ -10,33 +10,23 @@ export type AuthenticatedPartner = {
 };
 
 export async function getAuthenticatedPartner(request: Request) {
-  const token = request.headers.get("authorization")?.replace("Bearer ", "");
-  const supabase = getSupabaseAdmin();
-
-  if (!token) {
-    return { user: null, partner: null, supabase };
-  }
-
-  const { data, error } = await supabase.auth.getUser(token);
-
-  if (error || !data.user) {
-    return { user: null, partner: null, supabase };
-  }
+  const { user, supabase } = await getAuthenticatedUser(request);
+  if (!user) return { user: null, partner: null, supabase };
 
   const { data: link, error: partnerError } = await supabase
     .from("partner_users")
     .select("role, active, partners!inner(id, company_name, contact_name, email, active)")
-    .eq("user_id", data.user.id)
+    .eq("user_id", user.id)
     .eq("active", true)
     .eq("partners.active", true)
     .maybeSingle();
 
   if (partnerError) {
     console.error("[partner-auth] Partner lookup failed", {
-      userId: data.user.id,
+      userId: user.id,
       error: partnerError.message
     });
-    return { user: data.user, partner: null, supabase };
+    return { user: user, partner: null, supabase };
   }
 
   const row = link as any;
@@ -52,5 +42,5 @@ export async function getAuthenticatedPartner(request: Request) {
       } satisfies AuthenticatedPartner)
     : null;
 
-  return { user: data.user, partner, supabase };
+  return { user: user, partner, supabase };
 }
