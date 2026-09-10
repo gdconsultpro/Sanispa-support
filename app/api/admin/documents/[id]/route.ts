@@ -1,3 +1,4 @@
+import { attachmentDisposition } from "@/lib/documents";
 import { adminDenied } from "@/lib/admin-auth";
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -20,7 +21,7 @@ export async function GET(_request: Request, { params }: {
     return new NextResponse(data, {
         headers: {
             "Content-Type": document.mime_type,
-            "Content-Disposition": `attachment; filename="${document.file_name.replace(/"/g, "")}"`
+            "Content-Disposition": attachmentDisposition(document.file_name)
         }
     });
 }

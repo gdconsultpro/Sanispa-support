@@ -12,10 +12,9 @@ export function decodePhoto(value: string) {
         throw new Error("Le contenu de cette photo est invalide.");
     return { buffer, contentType: match[1], hash: createHash("sha256").update(buffer).digest("hex") };
 }
-export async function signPhotos<T extends {
+export async function protectedPhotos<T extends {
     storage_path: string;
     public_url?: string | null;
 }>(supabase: ReturnType<typeof getSupabaseAdmin>, photos: T[]) {
-    return Promise.all(photos.map(async (photo) => { const { data, error } = await supabase.storage.from("diagnostic-photos").createSignedUrl(photo.storage_path, 900); if (error)
-        throw error; return { ...photo, public_url: data.signedUrl }; }));
+    return photos.map(photo => ({ ...photo, public_url: `/api/files/photo?path=${encodeURIComponent(photo.storage_path)}` }));
 }

@@ -40,7 +40,7 @@ export async function POST(request: Request) {
                 throw error;
             water = await prepare();
         }
-        const session = await stripe.checkout.sessions.create({ mode: "payment", customer_email: user.email, line_items: [{ price, quantity: 1 }], success_url: `${resume(water.resume_token)}&session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${origin}/paiement?diagnosticId=${payload.diagnosticId}`, metadata: { diagnostic_id: payload.diagnosticId, payment_plan: "water", water_assistance_session_id: water.id, resume_token: water.resume_token } }, { idempotencyKey: `water-checkout:${water.id}` });
+        const session = await stripe.checkout.sessions.create({ mode: "payment", customer_email: user.email, line_items: [{ price, quantity: 1 }], success_url: `${resume(water.resume_token)}&session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${origin}/paiement?diagnosticId=${payload.diagnosticId}&cancelled=1`, metadata: { diagnostic_id: payload.diagnosticId, payment_plan: "water", water_assistance_session_id: water.id, resume_token: water.resume_token } }, { idempotencyKey: `water-checkout:${water.id}` });
         const { error } = await supabase.from("water_assistance_sessions").update({ stripe_checkout_session_id: session.id }).eq("id", water.id);
         if (error)
             throw error;

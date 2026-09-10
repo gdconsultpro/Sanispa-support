@@ -1,4 +1,4 @@
-import { signPhotos } from "@/lib/photos";
+import { protectedPhotos } from "@/lib/photos";
 import { NextResponse } from "next/server";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
 import { sanitizePartnerLead, sanitizeUnlockedPartnerLead } from "@/lib/partner-leads";
@@ -64,7 +64,7 @@ export async function GET(request: Request, { params }: {
         return NextResponse.json({ error: "Ce dossier n'est pas un lead technique." }, { status: 404 });
     }
     if (data.assigned_partner_id === partner.id) {
-        data.diagnostic_photos = await signPhotos(supabase, data.diagnostic_photos);
+        data.diagnostic_photos = await protectedPhotos(supabase, data.diagnostic_photos);
         const documents = await loadLeadDocuments(supabase, data.id);
         return NextResponse.json({ lead: sanitizeUnlockedPartnerLead(data, documents) });
     }
@@ -83,14 +83,11 @@ async function loadLeadDocuments(supabase: any, diagnosticId: string) {
         .eq("diagnostic_id", diagnosticId)
         .order("created_at", { ascending: false });
     const documents = await Promise.all((data ?? []).map(async (document: any) => {
-        const { data: signed } = await supabase.storage
-            .from(document.storage_bucket)
-            .createSignedUrl(document.storage_path, 60 * 30);
         return {
             id: document.id,
             name: document.file_name,
             type: document.document_type,
-            url: signed?.signedUrl ?? null
+            url: `/api/files/document?id=${document.id}`
         };
     }));
     return documents;

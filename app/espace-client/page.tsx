@@ -1,6 +1,7 @@
 "use client";
+import { statusLabel, problemLabel } from "@/lib/display-labels";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Field, SelectField } from "@/components/Field";
@@ -85,30 +86,8 @@ export default function EspaceClientPage() {
     const [uploadingDocument, setUploadingDocument] = useState(false);
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
-    useEffect(() => {
-        async function load() {
-            try {
-                const supabase = getSupabaseBrowser();
-                const { data } = await supabase.auth.getSession();
-                const accessToken = data.session?.access_token;
-                if (!accessToken) {
-                    setLoading(false);
-                    return;
-                }
-                setToken(accessToken);
-                await loadAll(accessToken);
-            }
-            catch {
-                setError("Impossible de charger votre espace. Réessayez.");
-            }
-            finally {
-                setLoading(false);
-            }
-        }
-        load();
-    }, []);
-    async function loadAll(accessToken = token) {
-        const headers = await authHeaders();
+    const loadAll = useCallback(async (accessToken?: string) => {
+        const headers = accessToken ? {Authorization: `Bearer ${accessToken}`} : await authHeaders();
         const [profileResponse, dashboardResponse, spasResponse, documentsResponse] = await Promise.all([
             fetch("/api/client/profile", { headers }),
             fetch("/api/client/dashboard", { headers }),
@@ -128,7 +107,31 @@ export default function EspaceClientPage() {
         setDiagnostics(dashboardData.diagnostics ?? []);
         setSpas(spasData.spas ?? []);
         setDocuments(documentsData.documents ?? []);
-    }
+    } , []);
+    useEffect(() => {
+        const supabase = getSupabaseBrowser();
+        let initialized = false;
+        let currentUser: string | null = null;
+        const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (initialized && (session?.user.id ?? null) !== currentUser) {
+                // Erase all in-memory dossier data when another tab switches account.
+                window.location.reload();
+                return;
+            }
+            setToken(session?.access_token ?? "");
+        });
+        async function load() {
+            try {
+                const { data } = await supabase.auth.getSession();
+                currentUser = data.session?.user.id ?? null;
+                initialized = true;
+                if (data.session) await loadAll(data.session.access_token);
+            } catch { setError("Impossible de charger votre espace. Réessayez."); }
+            finally { setLoading(false); }
+        }
+        void load();
+        return () => subscription.subscription.unsubscribe();
+    }, [loadAll]);
     function updateProfile(key: keyof Profile, value: string) {
         setProfile((current) => ({ ...current, [key]: value }));
     }
@@ -284,8 +287,8 @@ export default function EspaceClientPage() {
           <div className="mt-4 grid gap-3">
             {diagnostics.length ? diagnostics.map((diagnostic) => (<div key={diagnostic.id} className="rounded-md bg-sanispa-ice p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">Dossier n°{diagnostic.id.slice(0, 8).toUpperCase()}</p>
-                <p className="mt-2 font-bold text-sanispa-navy">{diagnostic.problem_type} · {diagnostic.status}</p>
-                <p className="text-sm text-sanispa-steel">{new Date(diagnostic.created_at).toLocaleString("fr-FR")} · Paiement : {diagnostic.payment_status ?? "non requis / non payé"}</p>
+                <p className="mt-2 font-bold text-sanispa-navy">{problemLabel(diagnostic.problem_type)} · {statusLabel(diagnostic.status)}</p>
+                <p className="text-sm text-sanispa-steel">{new Date(diagnostic.created_at).toLocaleString("fr-FR")} · Paiement : {diagnostic.payment_status ? statusLabel(diagnostic.payment_status) : diagnostic.choice === "remote" ? "À régler" : "Non requis"}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => downloadDocument({ id: diagnostic.id, kind: "summary", name: `Résumé de demande n°${diagnostic.id.slice(0, 8).toUpperCase()}`, date: diagnostic.created_at, type: "Résumé", problemType: diagnostic.problem_type, status: diagnostic.status, spa: "" })} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
                     Télécharger le résumé
@@ -338,7 +341,7 @@ export default function EspaceClientPage() {
           <div className="mt-4 grid gap-3">
             {documents.length ? documents.map((document) => (<div key={`${document.kind}-${document.id}`} className="rounded-md bg-sanispa-ice p-4">
                 <p className="font-bold text-sanispa-navy">{document.name}</p>
-                <p className="mt-1 text-sm text-sanispa-steel">{new Date(document.date).toLocaleString("fr-FR")} · {document.type} · {document.status}</p>
+                <p className="mt-1 text-sm text-sanispa-steel">{new Date(document.date).toLocaleString("fr-FR")} · {document.type} · {statusLabel(document.status)}</p>
                 <p className="text-sm text-sanispa-steel">Spa : {document.spa}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => downloadDocument(document)} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
@@ -353,8 +356,8 @@ export default function EspaceClientPage() {
         </section>
 
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold text-sanispa-navy">Mes factures</h2>
-          <p className="mt-2 text-sanispa-steel">Les factures liées aux paiements seront ajoutées ici après raccordement complet avec Stripe Billing.</p>
+          <h2 className="text-xl font-bold text-sanispa-navy">Justificatifs de paiement</h2>
+          <p className="mt-2 text-sanispa-steel">Pour obtenir une facture, contactez SANISPA en précisant le numéro de votre dossier. Les documents transmis sont disponibles dans « Mes documents ».</p>
         </section>
 
         <section className="rounded-md border border-sanispa-line bg-white shadow-soft">

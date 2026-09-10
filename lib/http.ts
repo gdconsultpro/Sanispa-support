@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 export class HttpError extends Error {
     constructor(public status: number, message: string) { super(message); }
 }
-export async function readJson(request: Request, maxBytes = 2400000) {
+export async function readBytes(request: Request, maxBytes: number) {
     if (Number(request.headers.get("content-length")) > maxBytes)
         throw new HttpError(413, "Le fichier est trop volumineux.");
     const reader = request.body?.getReader();
@@ -21,8 +21,12 @@ export async function readJson(request: Request, maxBytes = 2400000) {
         }
         chunks.push(value);
     }
+    return Buffer.concat(chunks);
+}
+export async function readJson(request: Request, maxBytes = 2400000) {
+    const bytes = await readBytes(request, maxBytes);
     try {
-        return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        return JSON.parse(bytes.toString("utf8"));
     }
     catch {
         throw new HttpError(400, "Requête invalide.");

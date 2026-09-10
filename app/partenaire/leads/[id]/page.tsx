@@ -1,4 +1,5 @@
 "use client";
+import { PrivateFile } from "@/components/PrivateFile";
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
@@ -250,10 +251,7 @@ function FullLead({ lead }: { lead: PartnerLeadFull }) {
           {lead.photos.length ? (
             lead.photos.map((photo, index) =>
               photo.url ? (
-                <Link key={`${photo.type}-${index}`} href={photo.url} target="_blank" className="group">
-                  <img src={photo.url} alt={photo.type} className="h-36 w-full rounded-md object-cover" />
-                  <span className="mt-1 block text-sm font-bold text-sanispa-steel group-hover:text-sanispa-blue">{photo.type}</span>
-                </Link>
+                <PrivateFile key={`${photo.type}-${index}`} url={photo.url} name={photo.type} photo />
               ) : null
             )
           ) : (
@@ -273,9 +271,7 @@ function FullLead({ lead }: { lead: PartnerLeadFull }) {
                   <p className="text-sm text-sanispa-steel">{document.type}</p>
                 </div>
                 {document.url ? (
-                  <Link href={document.url} target="_blank" className="rounded-md border border-sanispa-line px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
-                    Télécharger
-                  </Link>
+                  <PrivateFile url={document.url} name={document.name} />
                 ) : null}
               </div>
             ))

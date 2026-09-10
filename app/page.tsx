@@ -1,8 +1,10 @@
+import { AuthArrival } from "@/components/AuthArrival";
 import { ClipboardCheck, ImagePlus, ShieldCheck, Wrench } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { ButtonLink } from "@/components/Button";
 export default function HomePage() {
     return (<AppShell>
+      <AuthArrival />
       <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
         <div>
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-sanispa-blue">Pré-diagnostic technique de spa</p>

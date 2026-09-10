@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AdminSignOut } from "@/components/AdminSignOut";
 import { administrator } from "@/lib/admin-auth";
-import { signPhotos } from "@/lib/photos";
+import { protectedPhotos } from "@/lib/photos";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { AdminActions } from "@/components/AdminActions";
@@ -190,7 +190,7 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
         })) as unknown as AdminDiagnostic[];
         const filtered = diagnostics.filter(d => (!status || d.status === status) && (!q || [d.id, d.customers?.name, d.customers?.email, d.customers?.phone].join(" ").toLowerCase().includes(q.toLowerCase())));
         for (const diagnostic of filtered)
-            diagnostic.diagnostic_photos = await signPhotos(supabase, diagnostic.diagnostic_photos);
+            diagnostic.diagnostic_photos = await protectedPhotos(supabase, diagnostic.diagnostic_photos);
         return { diagnostics: filtered, error: null };
     }
     catch (error) {

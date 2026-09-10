@@ -1,3 +1,4 @@
+import { attachmentDisposition } from "@/lib/documents";
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/client-auth";
 export async function GET(request: Request, { params }: {
@@ -18,7 +19,7 @@ export async function GET(request: Request, { params }: {
     return new NextResponse(data, {
         headers: {
             "Content-Type": document.mime_type,
-            "Content-Disposition": `attachment; filename="${document.file_name.replace(/"/g, "")}"`
+            "Content-Disposition": attachmentDisposition(document.file_name)
         }
     });
 }
