@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "./supabase";
 import { buildSummaryPdf } from "./pdf";
 import { HttpError } from "./http";
+import { choiceLabel, installationLabel, paymentLabel, photoLabel, problemLabel, statusLabel } from "./display-labels";
 export async function diagnosticPdf(id: string, userId?: string) {
     const supabase = getSupabaseAdmin();
     let query = supabase.from("diagnostics").select("*, customers(*), diagnostic_answers(question_label,answer), diagnostic_photos(photo_type)").eq("id", id);
@@ -14,28 +15,28 @@ export async function diagnosticPdf(id: string, userId?: string) {
     const customer = Array.isArray(data.customers) ? data.customers[0] : data.customers;
     const lines = [
         "SANISPA",
-        "Resume de demande d'assistance SANISPA",
+        "Résumé de demande d'assistance SANISPA",
         "",
-        `Numero dossier : ${data.id}`,
+        `Numéro de dossier : ${data.id}`,
         `Date : ${new Date(data.created_at).toLocaleString("fr-FR")}`,
-        `Statut : ${data.status}`,
-        `Type de probleme : ${data.problem_type}`,
-        `Prestation choisie : ${data.choice ?? "Non renseignee"}`,
-        `Paiement : ${data.payment_status ?? "Non requis / non paye"}`,
+        `Statut : ${statusLabel(data.status)}`,
+        `Type de problème : ${problemLabel(data.problem_type)}`,
+        `Option choisie : ${choiceLabel(data.choice)}`,
+        `Paiement : ${paymentLabel(data.payment_status, data.choice)}`,
         "",
         "Informations client",
         `Nom : ${customer?.name ?? ""}`,
-        `Telephone : ${customer?.phone ?? ""}`,
-        `Email : ${customer?.email ?? ""}`,
+        `Téléphone : ${customer?.phone ?? ""}`,
+        `E-mail : ${customer?.email ?? ""}`,
         `Adresse : ${customer?.address ?? ""}`,
         "",
         "Informations spa",
         `Marque : ${customer?.spa_brand ?? ""}`,
-        `Modele : ${customer?.spa_model ?? ""}`,
-        `Annee : ${customer?.spa_year ?? ""}`,
-        `Installation : ${customer?.installation_type ?? ""}`,
+        `Modèle : ${customer?.spa_model || "Non renseigné"}`,
+        `Année : ${customer?.spa_year || "Non renseignée"}`,
+        `Installation : ${installationLabel(customer?.installation_type)}`,
         "",
-        "Reponses au questionnaire",
+        "Réponses au questionnaire",
         ...(data.diagnostic_answers ?? []).map((answer: {
             question_label: string;
             answer: string;
@@ -45,9 +46,9 @@ export async function diagnosticPdf(id: string, userId?: string) {
         ...((data.diagnostic_photos ?? []).map((photo: {
             photo_type: string;
             public_url?: string;
-        }) => `${photo.photo_type} : ${photo.public_url ?? "Photo stockee"}`)),
+        }) => `${photoLabel(photo.photo_type)} : photo jointe au dossier`)),
         "",
-        "Ce document constitue un resume de demande d'assistance et ne constitue pas une facture."
+        "Ce document constitue un résumé de demande d'assistance et ne constitue pas une facture."
     ];
     return buildSummaryPdf(lines);
 }

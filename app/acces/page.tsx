@@ -22,7 +22,7 @@ export default function AccessPage() {
             setSent(true);
         }
         catch {
-            setError("L'envoi n'a pas abouti. Vérifiez votre adresse ou attendez une minute avant de réessayer.");
+            setError("L’envoi n’a pas abouti. Vérifiez votre adresse e-mail et votre connexion, puis réessayez. Si vous avez déjà demandé plusieurs liens, utilisez le plus récent reçu.");
         }
         finally {
             setBusy(false);
@@ -52,6 +52,6 @@ export default function AccessPage() {
     }
     return <AppShell compact><section className="mx-auto max-w-xl rounded-md border border-sanispa-line bg-white p-6 shadow-soft"><p className="text-sm font-bold text-sanispa-blue">Votre espace personnel</p><h1 className="mt-2 text-2xl font-bold">Retrouvez votre diagnostic à tout moment</h1><p className="my-4 text-sanispa-steel">Recevez un lien personnel par e-mail pour créer votre accès ou vous reconnecter. Aucun nouveau mot de passe à retenir.</p>
  <form onSubmit={send} className="space-y-4"><label className="block font-semibold">Votre adresse e-mail<input required type="email" autoComplete="email" value={email} onChange={e => { setEmail(e.target.value); setSent(false); }} className="mt-2 block w-full rounded-md border p-3"/></label><Button disabled={busy} type="submit">{busy ? "Veuillez patienter…" : sent ? "Renvoyer le lien" : "Recevoir mon lien d'accès"}</Button></form>
- {sent ? <div className="mt-4 rounded-md bg-sanispa-ice p-4" role="status"><p>Consultez votre boîte mail, y compris les indésirables, puis ouvrez le lien personnel. Vos coordonnées restent sur cet appareil jusqu'à la confirmation.</p><button type="button" onClick={resume} disabled={busy} className="mt-3 font-bold underline">J'ai confirmé mon adresse, continuer ici</button></div> : null}
+ {sent ? <div className="mt-4 rounded-md bg-sanispa-ice p-4" role="status"><p>Consultez votre boîte e-mail et vos courriers indésirables, puis ouvrez le lien personnel. Votre saisie reste sur cet appareil jusqu’à la confirmation de votre adresse.</p><button type="button" onClick={resume} disabled={busy} className="mt-3 font-bold underline">J'ai ouvert le lien, continuer ici</button></div> : null}
  {error ? <p className="mt-4 text-red-700" role="alert">{error}</p> : null}<Link className="mt-5 block underline" href="/connexion">J'ai déjà un mot de passe</Link></section></AppShell>;
 }

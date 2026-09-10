@@ -38,12 +38,12 @@ export default function NewPasswordPage() {
     finally { setBusy(false); }
   }
   return <AppShell compact>
-    <StepHeader eyebrow="Sécurité du compte" title="Nouveau mot de passe" description="Utilisez au moins 12 caractères. Une phrase longue et unique est plus facile à retenir." />
+    <StepHeader eyebrow="Sécurité du compte" title="Nouveau mot de passe" description="Choisissez un mot de passe de 12 à 128 caractères. Après validation, vous devrez vous reconnecter sur vos appareils." />
     <form onSubmit={submit} className="space-y-4 rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
       {!changed && <><Field label="Nouveau mot de passe" name="password" type="password" minLength={12} maxLength={128} autoComplete="new-password" value={password} onChange={setPassword} required /><Field label="Confirmer le mot de passe" name="confirmation" type="password" minLength={12} maxLength={128} autoComplete="new-password" value={confirmation} onChange={setConfirmation} required /></>}
       {message && <><p role="status" className="rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">{message}</p><Link href="/connexion" className="block font-bold underline">Connexion client</Link><Link href="/admin/connexion" className="block font-bold underline">Connexion administrateur</Link></>}
       {error && <><p role="alert" className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>{!changed && <Link href="/mot-de-passe-oublie" className="block font-bold underline">Demander un nouveau lien de réinitialisation</Link>}</>}
-      {!message && <Button type="submit" disabled={busy}>{busy ? "Sécurisation…" : changed ? "Révoquer les sessions" : "Enregistrer et révoquer les sessions"}</Button>}
+      {!message && <Button type="submit" disabled={busy}>{busy ? "Sécurisation…" : changed ? "Terminer la déconnexion de mes appareils" : "Modifier mon mot de passe et déconnecter mes appareils"}</Button>}
     </form>
   </AppShell>;
 }

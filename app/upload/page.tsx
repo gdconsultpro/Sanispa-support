@@ -41,9 +41,9 @@ export default function UploadPage() {
     }
     async function submit(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        const missingRequired = photos.some((photo) => isPhotoRequired(photo.id, draft.problemType) && !draft.photos[photo.id]);
-        if (missingRequired) {
-            setError("La photo du clavier est obligatoire pour une panne électrique.");
+        const missingPhotos = photos.filter((photo) => isPhotoRequired(photo.id, draft.problemType) && !draft.photos[photo.id]);
+        if (missingPhotos.length) {
+            setError(`Ajoutez les photos obligatoires avant de continuer : ${missingPhotos.map(photo => photo.label).join(" ; ")}.`);
             return;
         }
         try {
@@ -55,7 +55,7 @@ export default function UploadPage() {
         }
     }
     return (<AppShell compact>
-      <StepHeader eyebrow="Étape 3" title="Photos du spa" description="Ajoutez les photos nécessaires à l'analyse. Elles sont réduites automatiquement et sauvegardées dans votre espace privé."/>
+      <StepHeader eyebrow="Étape 3" title="Photos du spa" description="Les photos marquées d’un * sont obligatoires. Formats acceptés : JPG, PNG ou WebP, 20 Mo maximum par photo. Elles sont réduites automatiquement. Attendez la confirmation de sauvegarde avant de quitter la page."/>
       <DraftSave draft={draft} step="/upload"/>
       <BackLink href="/questionnaire"/>
 
