@@ -6,7 +6,7 @@ import { validateSubmission } from "../lib/draft-schema";
 import { PDFDocument } from "pdf-lib";
 import { buildSummaryPdf } from "../lib/pdf";
 import { decodePhoto } from "../lib/photos";
-import { adminAuthorized } from "../lib/admin-auth";
+import { adminDenied } from "../lib/admin-auth";
 const user = "00000000-0000-4000-8000-000000000001";
 const other = "00000000-0000-4000-8000-000000000002";
 const id = "00000000-0000-4000-8000-000000000010";
@@ -15,6 +15,8 @@ async function database() {
     const db = new PGlite();
     await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema storage;
  create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,raw_user_meta_data jsonb default '{}');
+ create table auth.sessions(id uuid primary key,user_id uuid,factor_id uuid,aal text,not_after timestamptz);
+ create table auth.mfa_factors(id uuid primary key,user_id uuid,status text,factor_type text);
  create function auth.role() returns text language sql as $$select current_user::text$$;
  create function auth.uid() returns uuid language sql as $$select null::uuid$$;
  create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint);
@@ -41,12 +43,11 @@ test('PDFs paginate long dossiers and accept French accents', async () => {
     const pdf = await PDFDocument.load(buffer);
     assert.ok(pdf.getPageCount() >= 3);
 });
-test('administrator authorization fails closed', () => {
+test('legacy shared administrator password is never accepted', async () => {
     process.env.ADMIN_USERNAME = 'admin-test';
     process.env.ADMIN_PASSWORD = 'temporary-test-password';
-    assert.equal(adminAuthorized(null), false);
-    assert.equal(adminAuthorized('Basic ' + Buffer.from('admin-test:wrong').toString('base64')), false);
-    assert.equal(adminAuthorized('Basic ' + Buffer.from('admin-test:temporary-test-password').toString('base64')), true);
+    const response = await adminDenied(new Request('https://app.example.invalid/api/admin', {headers: {Authorization: 'Basic ' + Buffer.from('admin-test:temporary-test-password').toString('base64')}}));
+    assert.equal(response?.status, 401);
 });
 test('draft ownership, cross-device conflict, submission transaction and duplicate retry', async () => {
     const db = await database();
@@ -153,4 +154,29 @@ test('shared rate limit closes after the configured number of calls', async () =
     finally {
         await db.close();
     }
+});
+
+test('administrator membership, MFA and revoked sessions are enforced in the database', async () => {
+    const db = await database();
+    const session = '00000000-0000-4000-8000-000000000050';
+    const factor = '00000000-0000-4000-8000-000000000060';
+    try {
+        const state = async () => (await db.query<{ state: {active:boolean;is_admin:boolean;mfa_verified:boolean} }>('select private_session_status($1,$2) state', [user, session])).rows[0].state;
+        await db.query('insert into auth.sessions(id,user_id,aal) values($1,$2,$3)', [session, user, 'aal1']);
+        assert.deepEqual(await state(), {active:true,is_admin:false,mfa_verified:false});
+        await db.query('insert into admin_users(user_id) values($1)', [user]);
+        assert.deepEqual(await state(), {active:true,is_admin:true,mfa_verified:false});
+        await db.query("insert into auth.mfa_factors(id,user_id,status,factor_type) values($1,$2,'verified','totp')", [factor, user]);
+        await db.query("update auth.sessions set factor_id=$1,aal='aal2' where id=$2", [factor, session]);
+        assert.deepEqual(await state(), {active:true,is_admin:true,mfa_verified:true});
+        await db.query('update admin_users set active=false where user_id=$1', [user]);
+        assert.equal((await state()).is_admin, false);
+        await db.query('delete from auth.sessions where id=$1', [session]);
+        assert.equal((await state()).active, false);
+        assert.equal((await state()).mfa_verified, false);
+        await db.exec('set role authenticated');
+        await assert.rejects(db.query('select private_session_status($1,$2)', [user, session]), /permission denied/);
+        await assert.rejects(db.query('insert into admin_users(user_id) values($1)', [other]), /permission denied/);
+        await assert.rejects(db.query('select * from client_profiles'), /permission denied/);
+    } finally { await db.close(); }
 });

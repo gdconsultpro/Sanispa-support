@@ -1,6 +1,8 @@
 import { SavActions, RetryNotifications } from "@/components/SavActions";
 import { headers } from "next/headers";
-import { adminAuthorized } from "@/lib/admin-auth";
+import { redirect } from "next/navigation";
+import { AdminSignOut } from "@/components/AdminSignOut";
+import { administrator } from "@/lib/admin-auth";
 import { signPhotos } from "@/lib/photos";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
@@ -18,8 +20,8 @@ export default async function AdminPage({ searchParams }: {
         status?: string;
     }>;
 }) {
-    if (!adminAuthorized((await headers()).get("authorization")))
-        return <p>Accès administrateur requis.</p>;
+    try { await administrator(await headers()); }
+    catch { redirect("/admin/connexion"); }
     const params = await searchParams;
     const tab = params?.tab === "partners" ? "partners" : "diagnostics";
     const showArchived = params?.archived === "1";
@@ -29,6 +31,7 @@ export default async function AdminPage({ searchParams }: {
             ? "Gestion des partenaires et des départements couverts pour préparer la future diffusion des dossiers."
             : "Vue simple des dossiers clients, avec qualification, département, partenaires concernés, photos, documents et paiement."}/>
 
+      <AdminSignOut />
       <div className="mb-5 flex flex-wrap gap-2">
         <Link href="/admin" className={`rounded-md border px-4 py-2 text-sm font-bold focus-ring ${tab === "diagnostics" ? "border-sanispa-blue bg-white text-sanispa-navy" : "border-sanispa-line text-sanispa-steel"}`}>
           Demandes

@@ -6,7 +6,7 @@ export async function GET(_request: Request, { params }: {
         id: string;
     }>;
 }) {
-    const denied = adminDenied(_request);
+    const denied = await adminDenied(_request);
     if (denied)
         return denied;
     const { id } = await params;

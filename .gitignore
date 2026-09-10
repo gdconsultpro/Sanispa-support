@@ -15,3 +15,6 @@ pnpm-debug.log*
 
 .DS_Store
 *.pem
+
+# Local Supabase CLI cache
+supabase/.temp/

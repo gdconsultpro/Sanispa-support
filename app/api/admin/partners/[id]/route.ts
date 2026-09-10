@@ -18,7 +18,7 @@ export async function PATCH(request: Request, { params }: {
         id: string;
     }>;
 }) {
-    const denied = adminDenied(request);
+    const denied = await adminDenied(request);
     if (denied)
         return denied;
     try {

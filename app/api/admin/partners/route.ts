@@ -13,7 +13,7 @@ const partnerSchema = z.object({
     departments: z.array(z.string()).default([])
 });
 export async function POST(request: Request) {
-    const denied = adminDenied(request);
+    const denied = await adminDenied(request);
     if (denied)
         return denied;
     try {

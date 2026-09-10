@@ -1,12 +1,13 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { HttpError } from "./http";
+import { verifySessionToken } from "./session-auth";
 export async function getAuthenticatedUser(request: Request) {
     const token = request.headers.get("authorization")?.match(/^Bearer (.+)$/)?.[1];
     const supabase = getSupabaseAdmin();
     if (!token)
         return { user: null, supabase };
-    const { data, error } = await supabase.auth.getUser(token);
-    const user = !error && data.user?.email_confirmed_at ? data.user : null;
+    const session = await verifySessionToken(token, supabase);
+    const user = session?.user ?? null;
     return { user, supabase };
 }
 export async function requireUser(request: Request) {

@@ -8,7 +8,7 @@ import { Button } from "@/components/Button";
 import { StepHeader } from "@/components/StepHeader";
 import { questionSets } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
-import { emptyDraft, readDraft } from "@/lib/storage";
+import { emptyDraft, readDraft, authHeaders } from "@/lib/storage";
 type ChatMessage = {
     role: "assistant" | "user";
     content: string;
@@ -41,11 +41,11 @@ export default function WaterAssistantPage() {
         }
         window.localStorage.setItem(tokenKey, token);
         setSessionToken(token);
-        fetch("/api/water-session", {
+        authHeaders().then(headers => fetch("/api/water-session", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...headers },
             body: JSON.stringify({ token, stripeSessionId })
-        })
+        }))
             .then((response) => response.json())
             .then((payload) => {
             if (!payload.active) {
@@ -84,7 +84,7 @@ export default function WaterAssistantPage() {
         try {
             const response = await fetch("/api/water-assistant", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...await authHeaders() },
                 body: JSON.stringify({ message: content, sessionToken })
             });
             const payload = await response.json();
@@ -109,7 +109,7 @@ export default function WaterAssistantPage() {
 
       {sessionStatus === "blocked" ? (<div className="rounded-md border border-red-200 bg-red-50 p-5 text-red-700">
           <p className="font-bold">Accès assistant non actif.</p>
-          <p className="mt-2 text-sm">Si vous avez déjà payé, utilisez le lien de reprise reçu par email. Sinon, retournez au paiement.</p>
+          <p className="mt-2 text-sm">Connectez-vous au compte qui a réglé cette assistance, puis ouvrez-la depuis votre espace client. Si elle a expiré ou a été remboursée, son accès est fermé.</p><Link href="/connexion" className="mt-3 inline-block font-bold underline">Me connecter</Link>
         </div>) : null}
 
       {sessionStatus === "active" ? (<div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
@@ -152,7 +152,7 @@ export default function WaterAssistantPage() {
             </div>
 
             <div className="flex-1 space-y-3 overflow-auto p-4">
-              {messages.map((message, index) => (<div key={`${message.role}-${index}`} className={`max-w-[88%] rounded-md px-4 py-3 text-sm leading-6 ${message.role === "user"
+              {messages.map((message, index) => (<div key={`${message.role}-${index}`} className={`max-w-[88%] break-words rounded-md px-4 py-3 text-sm leading-6 ${message.role === "user"
                     ? "ml-auto bg-sanispa-navy text-white"
                     : "bg-sanispa-ice text-sanispa-navy"}`}>
                   {message.content}
@@ -168,7 +168,7 @@ export default function WaterAssistantPage() {
               </div>
 
               <form onSubmit={sendMessage} className="flex gap-2">
-                <textarea value={input} onChange={(event) => setInput(event.target.value)} rows={2} aria-label="Votre message" maxLength={3000} className="focus-ring min-h-12 flex-1 resize-none rounded-md border border-sanispa-line bg-sanispa-ice px-3 py-3 text-sm" placeholder="Exemple : pH 8, chlore bas, eau trouble..."/>
+                <textarea value={input} onChange={(event) => setInput(event.target.value)} rows={2} aria-label="Votre message" maxLength={3000} className="focus-ring min-h-12 min-w-0 flex-1 resize-none rounded-md border border-sanispa-line bg-sanispa-ice px-3 py-3 text-sm" placeholder="Exemple : pH 8, chlore bas, eau trouble..."/>
                 <Button aria-label="Envoyer le message" type="submit" disabled={loading || !input.trim()} className="h-auto px-4">
                   <Send size={18} aria-hidden="true"/>
                 </Button>

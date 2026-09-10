@@ -1,9 +1,8 @@
-import { rateLimit } from "@/lib/client-auth";
+import { rateLimit, requireUser } from "@/lib/client-auth";
 import { apiError, readJson } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { questionSets } from "@/lib/questions";
-import { getSupabaseAdmin } from "@/lib/supabase";
 const messageSchema = z.object({
     message: z.string().trim().min(1).max(3000),
     sessionToken: z.string().regex(/^[a-f0-9]{32}$/),
@@ -17,15 +16,17 @@ function isActive(session: {
 export async function POST(request: Request) {
     try {
         const payload = messageSchema.parse(await readJson(request, 5000));
-        const supabase = getSupabaseAdmin();
+        const { user, supabase } = await requireUser(request);
         const { data: session, error: sessionError } = await supabase
             .from("water_assistance_sessions")
             .select("id, status, expires_at, diagnostic_id")
             .eq("resume_token", payload.sessionToken)
-            .single();
+            .eq("user_id", user.id)
+            .maybeSingle();
         if (sessionError)
             throw sessionError;
-        if (!session || !isActive(session)) {
+        if (!session) return NextResponse.json({ error: "Assistance introuvable pour ce compte." }, { status: 404 });
+        if (!isActive(session)) {
             return NextResponse.json({ error: "Session d'assistance non payée ou expirée." }, { status: 402 });
         }
         await rateLimit(supabase, `water:${session.id}`, 12);
