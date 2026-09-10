@@ -23,9 +23,9 @@ export default function ForgotPasswordPage() {
         redirectTo: `${window.location.origin}/nouveau-mot-de-passe`
       });
       if (error) throw error;
-      setMessage("Email envoyé. Cliquez sur le lien reçu pour définir un nouveau mot de passe.");
+      setMessage("Si un compte correspond à cette adresse, vous recevrez un e-mail pour réinitialiser votre mot de passe. Consultez votre boîte e-mail et vos courriers indésirables, puis ouvrez le lien reçu.");
     } catch {
-      setError("Envoi impossible pour le moment.");
+      setError("La demande n’a pas abouti. Vérifiez votre adresse e-mail et votre connexion, puis réessayez.");
     }
   }
 
@@ -33,10 +33,10 @@ export default function ForgotPasswordPage() {
     <AppShell compact>
       <StepHeader eyebrow="Espace client" title="Mot de passe oublié" description="Recevez un lien sécurisé pour réinitialiser votre mot de passe." />
       <form onSubmit={submit} className="space-y-4 rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-        <Field label="Email" name="email" type="email" value={email} onChange={setEmail} required />
+        <Field label="Adresse e-mail" name="email" type="email" value={email} onChange={setEmail} required />
         {message ? <p className="rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">{message}</p> : null}
         {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
-        <Button type="submit">Recevoir le lien</Button>
+        <Button type="submit">Recevoir le lien de réinitialisation</Button>
       </form>
     </AppShell>
   );

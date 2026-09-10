@@ -1,0 +1,14 @@
+{
+  "confirmation": {
+    "subject": "SANISPA Support — Confirmez votre adresse e-mail",
+    "html": "<h2>Confirmez votre adresse e-mail</h2>\n\n<p>Vous recevez cet e-mail à la suite d’une inscription ou d’une demande d’accès à SANISPA Support.</p>\n<p>Pour confirmer votre adresse e-mail et accéder à votre espace client, cliquez sur le lien ci-dessous.</p>\n<p><a href=\"{{ .ConfirmationURL }}\">Confirmer mon adresse e-mail</a></p>\n<p>Vous pourrez ensuite créer une demande ou consulter vos dossiers.</p>\n<p>Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer cet e-mail.</p>\n<p>SANISPA Support</p>"
+  },
+  "recovery": {
+    "subject": "SANISPA Support — Réinitialisez votre mot de passe",
+    "html": "<h2>Réinitialisez votre mot de passe</h2>\n\n<p>Vous recevez cet e-mail car une réinitialisation du mot de passe de votre compte SANISPA Support a été demandée.</p>\n<p>Cliquez sur le lien ci-dessous pour choisir un nouveau mot de passe. Vous pourrez ensuite vous connecter avec ce nouveau mot de passe.</p>\n<p><a href=\"{{ .ConfirmationURL }}\">Choisir un nouveau mot de passe</a></p>\n\n<p>Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer cet e-mail. Votre mot de passe reste inchangé.</p>\n<p>SANISPA Support</p>"
+  },
+  "magic_link": {
+    "subject": "SANISPA Support — Votre lien de connexion",
+    "html": "<h2>Votre lien de connexion SANISPA Support</h2>\n\n<p>Vous recevez cet e-mail car un lien de connexion à votre compte SANISPA Support a été demandé.</p>\n<p>Cliquez sur le lien ci-dessous pour accéder à votre espace client et consulter vos dossiers. Ce lien est à usage unique.</p>\n<p><a href=\"{{ .ConfirmationURL }}\">Accéder à mon espace client</a></p>\n<p>Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer cet e-mail.</p>\n<p>SANISPA Support</p>"
+  }
+}

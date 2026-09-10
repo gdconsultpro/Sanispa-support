@@ -127,7 +127,7 @@ function DiagnosticContent() {
         }
     }
     return (<AppShell compact>
-      <StepHeader eyebrow="Étape 1" title="Informations client et spa" description="Renseignez vos coordonnées. Un lien personnel par e-mail vous permettra de retrouver ce diagnostic lors de votre prochaine visite."/>
+      <StepHeader eyebrow="Étape 1" title="Informations client et spa" description="Les champs marqués d’un * sont obligatoires ; les autres sont facultatifs. Vos informations peuvent être préremplies après connexion. Vous pourrez enregistrer votre brouillon dans votre espace client avant d’envoyer la demande."/>
       <DraftSave draft={draft} step="/diagnostic"/>
       <BackLink href="/espace-client" label="Retour à mon espace client"/>
 
@@ -140,7 +140,7 @@ function DiagnosticContent() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nom" name="name" value={draft.name} onChange={(value) => update("name", value)} required/>
           <Field label="Téléphone" name="phone" value={draft.phone} onChange={(value) => update("phone", value)} required type="tel"/>
-          <Field label="Email" name="email" value={draft.email} onChange={(value) => update("email", value)} required type="email"/>
+          <Field label="Adresse e-mail" name="email" value={draft.email} onChange={(value) => update("email", value)} required type="email"/>
           <Field label="Adresse" name="address" value={draft.address} onChange={(value) => update("address", value)}/>
           <Field label="Code postal" name="postalCode" value={draft.postalCode} onChange={(value) => update("postalCode", value)} required/>
           <Field label="Ville" name="city" value={draft.city} onChange={(value) => update("city", value)} required/>

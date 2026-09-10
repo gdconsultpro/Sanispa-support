@@ -59,7 +59,7 @@ export default function ResumePage() {
         }
     }
     return (<AppShell compact>
-      <StepHeader eyebrow="Étape 4" title="Résumé et orientation" description="Vérifiez les informations, puis choisissez la suite souhaitée pour votre demande SANISPA."/>
+      <StepHeader eyebrow="Étape 4" title="Résumé et orientation" description="Vérifiez votre saisie et choisissez une option. Un brouillon enregistré n’est pas encore une demande envoyée. Le bouton « Envoyer ma demande » lance son envoi à SANISPA ; attendez la confirmation."/>
       <BackLink href="/upload"/>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
@@ -93,7 +93,7 @@ export default function ResumePage() {
 
           {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
           <Button type="button" onClick={submit} disabled={saving} className="w-full">
-            {saving ? "Enregistrement..." : "Valider la demande"}
+            {saving ? "Envoi de la demande…" : "Envoyer ma demande"}
           </Button>
         </aside>
       </div>

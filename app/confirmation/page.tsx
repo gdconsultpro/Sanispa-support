@@ -14,7 +14,7 @@ export default function Confirmation() { const [id, setId] = useState(""); const
     }) => d.id === requested))
         throw new Error();
     setId(requested);
-    setMessage("Votre demande a bien été enregistrée. Vous pouvez suivre sa prise en charge dans votre espace client.");
+    setMessage("Votre demande a bien été envoyée à SANISPA et enregistrée. Retrouvez son état et votre résumé PDF dans votre espace client.");
     clearDraft();
 }
 catch {

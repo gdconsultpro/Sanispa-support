@@ -45,20 +45,20 @@ export default function InscriptionPage() {
             if (error)
                 throw error;
             update("password", "");
-            setMessage("Vérifiez votre boîte mail et vos indésirables pour confirmer votre adresse. Si vous avez déjà un compte, utilisez la connexion ou la réinitialisation du mot de passe.");
+            setMessage("Consultez votre boîte e-mail et vos courriers indésirables, puis ouvrez le lien de confirmation de votre adresse. Si vous avez déjà un compte, utilisez la connexion ou la réinitialisation du mot de passe.");
         }
         catch {
             setError("Création du compte impossible pour le moment. Vérifiez l’adresse et le mot de passe, puis réessayez.");
         } finally { setBusy(false); }
     }
     return (<AppShell compact>
-      <StepHeader eyebrow="Espace client" title="Créer un compte" description="Vos informations pourront être réutilisées lors de vos prochaines demandes."/>
+      <StepHeader eyebrow="Espace client" title="Créer un compte" description="Vos coordonnées pourront être réutilisées lors de vos prochaines demandes. Les champs marqués d’un * sont obligatoires ; les autres sont facultatifs."/>
       <form onSubmit={submit} className="space-y-4 rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Prénom" name="firstName" value={form.firstName} onChange={(value) => update("firstName", value)} required/>
           <Field label="Nom" name="lastName" value={form.lastName} onChange={(value) => update("lastName", value)} required/>
           <Field label="Téléphone" name="phone" value={form.phone} onChange={(value) => update("phone", value)} required/>
-          <Field label="Email" name="email" type="email" value={form.email} onChange={(value) => update("email", value)} required/>
+          <Field label="Adresse e-mail" name="email" type="email" value={form.email} onChange={(value) => update("email", value)} required/>
           <Field label="Mot de passe (12 caractères minimum)" name="password" type="password" minLength={12} maxLength={128} autoComplete="new-password" value={form.password} onChange={(value) => update("password", value)} required/>
           <Field label="Adresse" name="address" value={form.address} onChange={(value) => update("address", value)}/>
           <Field label="Code postal" name="postalCode" value={form.postalCode} onChange={(value) => update("postalCode", value)} required/>

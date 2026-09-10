@@ -120,7 +120,7 @@ export default function WaterAssistantPage() {
               </div>
               <div>
                 <h2 className="font-bold text-sanispa-navy">Données disponibles</h2>
-                <p className="text-sm text-sanispa-steel">Issues du formulaire client.</p>
+                <p className="text-sm text-sanispa-steel">Réponses renseignées dans votre dossier.</p>
               </div>
             </div>
 
@@ -133,21 +133,21 @@ export default function WaterAssistantPage() {
                     <dt className="font-bold text-sanispa-navy">{item.label}</dt>
                     <dd className="mt-1 text-sanispa-steel">{item.value}</dd>
                   </div>))) : (<p className="rounded-md bg-sanispa-ice p-3 text-sm text-sanispa-steel">
-                  Aucune valeur précise n'a encore été renseignée. Vous pouvez les écrire directement dans le chat.
+                  Aucune valeur précise n'a encore été renseignée. Écrivez vos mesures dans la conversation ci-dessous.
                 </p>)}
             </dl>
 
             <p className="mt-4 rounded-md border border-sanispa-line p-3 text-xs leading-5 text-sanispa-steel">
               L'assistant fournit des conseils d'analyse et d'entretien. Il ne remplace pas une analyse professionnelle en magasin ou une intervention technique.
             </p>
-            <Link href="/diagnostic?new=1&problemType=traitement-eau" className="mt-4 block font-bold underline">Demander un suivi à SANISPA</Link>
+            <Link href="/diagnostic?new=1&problemType=traitement-eau" className="mt-4 block font-bold underline">Créer une nouvelle demande à SANISPA</Link>
           </aside>
 
           <section className="flex min-h-[560px] flex-col rounded-md border border-sanispa-line bg-white shadow-soft">
             <div className="border-b border-sanispa-line p-4">
               <h2 className="flex items-center gap-2 font-bold text-sanispa-navy">
                 <Bot size={20} aria-hidden="true"/>
-                Chat SANISPA
+                Conversation avec l'assistant SANISPA
               </h2>
             </div>
 

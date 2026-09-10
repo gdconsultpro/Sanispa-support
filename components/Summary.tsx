@@ -1,4 +1,4 @@
-import { getPhotoRequirements, problemTypes, questionSets, remotePlans } from "@/lib/questions";
+import { getPhotoRequirements, isPhotoRequired, problemTypes, questionSets, remotePlans } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
 
 export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
@@ -14,7 +14,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
         <dl className="grid gap-3 text-sm text-sanispa-steel">
           <SummaryLine label="Nom" value={draft.name} />
           <SummaryLine label="Téléphone" value={draft.phone} />
-          <SummaryLine label="Email" value={draft.email} />
+          <SummaryLine label="Adresse e-mail" value={draft.email} />
           <SummaryLine label="Adresse" value={draft.address || "Non renseignée"} />
           <SummaryLine label="Code postal" value={draft.postalCode} />
           <SummaryLine label="Ville" value={draft.city} />
@@ -50,7 +50,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
         <h2 className="mb-3 text-lg font-bold">Photos jointes</h2>
         <dl className="grid gap-3 text-sm text-sanispa-steel">
           {photos.map((photo) => (
-            <SummaryLine key={photo.id} label={photo.label} value={draft.photos[photo.id] ? "Ajoutée" : "Non ajoutée"} />
+            <SummaryLine key={photo.id} label={photo.label} value={draft.photos[photo.id] ? "Photo ajoutée à votre saisie" : isPhotoRequired(photo.id, draft.problemType) ? "Photo obligatoire manquante" : "Non ajoutée (facultative)"} />
           ))}
         </dl>
       </section>
@@ -59,7 +59,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
         <section className="rounded-md border border-sanispa-line bg-white p-4">
           <h2 className="mb-3 text-lg font-bold">Orientation choisie</h2>
           <p className="text-sm font-semibold text-sanispa-navy">
-            {draft.choice === "intervention" ? "Demande technique gratuite" : draft.choice === "devis" ? "Demande de devis" : "Diagnostic Traitement d'Eau IA"}
+            {draft.choice === "intervention" ? "Demande d'intervention" : draft.choice === "devis" ? "Demande de devis" : "Diagnostic de traitement d'eau IA"}
           </p>
           {plan ? <p className="mt-2 text-sm text-sanispa-steel">{plan.name} - {plan.price} €</p> : null}
         </section>

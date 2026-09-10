@@ -1,5 +1,5 @@
 "use client";
-import { statusLabel, problemLabel } from "@/lib/display-labels";
+import { statusLabel, problemLabel, installationLabel, paymentLabel } from "@/lib/display-labels";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
@@ -180,7 +180,7 @@ export default function EspaceClientPage() {
     async function uploadDocument(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
         if (!selectedFile) {
-            setError("Sélectionnez un document à téléverser.");
+            setError("Sélectionnez un fichier, puis cliquez sur « Ajouter le document ».");
             return;
         }
         setError("");
@@ -247,7 +247,7 @@ export default function EspaceClientPage() {
     }
     if (!token) {
         return (<AppShell compact>
-        <StepHeader eyebrow="Espace client" title="Connectez-vous" description="Retrouvez vos demandes et préremplissez vos prochaines déclarations."/>
+        <StepHeader eyebrow="Espace client" title="Connectez-vous" description="Accédez à vos brouillons, vos demandes et vos documents après connexion."/>
         <div className="flex flex-wrap gap-3">
           <Link href="/acces" className="rounded-md bg-sanispa-navy px-5 py-3 font-bold text-white focus-ring">Se connecter</Link>
           <Link href="/acces" className="rounded-md border border-sanispa-line bg-white px-5 py-3 font-bold text-sanispa-navy focus-ring">Créer un compte</Link>
@@ -262,7 +262,7 @@ export default function EspaceClientPage() {
 
       <div className="grid gap-5">
         {error ? <p className="rounded-md bg-red-50 p-3 text-red-700" role="alert">{error}</p> : null}
-        {drafts.length ? <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft"><h2 className="text-xl font-bold">Mes diagnostics en cours</h2><p className="mt-2 text-sanispa-steel">Reprenez votre saisie là où vous l'avez laissée.</p><div className="mt-4 grid gap-3">{drafts.map(d => <div key={d.id} className="rounded-md bg-sanispa-ice p-4"><p className="font-bold">Diagnostic {d.id.slice(0, 8).toUpperCase()}</p><p className="my-2 text-sm">Enregistré le {new Date(d.updated_at).toLocaleString("fr-FR")}</p><Link className="font-bold text-sanispa-blue underline" href={`/reprendre?id=${d.id}`}>Reprendre mon diagnostic</Link></div>)}</div></section> : null}
+        {drafts.length ? <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft"><h2 className="text-xl font-bold">Mes brouillons</h2><p className="mt-2 text-sanispa-steel">Ces saisies sont enregistrées dans votre espace client. Elles ne sont pas encore envoyées à SANISPA.</p><div className="mt-4 grid gap-3">{drafts.map(d => <div key={d.id} className="rounded-md bg-sanispa-ice p-4"><p className="font-bold">Brouillon {d.id.slice(0, 8).toUpperCase()}</p><p className="my-2 text-sm">Dernière sauvegarde le {new Date(d.updated_at).toLocaleString("fr-FR")}</p><Link className="font-bold text-sanispa-blue underline" href={`/reprendre?id=${d.id}`}>Reprendre mon brouillon</Link></div>)}</div></section> : null}
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">Nouvelle demande d'assistance</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -281,15 +281,15 @@ export default function EspaceClientPage() {
         </section>
 
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold text-sanispa-navy">Mes demandes</h2>
+          <h2 className="text-xl font-bold text-sanispa-navy">Mes demandes envoyées</h2>
           <div className="mt-4 grid gap-3">
             {diagnostics.length ? diagnostics.map((diagnostic) => (<div key={diagnostic.id} className="rounded-md bg-sanispa-ice p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">Dossier n°{diagnostic.id.slice(0, 8).toUpperCase()}</p>
                 <p className="mt-2 font-bold text-sanispa-navy">{problemLabel(diagnostic.problem_type)} · {statusLabel(diagnostic.status)}</p>
-                <p className="text-sm text-sanispa-steel">{new Date(diagnostic.created_at).toLocaleString("fr-FR")} · Paiement : {diagnostic.payment_status ? statusLabel(diagnostic.payment_status) : diagnostic.choice === "remote" ? "À régler" : "Non requis"}</p>
+                <p className="text-sm text-sanispa-steel">{new Date(diagnostic.created_at).toLocaleString("fr-FR")} · Paiement : {paymentLabel(diagnostic.payment_status, diagnostic.choice)}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => downloadDocument({ id: diagnostic.id, kind: "summary", name: `Résumé de demande n°${diagnostic.id.slice(0, 8).toUpperCase()}`, date: diagnostic.created_at, type: "Résumé", problemType: diagnostic.problem_type, status: diagnostic.status, spa: "" })} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
-                    Télécharger le résumé
+                    Télécharger le résumé PDF
                   </button>
                   <Link href={diagnostic.problem_type === "traitement-eau" ? `/paiement?diagnosticId=${diagnostic.id}` : `/diagnostic?new=1&problemType=${diagnostic.problem_type}`} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-blue focus-ring">
                     {diagnostic.problem_type === "traitement-eau" ? "Mon assistance eau" : "Nouvelle demande similaire"}
@@ -313,7 +313,7 @@ export default function EspaceClientPage() {
 
           <div className="mt-4 grid gap-3">
             {spas.map((spa) => (<div key={spa.id} className="rounded-md bg-sanispa-ice p-4 text-sm text-sanispa-steel">
-                <strong className="text-sanispa-navy">{spa.brand}</strong> {spa.model ?? ""} {spa.spa_year ? `· ${spa.spa_year}` : ""} {spa.installation_type ? `· ${spa.installation_type}` : ""}
+                <strong className="text-sanispa-navy">{spa.brand}</strong> {spa.model ?? ""} {spa.spa_year ? `· ${spa.spa_year}` : ""} {spa.installation_type ? `· ${installationLabel(spa.installation_type)}` : ""}
               </div>))}
           </div>
         </section>
@@ -324,16 +324,17 @@ export default function EspaceClientPage() {
           <form onSubmit={uploadDocument} className="mt-4 grid gap-4 rounded-md border border-dashed border-sanispa-line bg-sanispa-ice p-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <SelectField label="Type de document" name="documentType" value={documentForm.documentType} onChange={(value) => setDocumentForm((current) => ({ ...current, documentType: value }))} options={documentTypes.map((type) => ({ value: type, label: type }))}/>
-              <SelectField label="Spa concerné" name="spaId" value={documentForm.spaId} onChange={(value) => setDocumentForm((current) => ({ ...current, spaId: value }))} options={spas.map((spa) => ({ value: spa.id, label: [spa.brand, spa.model].filter(Boolean).join(" - ") }))}/>
-              <SelectField label="Dossier SAV lié" name="diagnosticId" value={documentForm.diagnosticId} onChange={(value) => setDocumentForm((current) => ({ ...current, diagnosticId: value }))} options={diagnostics.map((diagnostic) => ({ value: diagnostic.id, label: `Dossier ${diagnostic.id.slice(0, 8).toUpperCase()} - ${diagnostic.problem_type}` }))}/>
+              <SelectField label="Spa concerné (facultatif)" name="spaId" value={documentForm.spaId} onChange={(value) => setDocumentForm((current) => ({ ...current, spaId: value }))} options={spas.map((spa) => ({ value: spa.id, label: [spa.brand, spa.model].filter(Boolean).join(" - ") }))}/>
+              <SelectField label="Dossier SAV lié (facultatif)" name="diagnosticId" value={documentForm.diagnosticId} onChange={(value) => setDocumentForm((current) => ({ ...current, diagnosticId: value }))} options={diagnostics.map((diagnostic) => ({ value: diagnostic.id, label: `Dossier ${diagnostic.id.slice(0, 8).toUpperCase()} - ${problemLabel(diagnostic.problem_type)}` }))}/>
             </div>
 
             <label onDrop={(event) => { event.preventDefault(); setSelectedFile(event.dataTransfer.files?.[0] ?? null); }} onDragOver={(event) => event.preventDefault()} className="block cursor-pointer rounded-md border border-dashed border-sanispa-line bg-white p-5 text-center text-sm font-semibold text-sanispa-steel">
-              {selectedFile ? selectedFile.name : "Déposer un fichier ici ou cliquer pour sélectionner un document (3 Mo maximum)"}
+              {selectedFile ? selectedFile.name : "Déposez un fichier ici ou cliquez pour le sélectionner (PDF, JPG, PNG, HEIC, HEIF ou Word ; 3 Mo maximum)."}
               <input className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.doc,.docx,application/pdf,image/jpeg,image/png,image/heic,image/heif,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}/>
             </label>
 
-            <Button type="submit" disabled={uploadingDocument}>{uploadingDocument ? "Téléversement..." : "Téléverser un document"}</Button>
+            <p className="text-sm text-sanispa-steel">Le fichier sélectionné sera ajouté à votre espace client après validation avec le bouton ci-dessous.</p>
+            <Button type="submit" disabled={uploadingDocument}>{uploadingDocument ? "Ajout du document…" : "Ajouter le document"}</Button>
           </form>
 
           <div className="mt-4 grid gap-3">
@@ -343,10 +344,10 @@ export default function EspaceClientPage() {
                 <p className="text-sm text-sanispa-steel">Spa : {document.spa}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => downloadDocument(document)} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
-                    Télécharger
+                    Télécharger le document
                   </button>
                   {document.kind === "uploaded" ? (<button onClick={() => deleteDocument(document)} className="rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-bold text-red-700 focus-ring">
-                      Supprimer
+                      Supprimer le document
                     </button>) : null}
                 </div>
               </div>)) : <p className="text-sanispa-steel">Aucun document disponible pour le moment.</p>}
@@ -371,7 +372,7 @@ export default function EspaceClientPage() {
               <Field label="Prénom" name="first_name" value={profile.first_name ?? ""} onChange={(value) => updateProfile("first_name", value)}/>
               <Field label="Nom" name="last_name" value={profile.last_name ?? ""} onChange={(value) => updateProfile("last_name", value)}/>
               <Field label="Téléphone" name="phone" value={profile.phone ?? ""} onChange={(value) => updateProfile("phone", value)}/>
-              <Field label="Email" name="email" value={profile.email ?? ""} onChange={(value) => updateProfile("email", value)}/>
+              <Field label="Adresse e-mail du compte" name="email" value={profile.email ?? ""} onChange={(value) => updateProfile("email", value)}/>
               <Field label="Adresse" name="address" value={profile.address ?? ""} onChange={(value) => updateProfile("address", value)}/>
               <Field label="Code postal" name="postal_code" value={profile.postal_code ?? ""} onChange={(value) => updateProfile("postal_code", value)}/>
               <Field label="Ville" name="city" value={profile.city ?? ""} onChange={(value) => updateProfile("city", value)}/>
@@ -379,6 +380,7 @@ export default function EspaceClientPage() {
               <Field label="Modèle du spa" name="spa_model" value={profile.spa_model ?? ""} onChange={(value) => updateProfile("spa_model", value)}/>
               <Field label="Année approximative" name="spa_year" value={profile.spa_year ?? ""} onChange={(value) => updateProfile("spa_year", value)}/>
               <div className="sm:col-span-2">
+                <p className="mb-3 text-sm text-sanispa-steel">L’adresse e-mail reste celle de votre compte de connexion. Ce formulaire ne permet pas de la modifier.</p>
                 {message ? <p className="mb-3 rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">{message}</p> : null}
                 {error ? <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
                 <Button type="submit" disabled={savingProfile}>{savingProfile ? "Enregistrement..." : "Enregistrer mes informations"}</Button>

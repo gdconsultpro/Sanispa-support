@@ -25,16 +25,16 @@ export default function ConnexionPage() {
             router.push("/auth/retour");
         }
         catch {
-            setError("Connexion impossible. Vérifiez votre email et votre mot de passe.");
+            setError("Connexion impossible. Vérifiez votre adresse e-mail et votre mot de passe. Si nécessaire, utilisez le lien « Mot de passe oublié » ou demandez un lien de connexion.");
         }
         finally {
             setLoading(false);
         }
     }
     return (<AppShell compact>
-      <StepHeader eyebrow="Espace client" title="Connexion" description="Connectez-vous pour retrouver vos demandes, vos spas et vos informations."/>
+      <StepHeader eyebrow="Espace client" title="Connexion" description="Connectez-vous pour retrouver vos demandes, vos documents et les informations de vos spas."/>
       <form onSubmit={submit} className="space-y-4 rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-        <Field label="Email" name="email" type="email" value={email} onChange={setEmail} required/>
+        <Field label="Adresse e-mail" name="email" type="email" value={email} onChange={setEmail} required/>
         <Field label="Mot de passe" name="password" type="password" value={password} onChange={setPassword} required/>
         {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
         <Button type="submit" disabled={loading}>{loading ? "Connexion..." : "Se connecter"}</Button>

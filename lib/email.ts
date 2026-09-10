@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { choiceLabel, photoLabel, problemLabel, statusLabel } from "./display-labels";
 type EmailAnswer = {
     question_label: string;
     answer: string;
@@ -71,7 +72,7 @@ export async function sendDiagnosticNotification(payload: DiagnosticEmailPayload
             from,
             to,
             reply_to: payload.customer.email,
-            subject: `Nouvelle demande SANISPA - ${payload.problemType}`,
+            subject: `Nouvelle demande SANISPA Support - ${problemLabel(payload.problemType)}`,
             html: buildDiagnosticEmail(payload)
         })
     });
@@ -89,7 +90,7 @@ export async function sendCustomerConfirmation(payload: DiagnosticEmailPayload) 
     try {
         const result = await sendTransactionalEmail({
             to: payload.customer.email,
-            subject: "Confirmation de votre demande d'assistance SANISPA",
+            subject: "SANISPA Support - Confirmation de votre demande d'assistance",
             html: buildCustomerConfirmationEmail(payload),
             replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL
         });
@@ -134,7 +135,7 @@ export async function sendPartnerLeadNotification(payload: PartnerLeadNotificati
         try {
             const result = await sendTransactionalEmail({
                 to: partner.email,
-                subject: `Nouveau dossier technique disponible - ${payload.problemType} (${payload.department})`,
+                subject: `SANISPA Support - Nouveau dossier technique - ${problemLabel(payload.problemType)} (${payload.department})`,
                 replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
                 html: buildPartnerLeadEmail(payload, partner)
             });
@@ -180,20 +181,21 @@ export async function sendWaterAssistanceResumeLink({ to, name, resumeUrl, expir
     }
     return sendTransactionalEmail({
         to,
-        subject: "Votre accès assistant traitement d'eau SANISPA",
+        subject: "SANISPA Support - Votre accès à l'assistance pour le traitement de l'eau",
         replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
         html: `
       <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.6;max-width:680px;">
-        <h1>Votre assistant traitement d'eau est disponible</h1>
+        <h1>Votre assistance pour le traitement de l'eau est disponible</h1>
         <p>Bonjour ${escapeHtml(name)},</p>
-        <p>Votre paiement a bien été validé. Vous pouvez reprendre votre assistance traitement d'eau SANISPA sans repayer avec le lien ci-dessous.</p>
+        <p>Vous recevez ce message à la suite de la confirmation de votre paiement pour l'assistance au traitement de l'eau SANISPA Support.</p>
+        <p>Connectez-vous à votre espace client, puis ouvrez votre dossier pour reprendre l'assistance sans effectuer un nouveau paiement pendant sa période de validité.</p>
         <p>
           <a href="${escapeHtml(resumeUrl)}" style="display:inline-block;background:#0a2342;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;font-weight:bold;">
-            Reprendre mon assistance
+            Accéder à mon espace client
           </a>
         </p>
-        <p>Ce lien est valable jusqu'au ${escapeHtml(new Date(expiresAt).toLocaleDateString("fr-FR"))}.</p>
-        <p>Merci pour votre confiance,<br /><strong>L'équipe SANISPA</strong></p>
+        <p>Votre accès à l'assistance est valable jusqu'au ${escapeHtml(new Date(expiresAt).toLocaleDateString("fr-FR"))}.</p>
+        <p>Merci pour votre confiance,<br /><strong>L'équipe SANISPA Support</strong></p>
       </div>
     `
     });
@@ -307,37 +309,38 @@ function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
         .join("");
     const photos = payload.photos
         .map((photo) => photo.public_url
-        ? `<li><a href="${escapeHtml(photo.public_url)}">${escapeHtml(photo.photo_type)}</a></li>`
-        : `<li>${escapeHtml(photo.photo_type)}</li>`)
+        ? `<li><a href="${escapeHtml(photo.public_url)}">${escapeHtml(photoLabel(photo.photo_type))}</a></li>`
+        : `<li>${escapeHtml(photoLabel(photo.photo_type))}</li>`)
         .join("");
     return `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.5;">
-      <h1>Nouvelle demande de pre-diagnostic SANISPA</h1>
+      <h1>Nouvelle demande de pré-diagnostic SANISPA Support</h1>
       <p><strong>Dossier :</strong> ${escapeHtml(payload.diagnosticId)}</p>
+      <p>Vous recevez cette notification car une nouvelle demande client a été enregistrée dans SANISPA Support.</p>
       <h2>Client</h2>
       <p>
         <strong>Nom :</strong> ${escapeHtml(payload.customer.name)}<br />
-        <strong>Telephone :</strong> ${escapeHtml(payload.customer.phone)}<br />
-        <strong>Email :</strong> ${escapeHtml(payload.customer.email)}<br />
+        <strong>Téléphone :</strong> ${escapeHtml(payload.customer.phone)}<br />
+        <strong>E-mail :</strong> ${escapeHtml(payload.customer.email)}<br />
         <strong>Adresse / secteur :</strong> ${escapeHtml(payload.customer.address)}
       </p>
       <h2>Spa</h2>
       <p>
         <strong>Marque :</strong> ${escapeHtml(payload.customer.spaBrand)}<br />
-        <strong>Modele :</strong> ${escapeHtml(payload.customer.spaModel || "Non renseigne")}<br />
-        <strong>Annee :</strong> ${escapeHtml(payload.customer.spaYear)}
+        <strong>Modèle :</strong> ${escapeHtml(payload.customer.spaModel || "Non renseigné")}<br />
+        <strong>Année :</strong> ${escapeHtml(payload.customer.spaYear)}
       </p>
       <h2>Orientation</h2>
       <p>
-        <strong>Type de panne :</strong> ${escapeHtml(payload.problemType)}<br />
-        <strong>Choix client :</strong> ${escapeHtml(payload.choice)}<br />
+        <strong>Type de panne :</strong> ${escapeHtml(problemLabel(payload.problemType))}<br />
+        <strong>Choix client :</strong> ${escapeHtml(choiceLabel(payload.choice))}<br />
         <strong>Formule :</strong> ${escapeHtml(formatPlan(payload.paymentPlan))}
       </p>
-      <h2>Reponses</h2>
+      <h2>Réponses</h2>
       <table style="border-collapse:collapse;width:100%;max-width:760px;">${answers}</table>
       <h2>Photos</h2>
       <ul>${photos}</ul>
-      <p style="margin-top:24px;">Consultez le dashboard admin pour traiter la demande.</p>
+      <p style="margin-top:24px;">Connectez-vous à l'espace d'administration pour consulter le dossier et traiter la demande.</p>
     </div>
   `;
 }
@@ -347,38 +350,40 @@ function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
     const espaceClientUrl = `${baseUrl}/espace-client`;
     const dossierUrl = payload.dossierUrl || espaceClientUrl;
     const summaryPdfUrl = payload.summaryPdfUrl || espaceClientUrl;
-    const isHumanAssistance = payload.choice === "remote" && payload.paymentPlan !== "water";
+    const isWaterAnalysis = payload.choice === "remote" && payload.paymentPlan === "water";
+    const amountLine = customerAmountLine(payload);
     return `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.6;max-width:720px;">
-      <h1 style="margin-bottom:16px;">Confirmation de votre demande d'assistance SANISPA</h1>
+      <h1 style="margin-bottom:16px;">Votre demande est bien enregistrée</h1>
       <p>Bonjour ${escapeHtml(firstName)},</p>
-      <p>Nous avons bien reçu votre demande d'assistance.</p>
+      <p>Vous recevez ce message car votre demande d'assistance a été enregistrée dans SANISPA Support.</p>
       <p>
         <strong>Numéro de dossier :</strong><br />
         ${escapeHtml(payload.diagnosticId)}
       </p>
       <p>
-        <strong>Type de demande :</strong> ${escapeHtml(payload.problemType)}<br />
+        <strong>Type de demande :</strong> ${escapeHtml(problemLabel(payload.problemType))}<br />
         <strong>Formule choisie :</strong> ${escapeHtml(formatPlan(payload.paymentPlan))}<br />
-        <strong>Montant payé :</strong> ${escapeHtml(formatAmount(payload))}<br />
-        <strong>Statut :</strong> ${escapeHtml(payload.status || "Demande enregistrée")}
+        <strong>État :</strong> ${escapeHtml(statusLabel(payload.status || "Demande enregistrée"))}
+        ${amountLine ? `<br />${amountLine}` : ""}
       </p>
-      ${isHumanAssistance
-        ? `<p><strong>Notre équipe vous contactera afin de convenir d'un rendez-vous adapté à votre demande.</strong></p>`
+      <p>Connectez-vous à votre espace client pour consulter votre dossier, suivre son avancement et télécharger son résumé PDF.</p>
+      ${isWaterAnalysis
+        ? `<p>L'accès à l'assistance pour le traitement de l'eau s'active après confirmation du paiement. Vous pouvez consulter son état depuis votre dossier.</p>`
         : ""}
       <p>
         <a href="${escapeHtml(espaceClientUrl)}" style="display:inline-block;background:#0a2342;color:#fff;padding:12px 16px;border-radius:6px;text-decoration:none;font-weight:bold;margin-right:8px;">
           Accéder à mon espace client
         </a>
         <a href="${escapeHtml(dossierUrl)}" style="display:inline-block;background:#eef4f8;color:#0a2342;padding:12px 16px;border-radius:6px;text-decoration:none;font-weight:bold;margin-right:8px;">
-          Voir mon dossier
+          Consulter mon dossier
         </a>
         <a href="${escapeHtml(summaryPdfUrl)}" style="display:inline-block;background:#eef4f8;color:#0a2342;padding:12px 16px;border-radius:6px;text-decoration:none;font-weight:bold;">
-          Voir le résumé PDF
+          Accéder au résumé PDF
         </a>
       </p>
       <p style="margin-top:24px;">
-        SANISPA<br />
+        SANISPA Support<br />
         Réparation et assistance spa
       </p>
     </div>
@@ -397,11 +402,11 @@ function buildPartnerLeadEmail(payload: PartnerLeadNotificationPayload, partner:
         : `<tr><td style="padding:8px;border-bottom:1px solid #d8e1ea;">Aucun descriptif complémentaire renseigné.</td></tr>`;
     return `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.6;max-width:720px;">
-      <h1>Nouveau dossier technique disponible</h1>
+      <h1>Nouveau dossier technique SANISPA Support</h1>
       <p>Bonjour ${escapeHtml(partner.contactName || partner.companyName)},</p>
-      <p>Un nouveau dossier technique correspondant à votre zone est disponible sur SANISPA Support.</p>
+      <p>Vous recevez cette notification car un nouveau dossier technique correspond à votre secteur dans SANISPA Support.</p>
       <p>
-        <strong>Type de panne :</strong> ${escapeHtml(payload.problemType)}<br />
+        <strong>Type de panne :</strong> ${escapeHtml(problemLabel(payload.problemType))}<br />
         <strong>Code postal :</strong> ${escapeHtml(payload.postalCode)}<br />
         <strong>Ville :</strong> ${escapeHtml(payload.city)}<br />
         <strong>Département :</strong> ${escapeHtml(payload.department)}<br />
@@ -411,7 +416,7 @@ function buildPartnerLeadEmail(payload: PartnerLeadNotificationPayload, partner:
       <h2>Descriptif déclaré</h2>
       <table style="border-collapse:collapse;width:100%;max-width:720px;">${answers}</table>
       <p style="margin-top:24px;padding:14px;background:#eef4f8;border-radius:6px;">
-        Le dossier complet devra être débloqué depuis l'espace partenaire pour accéder aux informations détaillées.
+        Connectez-vous à votre espace partenaire pour consulter la disponibilité du dossier et les conditions de déblocage de ses informations détaillées.
       </p>
       <p>SANISPA Support</p>
     </div>
@@ -419,27 +424,21 @@ function buildPartnerLeadEmail(payload: PartnerLeadNotificationPayload, partner:
 }
 function formatPlan(plan?: string | null) {
     if (plan === "photo")
-        return "Assistance Téléphonique - 49 €";
+        return "Assistance téléphonique";
     if (plan === "guided")
-        return "Assistance Guidée via Photos - 89 €";
+        return "Assistance guidée par photos";
     if (plan === "premium")
-        return "Assistance Vidéo / Visio - 129 €";
+        return "Assistance en visioconférence";
     if (plan === "water")
-        return "Diagnostic Traitement d'Eau IA - 9 €";
+        return "Diagnostic du traitement de l'eau par intelligence artificielle";
     return "Non applicable";
 }
-function formatAmount(payload: DiagnosticEmailPayload) {
-    if (typeof payload.amountPaid === "number")
-        return `${payload.amountPaid} €`;
-    if (payload.paymentPlan === "photo")
-        return "49 €";
-    if (payload.paymentPlan === "guided")
-        return "89 €";
-    if (payload.paymentPlan === "premium")
-        return "129 €";
-    if (payload.paymentPlan === "water")
-        return "9 €";
-    return "Non applicable";
+function customerAmountLine(payload: DiagnosticEmailPayload) {
+    const paymentConfirmed = ["paid", "Paiement confirmé", "Paiement validé"].includes(payload.status || "");
+    if (!paymentConfirmed || typeof payload.amountPaid !== "number" || !Number.isFinite(payload.amountPaid) || payload.amountPaid < 0)
+        return "";
+    const amount = payload.amountPaid.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+    return `<strong>Montant payé :</strong> ${escapeHtml(amount)}`;
 }
 function parseEmailAddress(value: string) {
     const match = value.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);

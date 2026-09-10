@@ -52,7 +52,7 @@ export default function QuestionnairePage() {
         }
     }
     return (<AppShell compact>
-      <StepHeader eyebrow="Étape 2" title={`Questionnaire ${problemLabel}`} description="Répondez aux questions visibles. Elles sont adaptées au type de panne sélectionné."/>
+      <StepHeader eyebrow="Étape 2" title={`Questionnaire ${problemLabel}`} description="Répondez aux questions correspondant à votre situation. Les réponses marquées d’un * sont obligatoires ; les autres sont facultatives."/>
       <DraftSave draft={draft} step="/questionnaire"/>
       <BackLink href="/diagnostic"/>
 
