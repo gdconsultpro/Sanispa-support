@@ -51,3 +51,45 @@ test('administrator mutations reject cross-origin and absent-origin requests', (
   }
   assert.doesNotThrow(() => requireSameOrigin(new Request('https://app.example.invalid/api/admin', {method:'POST',headers:{origin:'https://app.example.invalid'}})));
 });
+
+test('switching browser identity revokes only the old administrator session and clears its cookie', async () => {
+  const { PATCH: synchronize } = await import('../app/api/admin/session/route');
+  const { adminCookieName } = await import('../lib/admin-auth');
+  const original = globalThis.fetch;
+  const adminJwt = jwt('aal2');
+  const clientId = '00000000-0000-4000-8000-000000000002';
+  const clientJwt = jwt('aal1', { sub: clientId, session_id:'00000000-0000-4000-8000-000000000051' });
+  const revoked: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+    const token = new Headers(init?.headers).get('authorization')?.replace('Bearer ', '');
+    if (url.pathname === '/auth/v1/user') {
+      if (token !== adminJwt && token !== clientJwt) return Response.json({message:'Invalid JWT',code:'bad_jwt'},{status:401});
+      return Response.json({id:token === adminJwt ? userId : clientId,email_confirmed_at:new Date().toISOString()});
+    }
+    if (url.pathname === '/rest/v1/rpc/private_session_status') {
+      const body = JSON.parse(String(init?.body));
+      return Response.json({active:!revoked.includes(body.p_user===userId ? adminJwt : clientJwt),is_admin:body.p_user===userId,mfa_verified:body.p_user===userId});
+    }
+    if (url.pathname === '/auth/v1/logout') {
+      assert.equal(url.searchParams.get('scope'),'local');
+      revoked.push(token!); return new Response(null,{status:204});
+    }
+    throw new Error(`Unexpected operation ${url.pathname}`);
+  };
+  const syncRequest=(token?:string,origin='https://app.example.invalid')=>new Request('https://app.example.invalid/api/admin/session',{method:'PATCH',headers:{Origin:origin,Cookie:`${adminCookieName}=${adminJwt}`,...(token?{Authorization:`Bearer ${token}`}:{})}});
+  try {
+    const unchanged=await synchronize(syncRequest(adminJwt));
+    assert.equal(unchanged.status,200); assert.equal(unchanged.headers.get('set-cookie'),null); assert.deepEqual(revoked,[]);
+    assert.equal((await synchronize(syncRequest(clientJwt,'https://attacker.example.invalid'))).status,403); assert.deepEqual(revoked,[]);
+    const changed=await synchronize(syncRequest(clientJwt));
+    assert.equal(changed.status,200); assert.equal((await changed.json()).adminCleared,true);
+    assert.match(changed.headers.get('set-cookie')!,/Max-Age=0/); assert.deepEqual(revoked,[adminJwt]);
+    assert.equal((await adminDenied(req(adminJwt)))?.status,401);
+    const again=await synchronize(syncRequest(clientJwt));
+    assert.equal(again.status,200); assert.match(again.headers.get('set-cookie')!,/Max-Age=0/); assert.deepEqual(revoked,[adminJwt]);
+    revoked.length=0;
+    const signedOut=await synchronize(syncRequest());
+    assert.equal(signedOut.status,200); assert.deepEqual(revoked,[adminJwt]);
+  } finally { globalThis.fetch=original; }
+});

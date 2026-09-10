@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { administrator, adminCookieName, clearAdminCookie, requireSameOrigin } from "@/lib/admin-auth";
 import { apiError } from "@/lib/http";
+import { verifySessionToken } from "@/lib/session-auth";
 
 export async function GET(request: Request) {
   try {
@@ -29,4 +30,28 @@ export async function DELETE(request: Request) {
     if (error) throw error;
     return clearAdminCookie(NextResponse.json({ ok: true }));
   } catch (error) { return clearAdminCookie(apiError(error)); }
+}
+
+/** Keep the separate HttpOnly administrator cookie bound to the browser's current session. */
+export async function PATCH(request: Request) {
+  try { requireSameOrigin(request); } catch (error) { return apiError(error); }
+  try {
+    const cookie = request.headers.get("cookie");
+    if (!cookie?.split(";").some(value => value.trim().startsWith(`${adminCookieName}=`)))
+      return NextResponse.json({ ok: true });
+    const previous = await administrator(new Headers({ cookie }), false);
+    const token = request.headers.get("authorization")?.match(/^Bearer (\S+)$/)?.[1];
+    const current = token ? await verifySessionToken(token, previous.supabase) : null;
+    if (current?.user.id === previous.user.id && current.claims.session_id === previous.claims.session_id &&
+        current.isAdmin && current.mfaVerified && current.claims.aal === "aal2")
+      return NextResponse.json({ ok: true });
+    const { error } = await previous.supabase.auth.admin.signOut(previous.token, "local");
+    if (error) throw error;
+    return clearAdminCookie(NextResponse.json({ ok: true, adminCleared: true }));
+  } catch (error) {
+    const response = apiError(error);
+    // An absent, expired or revoked administrator session only requires clearing its cookie.
+    if (response.status === 401 || response.status === 403) return clearAdminCookie(NextResponse.json({ ok: true, adminCleared: true }));
+    return clearAdminCookie(response);
+  }
 }
