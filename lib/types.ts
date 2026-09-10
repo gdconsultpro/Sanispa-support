@@ -40,6 +40,11 @@ export type Question = {
 };
 export type AdminDiagnostic = {
     internal_notes?: string;
+    user_id: string | null;
+    next_action_text: string | null;
+    next_action_at: string | null;
+    next_action_state: "pending" | "done" | "cancelled" | null;
+    next_action_version: number;
     id: string;
     created_at: string;
     status: DiagnosticStatus;

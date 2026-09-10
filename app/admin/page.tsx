@@ -1,3 +1,7 @@
+import { AdminNextAction } from "@/components/AdminNextAction";
+import { AdminDossierHistory } from "@/components/AdminDossierHistory";
+import { AdminClientDocuments } from "@/components/AdminClientDocuments";
+import { hasOverdueAction, loadAdminDossierDetails } from "@/lib/admin-dossier";
 import { SavActions, RetryNotifications } from "@/components/SavActions";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -19,14 +23,18 @@ export default async function AdminPage({ searchParams }: {
         tab?: string;
         q?: string;
         status?: string;
+        actions?: string;
     }>;
 }) {
     try { await administrator(await headers()); }
     catch { redirect("/admin/connexion"); }
     const params = await searchParams;
     const tab = params?.tab === "partners" ? "partners" : "diagnostics";
-    const showArchived = params?.archived === "1";
-    const [{ diagnostics, error }, { partners, error: partnerError }] = await Promise.all([loadDiagnostics(showArchived, params?.q, params?.status), loadPartners()]);
+    const dueOnly = params?.actions === "due";
+    const showArchived = !dueOnly && params?.archived === "1";
+    const [{ diagnostics, error }, { partners, error: partnerError }] = await Promise.all([loadDiagnostics(showArchived, params?.q, params?.status, dueOnly), loadPartners()]);
+    const details = tab === "diagnostics" && diagnostics.length
+        ? await loadAdminDossierDetails(getSupabaseAdmin(), diagnostics) : new Map();
     return (<AppShell compact>
       <StepHeader eyebrow="Administration" title={tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"} description={tab === "partners"
             ? "Gestion des partenaires et des départements couverts pour préparer la future diffusion des dossiers."
@@ -63,17 +71,19 @@ export default async function AdminPage({ searchParams }: {
             </div>) : null}
 
           <RetryNotifications />
-          <form key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}`} className="mb-5 flex flex-wrap gap-3"><input type="hidden" name="archived" value={showArchived ? "1" : "0"}/><input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="min-w-0 max-w-full rounded-md border p-3"/><select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="max-w-full rounded-md border p-3"><option value="">Tous les statuts</option>{["AVAILABLE", "ASSIGNED", "WATER_ANALYSIS", "en analyse", "devis envoyé", "RDV demandé", "terminé", "CLOSED"].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select><button className="rounded-md border bg-white px-4 font-bold">Rechercher</button></form>
+          <form key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}`} className="mb-5 flex flex-wrap gap-3"><input type="hidden" name="archived" value={showArchived ? "1" : "0"}/><input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="min-w-0 max-w-full rounded-md border p-3"/><select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="max-w-full rounded-md border p-3"><option value="">Tous les statuts</option>{["AVAILABLE", "ASSIGNED", "WATER_ANALYSIS", "en analyse", "devis envoyé", "RDV demandé", "terminé", "CLOSED"].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select><select aria-label="Filtrer les prochaines actions" name="actions" defaultValue={dueOnly ? "due" : ""} className="max-w-full rounded-md border p-3"><option value="">Toutes les échéances</option><option value="due">Actions arrivées à échéance · dossiers actifs</option></select><button className="rounded-md border bg-white px-4 py-3 font-bold">Rechercher</button></form>
+          {dueOnly && <p className="mb-4 text-sm text-sanispa-steel">Actions à traiter dont l’échéance est atteinte, sur les dossiers non archivés et non terminés.</p>}
           <div className="grid gap-4">
             {diagnostics.length === 0 && !error ? (<div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">
-                {params?.q || params?.status ? "Aucun dossier ne correspond à ces filtres." : showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
+                {params?.q || params?.status || dueOnly ? "Aucun dossier ne correspond à ces filtres." : showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
               </div>) : null}
 
-            {diagnostics.map((diagnostic) => (<article key={diagnostic.id} className="min-w-0 break-words rounded-md border border-sanispa-line bg-white p-4 shadow-soft">
+            {diagnostics.map((diagnostic) => (<article key={diagnostic.id} id={`dossier-${diagnostic.id}`} className="min-w-0 break-words rounded-md border border-sanispa-line bg-white p-4 shadow-soft">
                 <div className="flex flex-col gap-3 border-b border-sanispa-line pb-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">{new Date(diagnostic.created_at).toLocaleString("fr-FR")}</p>
                     <h2 className="mt-2 text-xl font-bold text-sanispa-navy">{diagnostic.customers?.name ?? "Client inconnu"}</h2>
+                    <p className="mt-1 text-xs text-sanispa-steel">Dossier {diagnostic.id.slice(0, 8).toUpperCase()}</p>
                     <p className="mt-1 text-sm text-sanispa-steel">{diagnostic.customers?.phone} · {diagnostic.customers?.email}</p>
                   </div>
                   <div className="grid min-w-0 gap-2 text-sm sm:text-right">
@@ -84,6 +94,14 @@ export default async function AdminPage({ searchParams }: {
                     {diagnostic.customer_email_error ? (<span className="rounded-md bg-red-50 px-3 py-2 text-left text-red-700 sm:text-right">Erreur email client : {diagnostic.customer_email_error}</span>) : null}
                   </div>
                 </div>
+
+                <section aria-label="Prochaine action du dossier" className={`mt-4 rounded-md border p-3 text-sm ${hasOverdueAction(diagnostic) ? "border-amber-200 bg-amber-50" : "border-sanispa-line bg-sanispa-ice"}`}>
+                  <p className="font-bold">Prochaine action</p>
+                  {diagnostic.next_action_state === "pending" ? <>
+                    <p className="mt-1 whitespace-pre-wrap">{diagnostic.next_action_text}</p>
+                    <p className="mt-1">Échéance : {diagnostic.next_action_at ? formatDueDate(diagnostic.next_action_at) : "Non renseignée"}{hasOverdueAction(diagnostic) ? " · À traiter" : ""}</p>
+                  </> : <p className="mt-1">Aucune action à traiter.</p>}
+                </section>
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-3">
                   <section>
@@ -127,6 +145,11 @@ export default async function AdminPage({ searchParams }: {
                   </section>
                 </div>
 
+                <div className="mt-5 grid min-w-0 gap-5 lg:grid-cols-2">
+                  <AdminClientDocuments diagnosticId={diagnostic.id} documents={details.get(diagnostic.id)?.documents ?? []} error={details.get(diagnostic.id)?.documentsError}/>
+                  <AdminDossierHistory activity={details.get(diagnostic.id)?.activity ?? []} error={details.get(diagnostic.id)?.historyError}/>
+                </div>
+                <AdminNextAction diagnosticId={diagnostic.id} initialAction={{text: diagnostic.next_action_text, dueAt: diagnostic.next_action_at, state: diagnostic.next_action_state, version: diagnostic.next_action_version}}/>
                 <SavActions id={diagnostic.id} initialStatus={diagnostic.status} initialNotes={diagnostic.internal_notes || ""}/>
             <AdminActions diagnosticId={diagnostic.id} archived={Boolean(diagnostic.archived_at)}/>
               </article>))}
@@ -134,13 +157,14 @@ export default async function AdminPage({ searchParams }: {
         </>)}
     </AppShell>);
 }
-async function loadDiagnostics(showArchived: boolean, q?: string, status?: string): Promise<{
+async function loadDiagnostics(showArchived: boolean, q?: string, status?: string, dueOnly = false): Promise<{
     diagnostics: AdminDiagnostic[];
     error: string | null;
 }> {
     try {
         const supabase = getSupabaseAdmin();
-        const { data, error } = await supabase
+        const now = new Date().toISOString();
+        const pageQuery = () => supabase
             .from("diagnostics")
             .select(`
         id,
@@ -158,6 +182,11 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
         customer_email_error,
         archived_at,
         internal_notes,
+        user_id,
+        next_action_text,
+        next_action_at,
+        next_action_state,
+        next_action_version,
         customers (
           name,
           phone,
@@ -177,9 +206,18 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
         )
       `)
             .filter("archived_at", showArchived ? "not.is" : "is", null)
-            .order("created_at", { ascending: false });
-        if (error)
-            throw error;
+            .order("created_at", { ascending: false }).order("id", { ascending: false });
+        const data = [];
+        for (let offset = 0; ; offset += 500) {
+            let query = pageQuery();
+            if (status) query = query.eq("status", status);
+            if (dueOnly) query = query.eq("next_action_state", "pending").lte("next_action_at", now)
+                .neq("status", "terminé").neq("status", "CLOSED");
+            const { data: page, error } = await query.range(offset, offset + 499);
+            if (error) throw error;
+            data.push(...(page ?? []));
+            if (!page || page.length < 500) break;
+        }
         const partners = await loadPartnerNameMap(supabase);
         const leadPurchases = await loadLeadPurchaseMap(supabase);
         const diagnostics = (data ?? []).map((item) => ({
@@ -189,7 +227,7 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
             assigned_partner: item.assigned_partner_id ? partners.get(item.assigned_partner_id) ?? item.assigned_partner_id : null,
             lead_purchase: leadPurchases.get(item.id) ?? null
         })) as unknown as AdminDiagnostic[];
-        const filtered = diagnostics.filter(d => (!status || d.status === status) && (!q || [d.id, d.customers?.name, d.customers?.email, d.customers?.phone].join(" ").toLowerCase().includes(q.toLowerCase())));
+        const filtered = diagnostics.filter(d => (!dueOnly || hasOverdueAction(d)) && (!status || d.status === status) && (!q || [d.id, d.customers?.name, d.customers?.email, d.customers?.phone].join(" ").toLowerCase().includes(q.toLowerCase())));
         for (const diagnostic of filtered)
             diagnostic.diagnostic_photos = await protectedPhotos(supabase, diagnostic.diagnostic_photos);
         return { diagnostics: filtered, error: null };
@@ -250,4 +288,8 @@ function Line({ label, value }: {
       <dt className="font-bold text-sanispa-navy">{label}</dt>
       <dd>{value || "Non renseigné"}</dd>
     </div>);
+}
+
+function formatDueDate(value: string) {
+    return new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(value)) + " (heure de Paris)";
 }
