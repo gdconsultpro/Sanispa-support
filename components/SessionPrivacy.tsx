@@ -15,6 +15,14 @@ export function SessionPrivacy({ children }: { children: React.ReactNode }) {
       if (disposed) return;
       try {
         const changed = reconcileLocalOwner(window.localStorage, userId, previousUser);
+        const path = window.location.pathname;
+        // A remount would reuse the server-rendered administration payload. Discard it
+        // through a full navigation as soon as its browser identity changes or signs out.
+        if ((path === "/admin" || path.startsWith("/admin/")) && path !== "/admin/connexion" && (!userId || (initialized && changed))) {
+          setReady(false);
+          window.location.replace("/admin/connexion");
+          return;
+        }
         // Remount private views, including an assistance conversation open in another tab.
         // Password recovery clears its own fields and must retain its completion message.
         if (initialized && changed && window.location.pathname !== "/nouveau-mot-de-passe") setRevision(value => value + 1);
