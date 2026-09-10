@@ -20,6 +20,7 @@ export default function InscriptionPage() {
         spaModel: "",
         spaYear: ""
     });
+    const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
     function update(key: keyof typeof form, value: string) {
@@ -29,6 +30,8 @@ export default function InscriptionPage() {
         event.preventDefault();
         setError("");
         setMessage("");
+        if(form.password.length < 12 || form.password.length > 128) { setError("Le mot de passe doit contenir entre 12 et 128 caractères."); return; }
+        setBusy(true);
         try {
             const supabase = getSupabaseBrowser();
             const { error } = await supabase.auth.signUp({
@@ -41,11 +44,12 @@ export default function InscriptionPage() {
             });
             if (error)
                 throw error;
-            setMessage("Compte créé. Vérifiez votre boîte mail pour confirmer votre adresse.");
+            update("password", "");
+            setMessage("Vérifiez votre boîte mail et vos indésirables pour confirmer votre adresse. Si vous avez déjà un compte, utilisez la connexion ou la réinitialisation du mot de passe.");
         }
         catch {
-            setError("Création du compte impossible pour le moment.");
-        }
+            setError("Création du compte impossible pour le moment. Vérifiez l’adresse et le mot de passe, puis réessayez.");
+        } finally { setBusy(false); }
     }
     return (<AppShell compact>
       <StepHeader eyebrow="Espace client" title="Créer un compte" description="Vos informations pourront être réutilisées lors de vos prochaines demandes."/>
@@ -55,7 +59,7 @@ export default function InscriptionPage() {
           <Field label="Nom" name="lastName" value={form.lastName} onChange={(value) => update("lastName", value)} required/>
           <Field label="Téléphone" name="phone" value={form.phone} onChange={(value) => update("phone", value)} required/>
           <Field label="Email" name="email" type="email" value={form.email} onChange={(value) => update("email", value)} required/>
-          <Field label="Mot de passe" name="password" type="password" value={form.password} onChange={(value) => update("password", value)} required/>
+          <Field label="Mot de passe (12 caractères minimum)" name="password" type="password" minLength={12} maxLength={128} autoComplete="new-password" value={form.password} onChange={(value) => update("password", value)} required/>
           <Field label="Adresse" name="address" value={form.address} onChange={(value) => update("address", value)}/>
           <Field label="Code postal" name="postalCode" value={form.postalCode} onChange={(value) => update("postalCode", value)} required/>
           <Field label="Ville" name="city" value={form.city} onChange={(value) => update("city", value)} required/>
@@ -65,7 +69,7 @@ export default function InscriptionPage() {
         </div>
         {message ? <p className="rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">{message}</p> : null}
         {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
-        <Button type="submit">Créer mon compte</Button>
+        <Button type="submit" disabled={busy}>{busy ? "Création…" : "Créer mon compte"}</Button>
         <Link href="/connexion" className="block text-sm font-semibold text-sanispa-blue">J'ai déjà un compte</Link>
       </form>
     </AppShell>);

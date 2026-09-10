@@ -7,6 +7,7 @@ export function AuthArrival() {
   const [error, setError] = useState("");
   useEffect(() => {
     const hash = new URLSearchParams(window.location.hash.slice(1));
+    if (hash.has("error")) { window.history.replaceState(null, "", "/"); setError("Ce lien a expiré ou a déjà été utilisé. Demandez un nouvel e-mail de connexion."); return; }
     if (!hash.has("access_token")) return;
     const type = hash.get("type");
     getSupabaseBrowser().auth.getSession().then(({ data, error }) => {

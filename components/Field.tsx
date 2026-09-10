@@ -8,9 +8,12 @@ type FieldProps = {
   required?: boolean;
   type?: string;
   placeholder?: string;
+  minLength?: number;
+  maxLength?: number;
+  autoComplete?: string;
 };
 
-export function Field({ label, name, value, onChange, required, type = "text", placeholder }: FieldProps) {
+export function Field({ label, name, value, onChange, required, type = "text", placeholder, minLength, maxLength, autoComplete }: FieldProps) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-bold text-sanispa-navy">
@@ -25,6 +28,9 @@ export function Field({ label, name, value, onChange, required, type = "text", p
         required={required}
         type={type}
         placeholder={placeholder}
+        minLength={minLength}
+        maxLength={maxLength}
+        autoComplete={autoComplete}
       />
     </label>
   );
