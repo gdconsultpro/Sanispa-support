@@ -27,7 +27,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
           <SummaryLine label="Marque" value={draft.spaBrand} />
           <SummaryLine label="Modèle" value={draft.spaModel || "Non connu"} />
           <SummaryLine label="Année" value={draft.spaYear} />
-          <SummaryLine label="Installation" value={draft.installationType} />
+          <SummaryLine label="Installation" value={draft.installationType === "exterieur" ? "Extérieur" : draft.installationType === "interieur" ? "Intérieur" : "Non renseignée"} />
           {draft.powerSupply ? <SummaryLine label="Alimentation" value={draft.powerSupply} /> : null}
         </dl>
       </section>
