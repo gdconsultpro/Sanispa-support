@@ -63,10 +63,10 @@ export default async function AdminPage({ searchParams }: {
             </div>) : null}
 
           <RetryNotifications />
-          <form className="mb-5 flex flex-wrap gap-3"><input type="hidden" name="archived" value={showArchived ? "1" : "0"}/><input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="min-w-0 max-w-full rounded-md border p-3"/><select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="max-w-full rounded-md border p-3"><option value="">Tous les statuts</option>{["AVAILABLE", "ASSIGNED", "WATER_ANALYSIS", "en analyse", "devis envoyé", "RDV demandé", "terminé", "CLOSED"].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select><button className="rounded-md border bg-white px-4 font-bold">Rechercher</button></form>
+          <form key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}`} className="mb-5 flex flex-wrap gap-3"><input type="hidden" name="archived" value={showArchived ? "1" : "0"}/><input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="min-w-0 max-w-full rounded-md border p-3"/><select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="max-w-full rounded-md border p-3"><option value="">Tous les statuts</option>{["AVAILABLE", "ASSIGNED", "WATER_ANALYSIS", "en analyse", "devis envoyé", "RDV demandé", "terminé", "CLOSED"].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select><button className="rounded-md border bg-white px-4 font-bold">Rechercher</button></form>
           <div className="grid gap-4">
             {diagnostics.length === 0 && !error ? (<div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">
-                {showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
+                {params?.q || params?.status ? "Aucun dossier ne correspond à ces filtres." : showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
               </div>) : null}
 
             {diagnostics.map((diagnostic) => (<article key={diagnostic.id} className="min-w-0 break-words rounded-md border border-sanispa-line bg-white p-4 shadow-soft">
