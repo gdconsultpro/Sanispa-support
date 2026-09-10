@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AdminSignOut } from "@/components/AdminSignOut";
 import { administrator } from "@/lib/admin-auth";
+import { choiceLabel, emailStatusLabel, photoLabel, problemLabel, statusLabel } from "@/lib/display-labels";
 import { protectedPhotos } from "@/lib/photos";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
@@ -27,7 +28,7 @@ export default async function AdminPage({ searchParams }: {
     const showArchived = params?.archived === "1";
     const [{ diagnostics, error }, { partners, error: partnerError }] = await Promise.all([loadDiagnostics(showArchived, params?.q, params?.status), loadPartners()]);
     return (<AppShell compact>
-      <StepHeader eyebrow="Dashboard admin" title={tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"} description={tab === "partners"
+      <StepHeader eyebrow="Administration" title={tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"} description={tab === "partners"
             ? "Gestion des partenaires et des départements couverts pour préparer la future diffusion des dossiers."
             : "Vue simple des dossiers clients, avec qualification, département, partenaires concernés, photos, documents et paiement."}/>
 
@@ -62,24 +63,24 @@ export default async function AdminPage({ searchParams }: {
             </div>) : null}
 
           <RetryNotifications />
-          <form className="mb-5 flex flex-wrap gap-3"><input type="hidden" name="archived" value={showArchived ? "1" : "0"}/><input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="rounded-md border p-3"/><select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="rounded-md border p-3"><option value="">Tous les statuts</option>{["AVAILABLE", "ASSIGNED", "WATER_ANALYSIS", "en analyse", "devis envoyé", "RDV demandé", "terminé", "CLOSED"].map(s => <option key={s}>{s}</option>)}</select><button className="rounded-md border bg-white px-4 font-bold">Rechercher</button></form>
+          <form className="mb-5 flex flex-wrap gap-3"><input type="hidden" name="archived" value={showArchived ? "1" : "0"}/><input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="min-w-0 max-w-full rounded-md border p-3"/><select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="max-w-full rounded-md border p-3"><option value="">Tous les statuts</option>{["AVAILABLE", "ASSIGNED", "WATER_ANALYSIS", "en analyse", "devis envoyé", "RDV demandé", "terminé", "CLOSED"].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select><button className="rounded-md border bg-white px-4 font-bold">Rechercher</button></form>
           <div className="grid gap-4">
             {diagnostics.length === 0 && !error ? (<div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">
                 {showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
               </div>) : null}
 
-            {diagnostics.map((diagnostic) => (<article key={diagnostic.id} className="rounded-md border border-sanispa-line bg-white p-4 shadow-soft">
+            {diagnostics.map((diagnostic) => (<article key={diagnostic.id} className="min-w-0 break-words rounded-md border border-sanispa-line bg-white p-4 shadow-soft">
                 <div className="flex flex-col gap-3 border-b border-sanispa-line pb-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">{new Date(diagnostic.created_at).toLocaleString("fr-FR")}</p>
                     <h2 className="mt-2 text-xl font-bold text-sanispa-navy">{diagnostic.customers?.name ?? "Client inconnu"}</h2>
                     <p className="mt-1 text-sm text-sanispa-steel">{diagnostic.customers?.phone} · {diagnostic.customers?.email}</p>
                   </div>
-                  <div className="grid gap-2 text-sm sm:text-right">
-                    <span className="rounded-md bg-sanispa-ice px-3 py-2 font-bold text-sanispa-navy">{diagnostic.status}</span>
-                    <span className="text-sanispa-steel">Type : {diagnostic.request_type ?? "Non renseigné"}</span>
-                    <span className="text-sanispa-steel">Paiement : {diagnostic.payment_status ?? "non requis / non payé"}</span>
-                    <span className="text-sanispa-steel">Email client : {diagnostic.customer_email_status ?? "non suivi"}</span>
+                  <div className="grid min-w-0 gap-2 text-sm sm:text-right">
+                    <span className="rounded-md bg-sanispa-ice px-3 py-2 font-bold text-sanispa-navy">{statusLabel(diagnostic.status)}</span>
+                    <span className="text-sanispa-steel">Type : {statusLabel(diagnostic.request_type)}</span>
+                    <span className="text-sanispa-steel">Paiement : {diagnostic.payment_status ? statusLabel(diagnostic.payment_status) : "Aucun paiement enregistré"}</span>
+                    <span className="text-sanispa-steel">E-mail client : {emailStatusLabel(diagnostic.customer_email_status)}</span>
                     {diagnostic.customer_email_error ? (<span className="rounded-md bg-red-50 px-3 py-2 text-left text-red-700 sm:text-right">Erreur email client : {diagnostic.customer_email_error}</span>) : null}
                   </div>
                 </div>
@@ -88,15 +89,15 @@ export default async function AdminPage({ searchParams }: {
                   <section>
                     <h3 className="text-sm font-bold text-sanispa-navy">Dossier</h3>
                     <dl className="mt-2 grid gap-2 text-sm text-sanispa-steel">
-                      <Line label="Type de panne" value={diagnostic.problem_type}/>
-                      <Line label="Choix client" value={diagnostic.choice ?? "Non renseigné"}/>
+                      <Line label="Type de panne" value={problemLabel(diagnostic.problem_type)}/>
+                      <Line label="Choix client" value={choiceLabel(diagnostic.choice)}/>
                       <Line label="Département" value={diagnostic.department ?? "Non calculé"}/>
                       <Line label="Partenaires concernés" value={diagnostic.matched_partners?.join(", ") || "Aucun partenaire correspondant"}/>
-                      <Line label="Lead acheté" value={diagnostic.lead_purchase?.status === "paid" ? "Oui" : "Non"}/>
+                      <Line label="Dossier acheté par un partenaire" value={diagnostic.lead_purchase?.status === "paid" ? "Oui" : "Non"}/>
                       <Line label="Partenaire assigné" value={diagnostic.assigned_partner ?? "Non assigné"}/>
-                      <Line label="Date achat lead" value={diagnostic.lead_purchase?.paid_at ? new Date(diagnostic.lead_purchase.paid_at).toLocaleString("fr-FR") : "Non acheté"}/>
-                      <Line label="Statut achat lead" value={diagnostic.lead_purchase?.status ?? "Aucun achat"}/>
-                      <Line label="Stripe Checkout lead" value={diagnostic.lead_purchase?.stripe_checkout_session_id ?? "Non renseigné"}/>
+                      <Line label="Date de l’achat partenaire" value={diagnostic.lead_purchase?.paid_at ? new Date(diagnostic.lead_purchase.paid_at).toLocaleString("fr-FR") : "Non acheté"}/>
+                      <Line label="Paiement du partenaire" value={diagnostic.lead_purchase?.status ? statusLabel(diagnostic.lead_purchase.status) : "Aucun achat"}/>
+                      <Line label="Référence de paiement partenaire" value={diagnostic.lead_purchase?.stripe_checkout_session_id ?? "Non renseigné"}/>
                       <Line label="Adresse" value={diagnostic.customers?.address ?? "Non renseignée"}/>
                       <Line label="Spa" value={`${diagnostic.customers?.spa_brand ?? ""} ${diagnostic.customers?.spa_model ?? ""}`.trim()}/>
                     </dl>
@@ -119,8 +120,8 @@ export default async function AdminPage({ searchParams }: {
                     <h3 className="text-sm font-bold text-sanispa-navy">Photos</h3>
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       {diagnostic.diagnostic_photos.map((photo) => photo.public_url ? (<Link key={photo.storage_path} href={photo.public_url} target="_blank" className="group">
-                            <img src={photo.public_url} alt={photo.photo_type} className="h-28 w-full rounded-md object-cover"/>
-                            <span className="mt-1 block text-xs font-semibold text-sanispa-steel group-hover:text-sanispa-blue">{photo.photo_type}</span>
+                            <img src={photo.public_url} alt={photoLabel(photo.photo_type)} className="h-28 w-full rounded-md object-cover"/>
+                            <span className="mt-1 block text-xs font-semibold text-sanispa-steel group-hover:text-sanispa-blue">{photoLabel(photo.photo_type)}</span>
                           </Link>) : null)}
                     </div>
                   </section>
