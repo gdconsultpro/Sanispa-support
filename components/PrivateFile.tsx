@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { authHeaders } from "@/lib/storage";
+import { downloadBlob } from "@/lib/download";
 export function PrivateFile({url,name,photo=false}:{url:string;name:string;photo?:boolean}) {
   const [src,setSrc]=useState("");
   const [error,setError]=useState("");
@@ -19,8 +20,7 @@ export function PrivateFile({url,name,photo=false}:{url:string;name:string;photo
     setBusy(true);setError("");
     try{
       const r=await fetch(url,{headers:await authHeaders()});if(!r.ok)throw Error();
-      const objectUrl=URL.createObjectURL(await r.blob()), link=document.createElement('a');
-      link.href=objectUrl;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+      downloadBlob(await r.blob(),name);
     }catch{setError("Téléchargement impossible. Reconnectez-vous puis réessayez.");}
     finally{setBusy(false);}
   }

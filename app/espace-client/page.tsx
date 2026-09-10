@@ -8,6 +8,7 @@ import { Field, SelectField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
 import { clearDraft, authHeaders } from "@/lib/storage";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { downloadBlob } from "@/lib/download";
 type Profile = {
     first_name: string;
     last_name: string;
@@ -211,19 +212,16 @@ export default function EspaceClientPage() {
         }
     }
     async function downloadDocument(document: ClientDocument) {
+      setError("");
+      try {
         const url = document.kind === "summary" ? `/api/client/documents/${document.id}/pdf` : `/api/client/documents/${document.id}`;
         const response = await fetch(url, { headers: { ...await authHeaders() } });
         if (!response.ok) {
             setError("Téléchargement impossible. Reconnectez-vous et réessayez.");
             return;
         }
-        const blob = await response.blob();
-        const href = URL.createObjectURL(blob);
-        const link = window.document.createElement("a");
-        link.href = href;
-        link.download = document.kind === "summary" ? `${document.name}.pdf` : document.name;
-        link.click();
-        URL.revokeObjectURL(href);
+        downloadBlob(await response.blob(), document.kind === "summary" ? `${document.name}.pdf` : document.name);
+      } catch { setError("Téléchargement impossible. Reconnectez-vous et réessayez."); }
     }
     async function deleteDocument(document: ClientDocument) {
         if (document.kind !== "uploaded")
