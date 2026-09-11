@@ -11,9 +11,7 @@ function dateLabel(value: string) {
 function eventLabel(item: AdminActivity) {
   if (!item.event_type) return `Statut enregistré : ${statusLabel(item.status)}`;
   if (item.event_type === "status_changed") {
-    return item.old_status
-      ? `Statut modifié : ${statusLabel(item.old_status)} → ${statusLabel(item.status)}`
-      : `Statut enregistré : ${statusLabel(item.status)}`;
+    return "Statut modifié";
   }
   const labels: Record<string, string> = {
     notes_updated: "Notes internes modifiées",
@@ -23,6 +21,14 @@ function eventLabel(item: AdminActivity) {
     action_cancelled: "Action annulée"
   };
   return labels[item.event_type] || "Événement de suivi enregistré";
+}
+
+function actorLabel(item: AdminActivity & { actor_name?: string | null }) {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const name = item.actor_name?.trim();
+  if (name && !uuid.test(name)) return name;
+  const actor = item.actor?.trim();
+  return actor && !uuid.test(actor) ? actor : "Auteur non renseigné";
 }
 
 function actionDetails(value: unknown) {
@@ -50,23 +56,32 @@ export function AdminDossierHistory({ activity, error }: {
     return (Number.isFinite(first) ? first : Infinity) - (Number.isFinite(second) ? second : Infinity);
   });
 
-  return <section className="mt-4 min-w-0 border-t border-sanispa-line pt-4">
+  return <section className="min-w-0">
     <h3 className="font-bold text-sanispa-navy">Historique du dossier</h3>
     <p className="mt-1 text-xs text-sanispa-steel">Du plus ancien au plus récent. Dates et échéances affichées à l’heure de Paris.</p>
     {error ? <p className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</p> : null}
     {!activity.length && !error ? <p className="mt-3 text-sm text-sanispa-steel">Aucun événement de suivi enregistré.</p> : null}
-    {ordered.length ? <ol className="mt-3 grid gap-3">
+    {ordered.length ? <ol className="mt-3 divide-y divide-sanispa-line rounded-md border border-sanispa-line">
       {ordered.map(item => {
-        const before = item.event_type?.startsWith("action_") ? actionDetails(item.metadata?.before) : null;
-        const after = item.event_type?.startsWith("action_") ? actionDetails(item.metadata?.after) : null;
-        return <li key={item.id} className="min-w-0 rounded-md border border-sanispa-line bg-sanispa-ice p-3 text-sm text-sanispa-steel">
-          <p className="font-bold text-sanispa-navy">{eventLabel(item)}</p>
-          <p className="mt-1">{dateLabel(item.created_at)}</p>
-          <p className="mt-1 break-all">{item.actor ? `Auteur enregistré : ${item.actor}` : "Auteur non renseigné"}</p>
-          {before || after ? <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {before ? <div className="min-w-0 rounded-md bg-white p-3"><p className="mb-1 font-bold text-sanispa-navy">Avant</p>{before}</div> : null}
-            {after ? <div className="min-w-0 rounded-md bg-white p-3"><p className="mb-1 font-bold text-sanispa-navy">Après</p>{after}</div> : null}
-          </div> : null}
+        const before = item.event_type?.startsWith("action_") ? actionDetails(item.metadata?.before)
+          : item.event_type === "status_changed" && item.old_status ? <p>{statusLabel(item.old_status)}</p> : null;
+        const after = item.event_type?.startsWith("action_") ? actionDetails(item.metadata?.after)
+          : item.event_type === "status_changed" && item.status ? <p>{statusLabel(item.status)}</p> : null;
+        return <li key={item.id} className="min-w-0 p-3 text-sm text-sanispa-steel sm:p-4">
+          <div className="grid min-w-0 gap-1 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-x-4">
+            <p className="text-xs leading-5">{dateLabel(item.created_at)}</p>
+            <div className="min-w-0">
+              <p className="font-bold text-sanispa-navy">{eventLabel(item)}</p>
+              <p className="mt-0.5 break-words text-xs">{actorLabel(item)}</p>
+            </div>
+          </div>
+          {before || after ? <details className="mt-2 min-w-0 sm:ml-44">
+            <summary className="focus-ring w-fit cursor-pointer rounded text-xs font-bold text-sanispa-blue">Voir les détails de la modification</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {before ? <div className="min-w-0 rounded-md bg-sanispa-ice p-3"><p className="mb-1 font-bold text-sanispa-navy">Avant</p>{before}</div> : null}
+              {after ? <div className="min-w-0 rounded-md bg-sanispa-ice p-3"><p className="mb-1 font-bold text-sanispa-navy">Après</p>{after}</div> : null}
+            </div>
+          </details> : null}
         </li>;
       })}
     </ol> : null}

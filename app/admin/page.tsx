@@ -1,22 +1,22 @@
-import { AdminNextAction } from "@/components/AdminNextAction";
-import { AdminDossierHistory } from "@/components/AdminDossierHistory";
-import { AdminClientDocuments } from "@/components/AdminClientDocuments";
+import { AdminRequests } from "@/components/AdminRequests";
+import { diagnosticPanels } from "@/components/AdminDiagnosticPanels";
 import { hasOverdueAction, loadAdminDossierDetails } from "@/lib/admin-dossier";
-import { SavActions, RetryNotifications } from "@/components/SavActions";
+import { adminRequestSubject } from "@/lib/admin-presentation";
+import { RetryNotifications } from "@/components/SavActions";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AdminSignOut } from "@/components/AdminSignOut";
 import { administrator } from "@/lib/admin-auth";
-import { choiceLabel, emailStatusLabel, photoLabel, problemLabel, statusLabel } from "@/lib/display-labels";
+import { statusLabel } from "@/lib/display-labels";
 import { protectedPhotos } from "@/lib/photos";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
-import { AdminActions } from "@/components/AdminActions";
 import { PartnerAdmin } from "@/components/PartnerAdmin";
-import { StepHeader } from "@/components/StepHeader";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { AdminDiagnostic, PartnerAdminItem } from "@/lib/types";
+
 export const dynamic = "force-dynamic";
+
 export default async function AdminPage({ searchParams }: {
     searchParams?: Promise<{
         archived?: string;
@@ -35,127 +35,77 @@ export default async function AdminPage({ searchParams }: {
     const [{ diagnostics, error }, { partners, error: partnerError }] = await Promise.all([loadDiagnostics(showArchived, params?.q, params?.status, dueOnly), loadPartners()]);
     const details = tab === "diagnostics" && diagnostics.length
         ? await loadAdminDossierDetails(getSupabaseAdmin(), diagnostics) : new Map();
-    return (<AppShell compact>
-      <StepHeader eyebrow="Administration" title={tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"} description={tab === "partners"
+    function viewUrl(archived: boolean) {
+        const query = new URLSearchParams();
+        if (params?.q) query.set("q", params.q);
+        if (params?.status) query.set("status", params.status);
+        if (archived) query.set("archived", "1");
+        else if (dueOnly) query.set("actions", "due");
+        return query.size ? `/admin?${query}` : "/admin";
+    }
+    const navClass = (active: boolean) => `focus-ring inline-flex min-h-11 items-center rounded-md border px-4 py-2 text-sm font-bold ${active ? "border-sanispa-blue bg-white text-sanispa-navy" : "border-sanispa-line text-sanispa-steel hover:bg-white"}`;
+    return <AppShell compact>
+      <header className="mb-4">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">Administration</p>
+        <h1 className="mt-1 text-2xl font-bold text-sanispa-navy sm:text-3xl">{tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"}</h1>
+        <p className="mt-2 text-sm text-sanispa-steel">{tab === "partners"
             ? "Gestion des partenaires et des départements couverts pour préparer la future diffusion des dossiers."
-            : "Vue simple des dossiers clients, avec qualification, département, partenaires concernés, photos, documents et paiement."}/>
-
+            : "Repérez le client et le motif, puis ouvrez le dossier pour le consulter ou le traiter."}</p>
+      </header>
       <AdminSignOut />
-      <div className="mb-5 flex flex-wrap gap-2">
-        <Link href="/admin" className={`rounded-md border px-4 py-2 text-sm font-bold focus-ring ${tab === "diagnostics" ? "border-sanispa-blue bg-white text-sanispa-navy" : "border-sanispa-line text-sanispa-steel"}`}>
-          Demandes
-        </Link>
-        <Link href="/admin?tab=partners" className={`rounded-md border px-4 py-2 text-sm font-bold focus-ring ${tab === "partners" ? "border-sanispa-blue bg-white text-sanispa-navy" : "border-sanispa-line text-sanispa-steel"}`}>
-          Partenaires
-        </Link>
-        {tab === "diagnostics" ? (<>
-            <Link href="/admin" className={`rounded-md border px-4 py-2 text-sm font-bold focus-ring ${!showArchived ? "border-sanispa-blue bg-white text-sanispa-navy" : "border-sanispa-line text-sanispa-steel"}`}>
-              Actives
-            </Link>
-            <Link href="/admin?archived=1" className={`rounded-md border px-4 py-2 text-sm font-bold focus-ring ${showArchived ? "border-sanispa-blue bg-white text-sanispa-navy" : "border-sanispa-line text-sanispa-steel"}`}>
-              Archivées
-            </Link>
-          </>) : null}
-      </div>
-
-      {tab === "partners" ? (<>
-          {partnerError ? (<div className="mb-5 rounded-md border border-sanispa-line bg-white p-5 text-sm leading-6 text-sanispa-steel">
-              <p className="font-bold text-sanispa-navy">Tables partenaires non configurées.</p>
-              <p className="mt-2">{partnerError}</p>
-            </div>) : null}
-          <PartnerAdmin initialPartners={partners}/>
-        </>) : (<>
-          {error ? (<div className="rounded-md border border-sanispa-line bg-white p-5 text-sm leading-6 text-sanispa-steel">
-              <p className="font-bold text-sanispa-navy">Supabase n'est pas encore configuré.</p>
-              <p className="mt-2">{error}</p>
-            </div>) : null}
-
-          <RetryNotifications />
-          <form key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}`} className="mb-5 flex flex-wrap gap-3"><input type="hidden" name="archived" value={showArchived ? "1" : "0"}/><input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="min-w-0 max-w-full rounded-md border p-3"/><select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="max-w-full rounded-md border p-3"><option value="">Tous les statuts</option>{["AVAILABLE", "ASSIGNED", "WATER_ANALYSIS", "en analyse", "devis envoyé", "RDV demandé", "terminé", "CLOSED"].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select><select aria-label="Filtrer les prochaines actions" name="actions" defaultValue={dueOnly ? "due" : ""} className="max-w-full rounded-md border p-3"><option value="">Toutes les échéances</option><option value="due">Actions arrivées à échéance · dossiers actifs</option></select><button className="rounded-md border bg-white px-4 py-3 font-bold">Rechercher</button></form>
-          {dueOnly && <p className="mb-4 text-sm text-sanispa-steel">Actions à traiter dont l’échéance est atteinte, sur les dossiers non archivés et non terminés.</p>}
-          <div className="grid gap-4">
-            {diagnostics.length === 0 && !error ? (<div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">
-                {params?.q || params?.status || dueOnly ? "Aucun dossier ne correspond à ces filtres." : showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
-              </div>) : null}
-
-            {diagnostics.map((diagnostic) => (<article key={diagnostic.id} id={`dossier-${diagnostic.id}`} className="min-w-0 break-words rounded-md border border-sanispa-line bg-white p-4 shadow-soft">
-                <div className="flex flex-col gap-3 border-b border-sanispa-line pb-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">{new Date(diagnostic.created_at).toLocaleString("fr-FR")}</p>
-                    <h2 className="mt-2 text-xl font-bold text-sanispa-navy">{diagnostic.customers?.name ?? "Client inconnu"}</h2>
-                    <p className="mt-1 text-xs text-sanispa-steel">Dossier {diagnostic.id.slice(0, 8).toUpperCase()}</p>
-                    <p className="mt-1 text-sm text-sanispa-steel">{diagnostic.customers?.phone} · {diagnostic.customers?.email}</p>
-                  </div>
-                  <div className="grid min-w-0 gap-2 text-sm sm:text-right">
-                    <span className="rounded-md bg-sanispa-ice px-3 py-2 font-bold text-sanispa-navy">{statusLabel(diagnostic.status)}</span>
-                    <span className="text-sanispa-steel">Type : {statusLabel(diagnostic.request_type)}</span>
-                    <span className="text-sanispa-steel">Paiement : {diagnostic.payment_status ? statusLabel(diagnostic.payment_status) : "Aucun paiement enregistré"}</span>
-                    <span className="text-sanispa-steel">E-mail client : {emailStatusLabel(diagnostic.customer_email_status)}</span>
-                    {diagnostic.customer_email_error ? (<span className="rounded-md bg-red-50 px-3 py-2 text-left text-red-700 sm:text-right">Erreur email client : {diagnostic.customer_email_error}</span>) : null}
-                  </div>
-                </div>
-
-                <section aria-label="Prochaine action du dossier" className={`mt-4 rounded-md border p-3 text-sm ${hasOverdueAction(diagnostic) ? "border-amber-200 bg-amber-50" : "border-sanispa-line bg-sanispa-ice"}`}>
-                  <p className="font-bold">Prochaine action</p>
-                  {diagnostic.next_action_state === "pending" ? <>
-                    <p className="mt-1 whitespace-pre-wrap">{diagnostic.next_action_text}</p>
-                    <p className="mt-1">Échéance : {diagnostic.next_action_at ? formatDueDate(diagnostic.next_action_at) : "Non renseignée"}{hasOverdueAction(diagnostic) ? " · À traiter" : ""}</p>
-                  </> : <p className="mt-1">Aucune action à traiter.</p>}
-                </section>
-
-                <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                  <section>
-                    <h3 className="text-sm font-bold text-sanispa-navy">Dossier</h3>
-                    <dl className="mt-2 grid gap-2 text-sm text-sanispa-steel">
-                      <Line label="Type de panne" value={problemLabel(diagnostic.problem_type)}/>
-                      <Line label="Choix client" value={choiceLabel(diagnostic.choice)}/>
-                      <Line label="Département" value={diagnostic.department ?? "Non calculé"}/>
-                      <Line label="Partenaires concernés" value={diagnostic.matched_partners?.join(", ") || "Aucun partenaire correspondant"}/>
-                      <Line label="Dossier acheté par un partenaire" value={diagnostic.lead_purchase?.status === "paid" ? "Oui" : "Non"}/>
-                      <Line label="Partenaire assigné" value={diagnostic.assigned_partner ?? "Non assigné"}/>
-                      <Line label="Date de l’achat partenaire" value={diagnostic.lead_purchase?.paid_at ? new Date(diagnostic.lead_purchase.paid_at).toLocaleString("fr-FR") : "Non acheté"}/>
-                      <Line label="Paiement du partenaire" value={diagnostic.lead_purchase?.status ? statusLabel(diagnostic.lead_purchase.status) : "Aucun achat"}/>
-                      <Line label="Référence de paiement partenaire" value={diagnostic.lead_purchase?.stripe_checkout_session_id ?? "Non renseigné"}/>
-                      <Line label="Adresse" value={diagnostic.customers?.address ?? "Non renseignée"}/>
-                      <Line label="Spa" value={`${diagnostic.customers?.spa_brand ?? ""} ${diagnostic.customers?.spa_model ?? ""}`.trim()}/>
-                    </dl>
-                    <a href={`/api/admin/diagnostics/${diagnostic.id}/pdf`} className="mt-3 inline-flex rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
-                      Télécharger résumé PDF
-                    </a>
-                  </section>
-
-                  <section>
-                    <h3 className="text-sm font-bold text-sanispa-navy">Réponses</h3>
-                    <div className="mt-2 grid max-h-64 gap-2 overflow-auto text-sm text-sanispa-steel">
-                      {diagnostic.diagnostic_answers.map((answer) => (<div key={`${diagnostic.id}-${answer.question_label}`} className="rounded-md bg-sanispa-ice p-3">
-                          <p className="font-bold text-sanispa-navy">{answer.question_label}</p>
-                          <p className="mt-1">{answer.answer}</p>
-                        </div>))}
-                    </div>
-                  </section>
-
-                  <section>
-                    <h3 className="text-sm font-bold text-sanispa-navy">Photos</h3>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {diagnostic.diagnostic_photos.map((photo) => photo.public_url ? (<Link key={photo.storage_path} href={photo.public_url} target="_blank" className="group">
-                            <img src={photo.public_url} alt={photoLabel(photo.photo_type)} className="h-28 w-full rounded-md object-cover"/>
-                            <span className="mt-1 block text-xs font-semibold text-sanispa-steel group-hover:text-sanispa-blue">{photoLabel(photo.photo_type)}</span>
-                          </Link>) : null)}
-                    </div>
-                  </section>
-                </div>
-
-                <div className="mt-5 grid min-w-0 gap-5 lg:grid-cols-2">
-                  <AdminClientDocuments diagnosticId={diagnostic.id} documents={details.get(diagnostic.id)?.documents ?? []} error={details.get(diagnostic.id)?.documentsError}/>
-                  <AdminDossierHistory activity={details.get(diagnostic.id)?.activity ?? []} error={details.get(diagnostic.id)?.historyError}/>
-                </div>
-                <AdminNextAction diagnosticId={diagnostic.id} initialAction={{text: diagnostic.next_action_text, dueAt: diagnostic.next_action_at, state: diagnostic.next_action_state, version: diagnostic.next_action_version}}/>
-                <SavActions id={diagnostic.id} initialStatus={diagnostic.status} initialNotes={diagnostic.internal_notes || ""}/>
-            <AdminActions diagnosticId={diagnostic.id} archived={Boolean(diagnostic.archived_at)}/>
-              </article>))}
+      <nav aria-label="Rubriques de l’administration" className="mb-4 flex flex-wrap gap-2">
+        <Link href="/admin" aria-current={tab === "diagnostics" ? "page" : undefined} className={navClass(tab === "diagnostics")}>Demandes</Link>
+        <Link href="/admin?tab=partners" aria-current={tab === "partners" ? "page" : undefined} className={navClass(tab === "partners")}>Partenaires</Link>
+      </nav>
+      {tab === "partners" ? <>
+        {partnerError ? <div className="mb-5 rounded-md border border-sanispa-line bg-white p-5 text-sm leading-6 text-sanispa-steel">
+          <p className="font-bold text-sanispa-navy">Tables partenaires non configurées.</p><p className="mt-2">{partnerError}</p>
+        </div> : null}
+        <PartnerAdmin initialPartners={partners}/>
+      </> : <>
+        {error ? <div role="alert" className="mb-4 rounded-md border border-red-200 bg-white p-4 text-sm text-sanispa-steel">
+          <p className="font-bold text-sanispa-navy">Le chargement des demandes a échoué.</p><p className="mt-2">{error}</p>
+        </div> : null}
+        <section aria-label="Recherche et filtres des demandes" className="mb-5 rounded-lg border border-sanispa-line bg-sanispa-ice p-3 sm:p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <nav aria-label="Demandes actives ou archivées" className="flex gap-2">
+              <Link href={viewUrl(false)} aria-current={!showArchived ? "page" : undefined} className={navClass(!showArchived)}>Actives</Link>
+              <Link href={viewUrl(true)} aria-current={showArchived ? "page" : undefined} className={navClass(showArchived)}>Archivées</Link>
+            </nav>
+            <details className="min-w-0 text-sm text-sanispa-steel">
+              <summary className="focus-ring cursor-pointer rounded py-2 font-semibold">Notifications</summary>
+              <div className="mt-2"><RetryNotifications /></div>
+            </details>
           </div>
-        </>)}
-    </AppShell>);
+          <form key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}`} className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.3fr)_auto]">
+            <input type="hidden" name="archived" value={showArchived ? "1" : "0"}/>
+            <input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="focus-ring min-h-11 min-w-0 w-full rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm"/>
+            <select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="focus-ring min-h-11 min-w-0 w-full rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm">
+              <option value="">Tous les statuts</option>{["AVAILABLE", "ASSIGNED", "WATER_ANALYSIS", "en analyse", "devis envoyé", "RDV demandé", "terminé", "CLOSED"].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
+            </select>
+            <select aria-label="Filtrer les prochaines actions" name="actions" defaultValue={dueOnly ? "due" : ""} className="focus-ring min-h-11 min-w-0 w-full rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm">
+              <option value="">Toutes les échéances</option><option value="due">Actions échues · dossiers actifs</option>
+            </select>
+            <button className="focus-ring min-h-11 rounded-md bg-sanispa-blue px-4 py-2 text-sm font-bold text-white hover:bg-sanispa-navy">Rechercher</button>
+          </form>
+          {dueOnly ? <p className="mt-3 text-xs text-sanispa-steel">Actions à traiter dont l’échéance est atteinte, sur les dossiers non archivés et non terminés.</p> : null}
+        </section>
+        {!error ? <AdminRequests key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}`} items={diagnostics.map(diagnostic => ({
+          id: diagnostic.id,
+          shortId: diagnostic.id.slice(0, 8).toUpperCase(),
+          clientName: diagnostic.customers?.name || "Client non renseigné",
+          subject: adminRequestSubject(diagnostic),
+          createdAt: diagnostic.created_at,
+          status: diagnostic.status,
+          dueAt: diagnostic.next_action_state === "pending" ? diagnostic.next_action_at : null,
+          overdue: hasOverdueAction(diagnostic),
+          panels: diagnosticPanels(diagnostic, details.get(diagnostic.id))
+        }))}/> : null}
+        {!diagnostics.length && !error ? <p className="rounded-md border border-sanispa-line bg-white p-5 text-sm text-sanispa-steel">
+          {params?.q || params?.status || dueOnly ? "Aucun dossier ne correspond à ces filtres." : showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
+        </p> : null}
+      </>}
+    </AppShell>;
 }
 async function loadDiagnostics(showArchived: boolean, q?: string, status?: string, dueOnly = false): Promise<{
     diagnostics: AdminDiagnostic[];
@@ -196,6 +146,7 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
           spa_model
         ),
         diagnostic_answers (
+          question_key,
           question_label,
           answer
         ),
@@ -279,17 +230,4 @@ async function loadLeadPurchaseMap(supabase: any) {
         }
     }
     return purchases;
-}
-function Line({ label, value }: {
-    label: string;
-    value: string;
-}) {
-    return (<div>
-      <dt className="font-bold text-sanispa-navy">{label}</dt>
-      <dd>{value || "Non renseigné"}</dd>
-    </div>);
-}
-
-function formatDueDate(value: string) {
-    return new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(value)) + " (heure de Paris)";
 }
