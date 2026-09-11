@@ -28,7 +28,7 @@ export async function POST(request: Request) {
         }
         const isWaterAnalysis = payload.problemType === "traitement-eau" && payload.choice === "remote";
         const department = getDepartmentFromPostalCode(payload.postalCode);
-        const partnerIds = isWaterAnalysis ? [] : await findPartnerIdsForDepartment(supabase, department);
+        const partnerIds = isWaterAnalysis || payload.choice === "intervention" ? [] : await findPartnerIdsForDepartment(supabase, department);
         const answers = questionSets[payload.problemType].filter(q => payload.answers[q.id] && (!q.showWhen || payload.answers[q.showWhen.questionId] === q.showWhen.equals)).map(q => ({ question_key: q.id, question_label: q.label, answer: payload.answers[q.id] }));
         const photos = [];
         for (const photo of getPhotoRequirements(payload.problemType)) {

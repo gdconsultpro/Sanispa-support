@@ -1,4 +1,5 @@
 import { loadPartnerLeadBilling, billingFromPurchase, purchaseTermsColumns } from "@/lib/partner-billing";
+import { canViewPartnerOffer } from "@/lib/partner-release";
 import { apiError } from "@/lib/http";
 import { protectedPhotos } from "@/lib/photos";
 import { NextResponse } from "next/server";
@@ -23,6 +24,8 @@ export async function GET(request: Request, { params }: {
         .select(`
         id,
         created_at,
+        choice,
+        partner_released_at,
         status,
         request_type,
         archived_at,
@@ -87,6 +90,8 @@ export async function GET(request: Request, { params }: {
         return NextResponse.json({error:"Ce dossier n’est plus disponible à la prise en charge."},{status:403});
     const states = await loadPartnerLeadBilling(supabase,partner,[id]);
     const state = states.get(id)!;
+    if (!canViewPartnerOffer(data, partner.id, state.ownReservation))
+        return NextResponse.json({error:"Cette intervention n’est pas disponible pour votre compte : elle doit être validée par SANISPA et confiée à un partenaire sélectionné."},{status:403});
     const lead = sanitizePartnerLead(data,state.billing);
     lead.canUnlock = !state.reservedElsewhere && (lead.canUnlock || state.ownReservation) && state.billing.available;
     return NextResponse.json({ lead },{headers:{"Cache-Control":"private, no-store"}});

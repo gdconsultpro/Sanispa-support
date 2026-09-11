@@ -389,7 +389,12 @@ function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
     </div>
   `;
 }
-function buildPartnerLeadEmail(payload: PartnerLeadNotificationPayload, partner: PartnerLeadRecipient) {
+export function buildPartnerLeadEmail(payload: PartnerLeadNotificationPayload, partner: PartnerLeadRecipient) {
+    if (!process.env.NEXT_PUBLIC_APP_URL) throw new Error("Partner notification domain missing");
+    const origin = new URL(process.env.NEXT_PUBLIC_APP_URL).origin;
+    if (!/^[a-f0-9-]{36}$/i.test(payload.diagnosticId)) throw new Error("Invalid partner notification destination");
+    const leadUrl = `${origin}/partenaire/leads/${payload.diagnosticId}`;
+    const partnerUrl = `${origin}/partenaire`;
     const answers = payload.answers.length
         ? payload.answers
             .map((answer) => `
@@ -416,8 +421,10 @@ function buildPartnerLeadEmail(payload: PartnerLeadNotificationPayload, partner:
       <h2>Descriptif déclaré</h2>
       <table style="border-collapse:collapse;width:100%;max-width:720px;">${answers}</table>
       <p style="margin-top:24px;padding:14px;background:#eef4f8;border-radius:6px;">
-        Connectez-vous à votre espace partenaire pour consulter la disponibilité du dossier et les conditions de déblocage de ses informations détaillées.
+        Consultez la disponibilité de la demande et ses conditions de prise en charge. Une connexion à votre compte partenaire peut être nécessaire. Si la demande n’est plus disponible, votre espace vous l’indiquera.
       </p>
+      <p><a href="${escapeHtml(leadUrl)}" style="display:inline-block;background:#0a2342;color:#ffffff;padding:14px 22px;text-decoration:none;border-radius:6px;font-weight:700;">Consulter la demande</a></p>
+      <p>Si le bouton ne fonctionne pas, ouvrez votre espace partenaire :<br /><a href="${escapeHtml(partnerUrl)}">${escapeHtml(partnerUrl)}</a></p>
       <p>SANISPA Support</p>
     </div>
   `;

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { PartnerAdminItem } from "@/lib/types";
+import { PartnerAccessAdmin } from "@/components/PartnerAccessAdmin";
 import { PartnerLeadBilling } from "@/components/PartnerLeadBilling";
 
 const emptyForm = {
@@ -132,6 +133,7 @@ export function PartnerAdmin({ initialPartners }: { initialPartners: PartnerAdmi
         {editingPartner ? <PartnerLeadBilling key={editingPartner.id} partner={editingPartner}
           onSaved={updated => setPartners(current => current.map(partner => partner.id === updated.id ? updated : partner))} /> :
           <p className="mt-4 text-sm text-sanispa-steel">Les nouveaux partenaires sont créés avec des leads payants. Après l’ajout, ouvrez « Modifier » pour changer ce réglage.</p>}
+        {editingPartner ? <PartnerAccessAdmin key={`access-${editingPartner.id}`} partner={editingPartner} /> : <p className="mt-3 text-sm text-sanispa-steel">Après l’ajout de l’entreprise, ouvrez « Modifier / Accès » pour créer le compte de connexion du contact.</p>}
         {message ? <p className="mt-4 rounded-md bg-sanispa-ice p-3 text-sm font-semibold text-sanispa-navy">{message}</p> : null}
       </section>
 
@@ -161,7 +163,7 @@ export function PartnerAdmin({ initialPartners }: { initialPartners: PartnerAdmi
               </div>
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => editPartner(partner)} className="focus-ring rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy">
-                  Modifier
+                  Modifier / Accès
                 </button>
                 <button type="button" onClick={() => togglePartner(partner)} className="focus-ring rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy">
                   {partner.active ? "Désactiver" : "Réactiver"}

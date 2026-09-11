@@ -38,7 +38,7 @@ export async function GET(request: Request, {params}: {params:Promise<{kind:stri
     if(!allowed && assignedPartner) {
       const {data,error}=await supabase.from('partner_users').select('partner_id,partners!inner(active)').eq('user_id',session.user.id).eq('partner_id',assignedPartner).eq('active',true).eq('partners.active',true).maybeSingle();
       if(error) throw error;
-      allowed=Boolean(data);
+      allowed=Boolean(data) && session.user.app_metadata?.partner_password_change_required !== true;
     }
     if(!allowed) throw new HttpError(404,"Fichier introuvable.");
     const {data,error}=await supabase.storage.from(bucket).download(path);
