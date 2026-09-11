@@ -1,12 +1,15 @@
+import { loadPartnerLeadBilling, billingFromPurchase, purchaseTermsColumns } from "@/lib/partner-billing";
+import { apiError } from "@/lib/http";
 import { protectedPhotos } from "@/lib/photos";
 import { NextResponse } from "next/server";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
-import { sanitizePartnerLead, sanitizeUnlockedPartnerLead } from "@/lib/partner-leads";
+import { partnerLeadStatuses, sanitizePartnerLead, sanitizeUnlockedPartnerLead } from "@/lib/partner-leads";
 export async function GET(request: Request, { params }: {
     params: Promise<{
         id: string;
     }>;
 }) {
+    try {
     const { id } = await params;
     const { user, partner, supabase } = await getAuthenticatedPartner(request);
     if (!user) {
@@ -22,6 +25,7 @@ export async function GET(request: Request, { params }: {
         created_at,
         status,
         request_type,
+        archived_at,
         problem_type,
         department,
         assigned_partner_id,
@@ -66,7 +70,12 @@ export async function GET(request: Request, { params }: {
     if (data.assigned_partner_id === partner.id) {
         data.diagnostic_photos = await protectedPhotos(supabase, data.diagnostic_photos);
         const documents = await loadLeadDocuments(supabase, data.id);
-        return NextResponse.json({ lead: sanitizeUnlockedPartnerLead(data, documents) });
+        const {data:purchase,error:purchaseError} = await supabase.from("lead_purchases").select(purchaseTermsColumns)
+            .eq("request_id",id).eq("partner_id",partner.id).in("status",["paid","granted"]).order("purchased_at",{ascending:false}).limit(1).maybeSingle();
+        if (purchaseError) throw purchaseError;
+        const lead = sanitizeUnlockedPartnerLead(data, documents);
+        if (purchase) lead.billing = billingFromPurchase(purchase);
+        return NextResponse.json({ lead }, {headers:{"Cache-Control":"private, no-store"}});
     }
     if (data.assigned_partner_id) {
         return NextResponse.json({ error: "Ce dossier a déjà été débloqué par un autre partenaire." }, { status: 403 });
@@ -74,7 +83,14 @@ export async function GET(request: Request, { params }: {
     if (!Array.isArray(data.matched_partner_ids) || !data.matched_partner_ids.includes(partner.id)) {
         return NextResponse.json({ error: "Ce dossier n'est pas disponible pour votre compte partenaire." }, { status: 403 });
     }
-    return NextResponse.json({ lead: sanitizePartnerLead(data) });
+    if (data.archived_at || !partnerLeadStatuses.includes(data.status))
+        return NextResponse.json({error:"Ce dossier n’est plus disponible à la prise en charge."},{status:403});
+    const states = await loadPartnerLeadBilling(supabase,partner,[id]);
+    const state = states.get(id)!;
+    const lead = sanitizePartnerLead(data,state.billing);
+    lead.canUnlock = !state.reservedElsewhere && (lead.canUnlock || state.ownReservation) && state.billing.available;
+    return NextResponse.json({ lead },{headers:{"Cache-Control":"private, no-store"}});
+    } catch (error) { return apiError(error); }
 }
 async function loadLeadDocuments(supabase: any, diagnosticId: string) {
     const { data } = await supabase

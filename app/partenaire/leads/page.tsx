@@ -1,58 +1,54 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ButtonLink } from "@/components/Button";
 import { StepHeader } from "@/components/StepHeader";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
-
-type PartnerLead = {
-  id: string;
-  createdAt: string;
-  problemType: string;
-  department: string | null;
-  postalCode: string;
-  city: string;
-  spaBrand: string | null;
-  spaModel: string | null;
-  description: string | null;
-};
+import type { PartnerLeadPreview } from "@/lib/partner-leads";
 
 export default function PartnerLeadsPage() {
-  const [leads, setLeads] = useState<PartnerLead[]>([]);
+  const [leads, setLeads] = useState<PartnerLeadPreview[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const currentRequest = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    async function loadLeads() {
+  const loadLeads = useCallback(async () => {
+    currentRequest.current?.abort();
+    const controller = new AbortController();
+    currentRequest.current = controller;
+    setLoading(true);
+    setError("");
+    try {
       const supabase = getSupabaseBrowser();
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
-
-      if (!token) {
-        setError("Connectez-vous avec un compte partenaire pour consulter les leads.");
-        setLoading(false);
-        return;
-      }
+      if (!token) throw new Error("Connectez-vous avec un compte partenaire pour consulter les leads.");
 
       const response = await fetch("/api/partner/leads", {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+        cache: "no-store"
       });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        setError(payload.error ?? "Chargement impossible.");
-        setLoading(false);
-        return;
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "Chargement impossible. Réessayez.");
+      if (!Array.isArray(payload?.leads) || !payload.leads.every(isLeadPreview)) throw new Error("La liste des demandes n’a pas pu être chargée. Réessayez.");
+      if (!controller.signal.aborted) setLeads(payload.leads);
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        setLeads([]);
+        setError(cause instanceof Error && !(cause instanceof TypeError) ? cause.message : "La connexion a été interrompue. Réessayez de charger les demandes.");
       }
-
-      setLeads(payload.leads ?? []);
-      setLoading(false);
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
     }
-
-    loadLeads();
   }, []);
+
+  useEffect(() => {
+    void loadLeads();
+    return () => currentRequest.current?.abort();
+  }, [loadLeads]);
 
   return (
     <AppShell compact>
@@ -66,8 +62,9 @@ export default function PartnerLeadsPage() {
 
       {!loading && error ? (
         <InfoCard>
-          <p className="font-bold text-sanispa-navy">{error}</p>
-          <div className="mt-4">
+          <p className="font-bold text-sanispa-navy" role="alert">{error}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            <button type="button" onClick={() => void loadLeads()} className="focus-ring rounded text-sm font-bold text-sanispa-blue underline">Réessayer</button>
             <ButtonLink href="/partenaire/connexion">Connexion partenaire</ButtonLink>
           </div>
         </InfoCard>
@@ -92,6 +89,14 @@ export default function PartnerLeadsPage() {
                 </div>
                 <p className="text-sm font-semibold text-sanispa-steel">{formatDate(lead.createdAt)}</p>
               </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                <span className={`rounded-full px-3 py-1 font-bold ${lead.billing.paymentRequired ? "bg-sanispa-ice text-sanispa-navy" : "bg-green-50 text-green-800"}`}>
+                  {lead.billing.paymentRequired ? "Payant" : "Gratuit"}
+                </span>
+                {lead.billing.paymentRequired ? <span className="font-bold text-sanispa-navy">{formatAmount(lead.billing.amount, lead.billing.currency) ?? "Tarif indisponible"}</span> : null}
+                {lead.billing.reserved ? <span className="text-sanispa-steel">Paiement en cours · conditions réservées</span> : null}
+              </div>
+              {!lead.billing.available ? <p className="mt-2 text-sm text-sanispa-steel">Prise en charge indisponible pour le moment.</p> : null}
               <div className="mt-4 grid gap-2 text-sm text-sanispa-steel md:grid-cols-3">
                 <span>Département : {lead.department ?? "Non renseigné"}</span>
                 <span>Marque : {lead.spaBrand || "Non renseignée"}</span>
@@ -111,5 +116,26 @@ function InfoCard({ children }: { children: React.ReactNode }) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(date) : "Date non renseignée";
+}
+
+function formatAmount(amount: number | null, currency: string) {
+  if (amount === null || !Number.isFinite(amount) || amount < 0) return null;
+  try {
+    const formatter = new Intl.NumberFormat("fr-FR", { style: "currency", currency });
+    const digits = formatter.resolvedOptions().maximumFractionDigits ?? 2;
+    return formatter.format(amount / 10 ** digits);
+  } catch {
+    return null;
+  }
+}
+
+function isLeadPreview(value: unknown): value is PartnerLeadPreview {
+  if (!value || typeof value !== "object") return false;
+  const lead = value as Partial<PartnerLeadPreview>;
+  return typeof lead.id === "string" && Boolean(lead.billing) &&
+    typeof lead.billing?.paymentRequired === "boolean" && typeof lead.billing?.available === "boolean" &&
+    typeof lead.billing?.reserved === "boolean" && typeof lead.billing?.currency === "string" &&
+    (lead.billing?.amount === null || (typeof lead.billing?.amount === "number" && Number.isFinite(lead.billing.amount)));
 }
