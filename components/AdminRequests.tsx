@@ -112,6 +112,28 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
     tabRefs.current[next]?.focus({ preventScroll: true });
   }
 
+  function keepFocusInside(event: KeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== "Tab" || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+      'a[href], area[href], button, input:not([type="hidden"]), select, textarea, summary, iframe, object, embed, audio[controls], video[controls], [contenteditable="true"], [tabindex]'
+    )).filter(element => element.tabIndex >= 0 && !element.matches(":disabled") &&
+      !element.closest("[hidden], [inert]") && element.getClientRects().length > 0 &&
+      getComputedStyle(element).visibility !== "hidden" && getComputedStyle(element).visibility !== "collapse");
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    const activeIndex = controls.indexOf(document.activeElement as HTMLElement);
+    if (!first || !last) {
+      event.preventDefault();
+      titleRef.current?.focus({ preventScroll: true });
+    } else if (event.shiftKey && activeIndex <= 0) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (activeIndex === controls.length - 1 || activeIndex === -1)) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   return <section aria-labelledby={`${id}-list-title`} className="min-w-0">
     <div className="mb-3 flex items-center justify-between gap-3">
       <h2 id={`${id}-list-title`} ref={listTitleRef} tabIndex={-1} className="text-sm font-bold text-sanispa-navy outline-none">
@@ -130,23 +152,24 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
             aria-label={`Ouvrir la demande ${item.shortId} de ${item.clientName} : ${item.subject}`}
             aria-haspopup="dialog"
             className="group grid w-full min-w-0 grid-cols-2 gap-x-3 gap-y-3 p-4 text-left text-sm transition hover:bg-sanispa-ice focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sanispa-blue lg:grid-cols-[90px_minmax(0,1fr)_95px_130px_140px_60px] lg:items-center lg:gap-4">
-            <span className="text-xs font-bold tracking-wide text-sanispa-blue lg:text-sm">N° {item.shortId}</span>
+            <span className="whitespace-nowrap text-xs font-bold tracking-wide text-sanispa-blue">N° {item.shortId}</span>
             <span className="col-span-2 row-start-2 min-w-0 lg:col-span-1 lg:row-auto">
               <span className="block break-words text-base font-bold leading-snug text-sanispa-navy">{item.clientName}</span>
               <span className="mt-1 line-clamp-2 break-words leading-snug text-sanispa-steel">{item.subject}</span>
             </span>
             <time dateTime={item.createdAt} className="col-start-2 row-start-1 text-right text-xs text-sanispa-steel lg:col-auto lg:row-auto lg:text-left">{dateLabel(item.createdAt)}</time>
-            <span className="min-w-0 self-start lg:self-auto"><span className="inline-block max-w-full break-words rounded-md bg-sanispa-ice px-2 py-1 text-xs font-bold leading-relaxed text-sanispa-navy group-hover:bg-white">{statusLabel(item.status)}</span></span>
-            <span className={`min-w-0 text-right text-xs lg:text-left ${item.overdue ? "font-bold text-amber-800" : "text-sanispa-steel"}`}>
+            <span className="col-start-1 row-start-3 min-w-0 self-start lg:col-auto lg:row-auto lg:self-auto"><span className="inline-block max-w-full break-words rounded-md bg-sanispa-ice px-2 py-1 text-xs font-bold leading-relaxed text-sanispa-navy group-hover:bg-white">{statusLabel(item.status)}</span></span>
+            <span className={`col-span-2 row-start-4 min-w-0 text-left text-xs lg:col-span-1 lg:row-auto ${item.dueAt ? "block" : "hidden lg:block"} ${item.overdue ? "font-bold text-amber-800" : "text-sanispa-steel"}`}>
               {item.dueAt ? <><span className="block lg:sr-only">Échéance</span><time dateTime={item.dueAt}>{dateLabel(item.dueAt, true)}</time>{item.overdue ? <span className="mt-1 block">À traiter</span> : null}</> : <span className="hidden lg:inline">—</span>}
             </span>
-            <span aria-hidden="true" className="col-span-2 justify-self-end font-bold text-sanispa-blue lg:col-span-1">Ouvrir <span className="lg:hidden">→</span></span>
+            <span aria-hidden="true" className="col-start-2 row-start-3 justify-self-end self-center font-bold text-sanispa-blue lg:col-auto lg:row-auto">Ouvrir <span className="lg:hidden">→</span></span>
           </button>
         </li>)}
       </ul>
     </div> : null}
 
     <dialog ref={dialogRef} aria-labelledby={`${id}-detail-title`} aria-describedby={`${id}-detail-subject`}
+      onKeyDown={keepFocusInside}
       onCancel={event => { event.preventDefault(); setSelectedId(null); }}
       onClose={event => { if (!event.currentTarget.open) setSelectedId(null); }}
       onClick={event => {

@@ -90,7 +90,7 @@ export default async function AdminPage({ searchParams }: {
           </form>
           {dueOnly ? <p className="mt-3 text-xs text-sanispa-steel">Actions à traiter dont l’échéance est atteinte, sur les dossiers non archivés et non terminés.</p> : null}
         </section>
-        {!error ? <AdminRequests items={diagnostics.map(diagnostic => ({
+        {!error ? <AdminRequests key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}`} items={diagnostics.map(diagnostic => ({
           id: diagnostic.id,
           shortId: diagnostic.id.slice(0, 8).toUpperCase(),
           clientName: diagnostic.customers?.name || "Client non renseigné",
