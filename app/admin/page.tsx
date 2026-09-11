@@ -1,3 +1,4 @@
+import { partnerDispatchDecision } from "@/lib/partner-release";
 import { AdminRequests } from "@/components/AdminRequests";
 import { diagnosticPanels } from "@/components/AdminDiagnosticPanels";
 import { hasOverdueAction, loadAdminDossierDetails } from "@/lib/admin-dossier";
@@ -24,21 +25,24 @@ export default async function AdminPage({ searchParams }: {
         q?: string;
         status?: string;
         actions?: string;
+        diffusion?: string;
     }>;
 }) {
     try { await administrator(await headers()); }
     catch { redirect("/admin/connexion"); }
     const params = await searchParams;
     const tab = params?.tab === "partners" ? "partners" : "diagnostics";
+    const dispatchFilter = ["pending","internal","released","legacy"].includes(params?.diffusion || "") ? params!.diffusion! : "";
     const dueOnly = params?.actions === "due";
     const showArchived = !dueOnly && params?.archived === "1";
-    const [{ diagnostics, error }, { partners, error: partnerError }] = await Promise.all([loadDiagnostics(showArchived, params?.q, params?.status, dueOnly), loadPartners()]);
+    const [{ diagnostics, error }, { partners, error: partnerError }] = await Promise.all([loadDiagnostics(showArchived, params?.q, params?.status, dueOnly, dispatchFilter), loadPartners()]);
     const details = tab === "diagnostics" && diagnostics.length
         ? await loadAdminDossierDetails(getSupabaseAdmin(), diagnostics) : new Map();
     function viewUrl(archived: boolean) {
         const query = new URLSearchParams();
         if (params?.q) query.set("q", params.q);
         if (params?.status) query.set("status", params.status);
+        if (dispatchFilter) query.set("diffusion",dispatchFilter);
         if (archived) query.set("archived", "1");
         else if (dueOnly) query.set("actions", "due");
         return query.size ? `/admin?${query}` : "/admin";
@@ -77,7 +81,7 @@ export default async function AdminPage({ searchParams }: {
               <div className="mt-2"><RetryNotifications /></div>
             </details>
           </div>
-          <form key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}`} className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.3fr)_auto]">
+          <form key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}:${dispatchFilter}`} className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]">
             <input type="hidden" name="archived" value={showArchived ? "1" : "0"}/>
             <input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="focus-ring min-h-11 min-w-0 w-full rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm"/>
             <select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="focus-ring min-h-11 min-w-0 w-full rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm">
@@ -86,28 +90,32 @@ export default async function AdminPage({ searchParams }: {
             <select aria-label="Filtrer les prochaines actions" name="actions" defaultValue={dueOnly ? "due" : ""} className="focus-ring min-h-11 min-w-0 w-full rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm">
               <option value="">Toutes les échéances</option><option value="due">Actions échues · dossiers actifs</option>
             </select>
+            <select aria-label="Filtrer la décision de diffusion" name="diffusion" defaultValue={dispatchFilter} className="focus-ring min-h-11 min-w-0 w-full rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm">
+              <option value="">Toutes les diffusions</option><option value="pending">Diffusion · À valider</option><option value="internal">Conservés chez SANISPA</option><option value="released">Transmis au partenaire</option><option value="legacy">Acquisitions antérieures</option>
+            </select>
             <button className="focus-ring min-h-11 rounded-md bg-sanispa-blue px-4 py-2 text-sm font-bold text-white hover:bg-sanispa-navy">Rechercher</button>
           </form>
           {dueOnly ? <p className="mt-3 text-xs text-sanispa-steel">Actions à traiter dont l’échéance est atteinte, sur les dossiers non archivés et non terminés.</p> : null}
         </section>
-        {!error ? <AdminRequests key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}`} items={diagnostics.map(diagnostic => ({
+        {!error ? <AdminRequests key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}:${dispatchFilter}`} items={diagnostics.map(diagnostic => ({
           id: diagnostic.id,
           shortId: diagnostic.id.slice(0, 8).toUpperCase(),
           clientName: diagnostic.customers?.name || "Client non renseigné",
           subject: adminRequestSubject(diagnostic),
           createdAt: diagnostic.created_at,
           status: diagnostic.status,
+          dispatchDecision: partnerDispatchDecision(diagnostic),
           dueAt: diagnostic.next_action_state === "pending" ? diagnostic.next_action_at : null,
           overdue: hasOverdueAction(diagnostic),
           panels: diagnosticPanels(diagnostic, details.get(diagnostic.id))
         }))}/> : null}
         {!diagnostics.length && !error ? <p className="rounded-md border border-sanispa-line bg-white p-5 text-sm text-sanispa-steel">
-          {params?.q || params?.status || dueOnly ? "Aucun dossier ne correspond à ces filtres." : showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
+          {params?.q || params?.status || dueOnly || dispatchFilter ? "Aucun dossier ne correspond à ces filtres." : showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
         </p> : null}
       </>}
     </AppShell>;
 }
-async function loadDiagnostics(showArchived: boolean, q?: string, status?: string, dueOnly = false): Promise<{
+async function loadDiagnostics(showArchived: boolean, q?: string, status?: string, dueOnly = false, dispatchFilter = ""): Promise<{
     diagnostics: AdminDiagnostic[];
     error: string | null;
 }> {
@@ -123,6 +131,8 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
         request_type,
         department,
         matched_partner_ids,
+        partner_released_at,
+        partner_kept_at,
         assigned_partner_id,
         assigned_at,
         problem_type,
@@ -178,7 +188,7 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
             assigned_partner: item.assigned_partner_id ? partners.get(item.assigned_partner_id) ?? item.assigned_partner_id : null,
             lead_purchase: leadPurchases.get(item.id) ?? null
         })) as unknown as AdminDiagnostic[];
-        const filtered = diagnostics.filter(d => (!dueOnly || hasOverdueAction(d)) && (!status || d.status === status) && (!q || [d.id, d.customers?.name, d.customers?.email, d.customers?.phone].join(" ").toLowerCase().includes(q.toLowerCase())));
+        const filtered = diagnostics.filter(d => (!dispatchFilter || partnerDispatchDecision(d) === dispatchFilter) && (!dueOnly || hasOverdueAction(d)) && (!status || d.status === status) && (!q || [d.id, d.customers?.name, d.customers?.email, d.customers?.phone].join(" ").toLowerCase().includes(q.toLowerCase())));
         for (const diagnostic of filtered)
             diagnostic.diagnostic_photos = await protectedPhotos(supabase, diagnostic.diagnostic_photos);
         return { diagnostics: filtered, error: null };
@@ -225,7 +235,8 @@ async function loadLeadPurchaseMap(supabase: any) {
         .order("purchased_at", { ascending: false });
     const purchases = new Map();
     for (const purchase of data ?? []) {
-        if (!purchases.has(purchase.request_id) || purchase.status === "paid" || purchase.status === "granted") {
+        const priority = (state: string) => ["paid", "granted"].includes(state) ? 2 : state === "pending" ? 1 : 0;
+        if (!purchases.has(purchase.request_id) || priority(purchase.status) > priority(purchases.get(purchase.request_id).status)) {
             purchases.set(purchase.request_id, purchase);
         }
     }

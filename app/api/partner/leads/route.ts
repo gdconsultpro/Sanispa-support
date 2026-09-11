@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase
     .from("diagnostics")
     .select(
-      "id, choice, partner_released_at, matched_partner_ids, created_at, problem_type, department, assigned_partner_id, lead_locked_until, customers(spa_brand, spa_model, address), diagnostic_answers(question_key, answer)"
+      "id, choice, partner_released_at, partner_kept_at, matched_partner_ids, created_at, problem_type, department, assigned_partner_id, lead_locked_until, customers(spa_brand, spa_model, address), diagnostic_answers(question_key, answer)"
     )
     .eq("request_type", "TECHNICAL_REQUEST")
     .in("status", partnerLeadStatuses)

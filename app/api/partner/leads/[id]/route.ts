@@ -25,7 +25,7 @@ export async function GET(request: Request, { params }: {
         id,
         created_at,
         choice,
-        partner_released_at,
+        partner_released_at, partner_kept_at,
         status,
         request_type,
         archived_at,
