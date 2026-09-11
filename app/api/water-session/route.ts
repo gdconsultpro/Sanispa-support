@@ -34,10 +34,10 @@ export async function POST(request: Request) {
         const messages = await supabase.from("water_assistance_messages").select("role,content").eq("session_id", session.id).order("created_at", { ascending: false }).limit(100);
         if (messages.error)
             throw messages.error;
-        const answers = await supabase.from("diagnostic_answers").select("question_key,answer").eq("diagnostic_id", session.diagnostic_id);
+        const answers = await supabase.from("diagnostic_answers").select("question_key,question_label,answer").eq("diagnostic_id", session.diagnostic_id);
         if (answers.error)
             throw answers.error;
-        return NextResponse.json({ active: true, token: session.resume_token, expiresAt: session.expires_at, resumeUrl: `/assistant-eau?token=${session.resume_token}`, messages: (messages.data || []).reverse(), answers: Object.fromEntries((answers.data || []).map(a => [a.question_key, a.answer])) });
+        return NextResponse.json({ active: true, token: session.resume_token, expiresAt: session.expires_at, resumeUrl: `/assistant-eau?token=${session.resume_token}`, messages: (messages.data || []).reverse(), answerRows: answers.data || [], answers: Object.fromEntries((answers.data || []).map(a => [a.question_key, a.answer])) });
     }
     catch (e) {
         return apiError(e);

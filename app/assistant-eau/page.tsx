@@ -6,16 +6,15 @@ import { AppShell } from "@/components/AppShell";
 import { BackLink } from "@/components/BackLink";
 import { Button } from "@/components/Button";
 import { StepHeader } from "@/components/StepHeader";
-import { questionSets } from "@/lib/questions";
-import { DiagnosticDraft } from "@/lib/types";
-import { emptyDraft, readDraft, authHeaders } from "@/lib/storage";
+import { SavedAnswer } from "@/lib/diagnostic-answers";
+import { authHeaders } from "@/lib/storage";
 type ChatMessage = {
     role: "assistant" | "user";
     content: string;
 };
 const tokenKey = "sanispa-water-session-token";
 export default function WaterAssistantPage() {
-    const [draft, setDraft] = useState<DiagnosticDraft>(emptyDraft);
+    const [answerRows, setAnswerRows] = useState<SavedAnswer[]>([]);
     const [sessionToken, setSessionToken] = useState("");
     const [sessionStatus, setSessionStatus] = useState<"checking" | "active" | "blocked">("checking");
     const [expiresAt, setExpiresAt] = useState("");
@@ -28,8 +27,6 @@ export default function WaterAssistantPage() {
         }
     ]);
     useEffect(() => {
-        const storedDraft = readDraft();
-        setDraft(storedDraft);
         const params = new URLSearchParams(window.location.search);
         const tokenFromUrl = params.get("token") ?? "";
         const stripeSessionId = params.get("session_id") ?? "";
@@ -52,26 +49,19 @@ export default function WaterAssistantPage() {
                 setSessionStatus("blocked");
                 return;
             }
-            if (payload.answers)
-                setDraft(current => ({ ...current, answers: payload.answers }));
+            setAnswerRows(payload.answerRows || []);
             window.history.replaceState(null, "", "/assistant-eau");
             setSessionStatus("active");
             setExpiresAt(payload.expiresAt ?? "");
             if (payload.messages?.length) {
                 setMessages(payload.messages);
+            } else if (payload.answerRows?.length) {
+                setMessages([{ role: "assistant", content: "Bonjour, vos observations et les mesures renseignées dans votre dossier sont disponibles ci-dessous. Indiquez ce que vous souhaitez éclaircir et les éventuelles évolutions depuis ce relevé ; inutile de recopier les informations déjà présentes." }]);
             }
         })
             .catch(() => setSessionStatus("blocked"));
     }, []);
-    const treatmentAnswers = useMemo(() => {
-        const questions = questionSets["traitement-eau"];
-        return questions
-            .map((question) => ({
-            label: question.label,
-            value: draft.answers[question.id] || "Non renseigné"
-        }))
-            .filter((item) => item.value !== "Non renseigné");
-    }, [draft.answers]);
+    const treatmentAnswers = useMemo(() => answerRows.map(row => ({ label: row.question_label, value: row.answer })), [answerRows]);
     async function sendMessage(event?: React.FormEvent<HTMLFormElement>, quickMessage?: string) {
         event?.preventDefault();
         const content = (quickMessage ?? input).trim();

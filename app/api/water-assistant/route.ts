@@ -2,7 +2,7 @@ import { rateLimit, requireUser } from "@/lib/client-auth";
 import { apiError, readJson } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { questionSets } from "@/lib/questions";
+import { buildWaterContext, waterAssistantInstructions } from "@/lib/water-context";
 const messageSchema = z.object({
     message: z.string().trim().min(1).max(3000),
     sessionToken: z.string().regex(/^[a-f0-9]{32}$/),
@@ -37,10 +37,9 @@ export async function POST(request: Request) {
         });
         if (messageError)
             throw messageError;
-        const { data: answers, error: answersError } = await supabase.from("diagnostic_answers").select("question_key,answer").eq("diagnostic_id", session.diagnostic_id);
+        const { data: answers, error: answersError } = await supabase.from("diagnostic_answers").select("question_key,question_label,answer").eq("diagnostic_id", session.diagnostic_id);
         if (answersError)
             throw answersError;
-        const draft = { answers: Object.fromEntries((answers || []).map(a => [a.question_key, a.answer])) };
         const { data: history, error: historyError } = await supabase
             .from("water_assistance_messages")
             .select("role, content")
@@ -66,11 +65,11 @@ export async function POST(request: Request) {
                     messages: [
                         {
                             role: "system",
-                            content: "Tu es l'assistant traitement d'eau de SANISPA. Tu aides un client de spa à interpréter ses valeurs d'eau. Réponds en français, clairement, avec prudence. Donne des étapes simples, l'ordre des corrections, les délais avant de retester, et rappelle de contacter SANISPA si la situation semble technique ou dangereuse. Ne garantis jamais un résultat. Tu ne vois aucune photo : demande les valeurs lisibles. N’invente pas de dosage ; demande le volume et le produit exact et renvoie à son étiquette. Ne conseille aucun mélange de produits. En cas de danger ou de panne électrique, invite à arrêter les manipulations et contacter SANISPA."
+                            content: waterAssistantInstructions
                         },
                         {
                             role: "user",
-                            content: `Contexte client et formulaire:\n${buildContext(draft)}\n\nHistorique:\n${(history ?? []).map((m) => `${m.role}: ${m.content}`).join("\n")}\n\nDernier message client:\n${payload.message}`
+                            content: `Contexte client et formulaire:\n${buildWaterContext(answers || [])}\n\nHistorique:\n${(history ?? []).map((m) => `${m.role}: ${m.content}`).join("\n")}\n\nDernier message client:\n${payload.message}`
                         }
                     ]
                 })
@@ -96,27 +95,4 @@ export async function POST(request: Request) {
     catch (error) {
         return apiError(error);
     }
-}
-function buildContext(draft: any) {
-    if (!draft)
-        return "Aucun formulaire disponible.";
-    const treatmentQuestions = questionSets["traitement-eau"];
-    const answers = treatmentQuestions
-        .map((question) => `${question.label}: ${draft.answers?.[question.id] || "Non renseigné"}`)
-        .join("\n");
-    const waterPhotos = [
-        draft.photos?.water_test ? "photo de bandelette ou relevé" : null,
-        draft.photos?.filters ? "photo du ou des filtres" : null,
-        draft.photos?.water_overview ? "photo générale du spa en eau" : null
-    ].filter(Boolean);
-    const photoInfo = waterPhotos.length
-        ? `Photos disponibles: ${waterPhotos.join(", ")}.`
-        : "Aucune photo spécifique au traitement d'eau indiquée dans le brouillon local.";
-    return [
-        `Client: ${draft.name || "Non renseigné"}`,
-        `Spa: ${draft.spaBrand || "Non renseigné"} ${draft.spaModel || ""}`,
-        `Type de problème: ${draft.problemType || "Non renseigné"}`,
-        answers,
-        photoInfo
-    ].join("\n");
 }

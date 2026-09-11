@@ -16,9 +16,10 @@ export type CustomerInfo = {
     installationType: "interieur" | "exterieur" | "";
     powerSupply: "230V" | "400V" | "je ne sais pas" | "";
 };
+export type AnswerValue = string | string[];
 export type DiagnosticDraft = CustomerInfo & {
     problemType: ProblemType | "";
-    answers: Record<string, string>;
+    answers: Record<string, AnswerValue>;
     photos: Record<string, string>;
     choice: ChoiceType | "";
     paymentPlan: PaymentPlan | "";
@@ -27,16 +28,26 @@ export type DiagnosticDraft = CustomerInfo & {
     version?: number;
     spaId?: string;
 };
+export type AnswerCondition = {
+    questionId: string;
+    values: string[];
+    legacyWhenUnanswered?: boolean;
+};
 export type Question = {
     id: string;
     label: string;
-    type: "radio" | "text" | "number" | "textarea";
+    type: "radio" | "checkbox" | "text" | "number" | "textarea";
     required?: boolean;
     options?: string[];
-    showWhen?: {
-        questionId: string;
-        equals: string;
-    };
+    unknownOptions?: string[];
+    showWhen?: AnswerCondition;
+    showWhenAny?: AnswerCondition[];
+    hideWhen?: AnswerCondition;
+    section?: string;
+    help?: string;
+    legacyOnly?: boolean;
+    min?: number;
+    max?: number;
 };
 export type AdminDiagnostic = {
     internal_notes?: string;

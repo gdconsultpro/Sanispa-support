@@ -8,7 +8,9 @@ import { BackLink } from "@/components/BackLink";
 import { DiagnosticSummary } from "@/components/Summary";
 import { ShopLinks } from "@/components/ShopLinks";
 import { StepHeader } from "@/components/StepHeader";
-import { remotePlans } from "@/lib/questions";
+import { normalizeDiagnostic, updateDiagnosticAnswer } from "@/lib/diagnostic-answers";
+import { DiagnosticQuestion } from "@/components/DiagnosticQuestion";
+import { remotePlans, spaAccessQuestion } from "@/lib/questions";
 import { DiagnosticDraft, PaymentPlan } from "@/lib/types";
 import { emptyDraft, readDraft, writeDraft, saveDraft, authHeaders } from "@/lib/storage";
 export default function ResumePage() {
@@ -23,7 +25,7 @@ export default function ResumePage() {
             router.push("/diagnostic");
     }, [router]);
     function setChoice(choice: DiagnosticDraft["choice"], paymentPlan: PaymentPlan | "" = "") {
-        const next = { ...draft, choice, paymentPlan };
+        const next = normalizeDiagnostic({ ...draft, choice, paymentPlan });
         setDraft(next);
         writeDraft(next);
     }
@@ -91,6 +93,13 @@ export default function ResumePage() {
               </div>
             </div>) : null}
 
+          {draft.choice === "intervention" ? <section className="space-y-3 rounded-md border border-sanispa-line bg-white p-4">
+            <h2 className="font-bold">Préparer l’accès au spa</h2>
+            <DiagnosticQuestion question={spaAccessQuestion} value={draft.answers.spa_access} onChange={value => {
+              const next = updateDiagnosticAnswer(draft, "spa_access", value);
+              setDraft(next); writeDraft(next);
+            }} />
+          </section> : null}
           {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
           <Button type="button" onClick={submit} disabled={saving} className="w-full">
             {saving ? "Envoi de la demande…" : "Envoyer ma demande"}

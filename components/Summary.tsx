@@ -1,11 +1,12 @@
-import { getPhotoRequirements, isPhotoRequired, problemTypes, questionSets, remotePlans } from "@/lib/questions";
+import { photoExceptionValid, serializeAnswers } from "@/lib/diagnostic-answers";
+import { getPhotoRequirements, isPhotoRequired, problemTypes, remotePlans } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
 
 export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
   const problemLabel = problemTypes.find((item) => item.value === draft.problemType)?.label ?? "Non renseigné";
-  const questions = draft.problemType ? questionSets[draft.problemType] : [];
+  const answers = serializeAnswers(draft);
   const plan = remotePlans.find((item) => item.id === draft.paymentPlan);
-  const photos = getPhotoRequirements(draft.problemType);
+  const photos = getPhotoRequirements(draft.problemType, draft.photos);
 
   return (
     <div className="space-y-4">
@@ -40,9 +41,8 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
       <section className="rounded-md border border-sanispa-line bg-white p-4">
         <h2 className="mb-3 text-lg font-bold">Réponses au questionnaire</h2>
         <dl className="grid gap-3 text-sm text-sanispa-steel">
-          {questions.map((question) => (
-            <SummaryLine key={question.id} label={question.label} value={draft.answers[question.id] || "Non renseigné"} />
-          ))}
+          {answers.map(answer => <SummaryLine key={answer.question_key} label={answer.question_label} value={answer.answer} />)}
+          {!answers.length ? <p>Aucune observation renseignée.</p> : null}
         </dl>
       </section>
 
@@ -50,7 +50,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
         <h2 className="mb-3 text-lg font-bold">Photos jointes</h2>
         <dl className="grid gap-3 text-sm text-sanispa-steel">
           {photos.map((photo) => (
-            <SummaryLine key={photo.id} label={photo.label} value={draft.photos[photo.id] ? "Photo ajoutée à votre saisie" : isPhotoRequired(photo.id, draft.problemType) ? "Photo obligatoire manquante" : "Non ajoutée (facultative)"} />
+            <SummaryLine key={photo.id} label={photo.label} value={draft.photos[photo.id] ? "Photo ajoutée à votre saisie" : isPhotoRequired(photo.id, draft.problemType) ? photoExceptionValid(draft) ? "Photo non fournie : motif indiqué dans les réponses" : "Photo obligatoire manquante" : "Non ajoutée (facultative)"} />
           ))}
         </dl>
       </section>
