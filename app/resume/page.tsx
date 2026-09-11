@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { BackLink } from "@/components/BackLink";
+import { DraftSave } from "@/components/DraftSave";
 import { DiagnosticSummary } from "@/components/Summary";
 import { ShopLinks } from "@/components/ShopLinks";
 import { StepHeader } from "@/components/StepHeader";
@@ -62,6 +63,7 @@ export default function ResumePage() {
     }
     return (<AppShell compact>
       <StepHeader eyebrow="Étape 4" title="Résumé et orientation" description="Vérifiez votre saisie et choisissez une option. Un brouillon enregistré n’est pas encore une demande envoyée. Le bouton « Envoyer ma demande » lance son envoi à SANISPA ; attendez la confirmation."/>
+      <DraftSave draft={draft} step="/resume"/>
       <BackLink href="/upload"/>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
