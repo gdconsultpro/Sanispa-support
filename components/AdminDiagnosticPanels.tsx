@@ -48,7 +48,7 @@ export function diagnosticPanels(diagnostic: AdminDiagnostic, details?: AdminDos
           <Line label="Paiement client" value={diagnostic.payment_status ? statusLabel(diagnostic.payment_status) : "Aucun paiement enregistré"}/>
           <Line label="E-mail client" value={emailStatusLabel(diagnostic.customer_email_status)}/>
           {diagnostic.customer_email_error ? <Line label="Erreur d’envoi" value={diagnostic.customer_email_error}/> : null}
-          <Line label="Partenaires concernés" value={diagnostic.matched_partners?.join(", ") || "Aucun partenaire correspondant"}/>
+          <Line label="Destinataire de la diffusion" value={diagnostic.matched_partners?.join(", ") || "Aucun destinataire autorisé"}/>
           <Line label="Partenaire assigné" value={diagnostic.assigned_partner || "Non assigné"}/>
           <Line label="Dossier acheté par un partenaire" value={diagnostic.lead_purchase?.status === "paid" ? "Oui" : "Non"}/>
           <Line label="Date de l’achat partenaire" value={diagnostic.lead_purchase?.paid_at ? adminDate(diagnostic.lead_purchase.paid_at) : "Non acheté"}/>

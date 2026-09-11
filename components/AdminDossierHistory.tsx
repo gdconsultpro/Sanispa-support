@@ -10,10 +10,12 @@ function dateLabel(value: string) {
 
 function eventLabel(item: AdminActivity) {
   if (!item.event_type) return `Statut enregistré : ${statusLabel(item.status)}`;
+  if (item.event_type === "partner_released" && typeof item.metadata?.company_name === "string") return `Diffusion autorisée vers ${item.metadata.company_name}`;
   if (item.event_type === "status_changed") {
     return "Statut modifié";
   }
   const labels: Record<string, string> = {
+    partner_kept: "Dossier conservé chez SANISPA · aucune diffusion partenaire",
     partner_released: "Diffusion validée par SANISPA vers le partenaire sélectionné",
     partner_assigned: "Prise en charge gratuite par un partenaire",
     notes_updated: "Notes internes modifiées",
@@ -30,6 +32,7 @@ function actorLabel(item: AdminActivity & { actor_name?: string | null }) {
   const name = item.actor_name?.trim();
   if (name && !uuid.test(name)) return name;
   const actor = item.actor?.trim();
+  if (actor && uuid.test(actor) && ["partner_kept", "partner_released"].includes(item.event_type || "")) return "Administrateur SANISPA · nom non renseigné";
   return actor && !uuid.test(actor) ? actor : "Auteur non renseigné";
 }
 

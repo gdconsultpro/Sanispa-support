@@ -37,6 +37,7 @@ export type DiagnosticEmailPayload = {
     photos: EmailPhoto[];
 };
 export type PartnerLeadNotificationPayload = {
+    notificationKey?: string;
     diagnosticId: string;
     partners: PartnerLeadRecipient[];
     problemType: string;
@@ -48,6 +49,7 @@ export type PartnerLeadNotificationPayload = {
     answers: EmailAnswer[];
 };
 type TransactionalEmail = {
+    idempotencyKey?: string;
     to: string;
     subject: string;
     html: string;
@@ -137,7 +139,8 @@ export async function sendPartnerLeadNotification(payload: PartnerLeadNotificati
                 to: partner.email,
                 subject: `SANISPA Support - Nouveau dossier technique - ${problemLabel(payload.problemType)} (${payload.department})`,
                 replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
-                html: buildPartnerLeadEmail(payload, partner)
+                html: buildPartnerLeadEmail(payload, partner),
+                idempotencyKey: payload.notificationKey
             });
             if (result.skipped) {
                 failed += 1;
@@ -200,7 +203,7 @@ export async function sendWaterAssistanceResumeLink({ to, name, resumeUrl, expir
     `
     });
 }
-async function sendTransactionalEmail({ to, subject, html, replyTo }: TransactionalEmail) {
+async function sendTransactionalEmail({ to, subject, html, replyTo, idempotencyKey }: TransactionalEmail) {
     const provider = (process.env.EMAIL_PROVIDER || "resend").toLowerCase();
     const apiKey = provider === "resend" ? process.env.RESEND_API_KEY : process.env.EMAIL_API_KEY;
     const from = process.env.EMAIL_FROM || "SANISPA <onboarding@resend.dev>";
@@ -276,7 +279,7 @@ async function sendTransactionalEmail({ to, subject, html, replyTo }: Transactio
         headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
-            "Idempotency-Key": createHash("sha256").update(`${to}|${subject}|${html}`).digest("hex")
+            "Idempotency-Key": idempotencyKey || createHash("sha256").update(`${to}|${subject}|${html}`).digest("hex")
         },
         body: JSON.stringify({
             from,

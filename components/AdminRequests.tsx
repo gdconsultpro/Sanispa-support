@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { partnerDispatchLabels, type PartnerDispatchDecision } from "@/lib/partner-release";
 import { statusLabel } from "@/lib/display-labels";
 
 export type AdminRequestItem = {
@@ -10,6 +11,7 @@ export type AdminRequestItem = {
   subject: string;
   createdAt: string;
   status: string;
+  dispatchDecision?: PartnerDispatchDecision | null;
   dueAt: string | null;
   overdue: boolean;
   panels: { diagnostic: ReactNode; documents: ReactNode; followup: ReactNode; history: ReactNode };
@@ -156,6 +158,7 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
             <span className="col-span-2 row-start-2 min-w-0 lg:col-span-1 lg:row-auto">
               <span className="block break-words text-base font-bold leading-snug text-sanispa-navy">{item.clientName}</span>
               <span className="mt-1 line-clamp-2 break-words leading-snug text-sanispa-steel">{item.subject}</span>
+              {item.dispatchDecision?<span className={`mt-2 inline-block rounded px-2 py-1 text-xs font-bold ${item.dispatchDecision==="pending"?"bg-amber-100 text-amber-900":"bg-sanispa-ice text-sanispa-navy"}`}>Diffusion : {partnerDispatchLabels[item.dispatchDecision]}</span>:null}
             </span>
             <time dateTime={item.createdAt} className="col-start-2 row-start-1 text-right text-xs text-sanispa-steel lg:col-auto lg:row-auto lg:text-left">{dateLabel(item.createdAt)}</time>
             <span className="col-start-1 row-start-3 min-w-0 self-start lg:col-auto lg:row-auto lg:self-auto"><span className="inline-block max-w-full break-words rounded-md bg-sanispa-ice px-2 py-1 text-xs font-bold leading-relaxed text-sanispa-navy group-hover:bg-white">{statusLabel(item.status)}</span></span>
@@ -184,6 +187,7 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
           <h2 id={`${id}-detail-title`} ref={titleRef} tabIndex={-1} className="mt-1 break-words text-xl font-bold leading-tight outline-none sm:text-2xl">{selected.clientName}</h2>
           <p id={`${id}-detail-subject`} className="mt-2 line-clamp-3 break-words text-sm leading-snug text-sanispa-steel">{selected.subject}</p>
           <span className="mt-2 inline-block rounded-md bg-sanispa-ice px-2 py-1 text-xs font-bold">{statusLabel(selected.status)}</span>
+          {selected.dispatchDecision?<span className="ml-2 mt-2 inline-block rounded-md bg-amber-50 px-2 py-1 text-xs font-bold">Diffusion : {partnerDispatchLabels[selected.dispatchDecision]}</span>:null}
           <button type="button" onClick={() => setSelectedId(null)} aria-label="Fermer le dossier"
             className="focus-ring absolute right-3 top-3 inline-flex min-h-11 items-center gap-2 rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold hover:bg-sanispa-ice sm:right-5 sm:top-5">
             Fermer <span aria-hidden="true" className="text-xl leading-none">×</span>

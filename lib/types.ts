@@ -51,6 +51,8 @@ export type AdminDiagnostic = {
     request_type: RequestType | null;
     department: string | null;
     matched_partner_ids: string[] | null;
+    partner_released_at?: string | null;
+    partner_kept_at?: string | null;
     matched_partners?: string[];
     assigned_partner_id: string | null;
     assigned_at: string | null;
