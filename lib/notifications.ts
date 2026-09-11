@@ -14,8 +14,24 @@ export async function processNotifications(prefix?: string) {
                 result = await sendDiagnosticNotification(job.payload);
             else if (job.kind === "customer")
                 result = await sendCustomerConfirmation(job.payload);
-            else if (job.kind === "partner")
+            else if (job.kind === "partner") {
+                const { data: dossier, error: lookupError } = await supabase.from("diagnostics")
+                    .select("choice,partner_released_at,matched_partner_ids,assigned_partner_id,archived_at,status")
+                    .eq("id",job.payload.diagnosticId).maybeSingle();
+                if (lookupError) throw lookupError;
+                const recipient = job.payload.partners?.[0]?.id;
+                const authorized = dossier && !dossier.archived_at && !dossier.assigned_partner_id &&
+                    ["NEW","AVAILABLE","nouvelle"].includes(dossier.status) &&
+                    job.payload.partners?.length === 1 && dossier.matched_partner_ids?.includes(recipient) &&
+                    (dossier.choice !== "intervention" || (dossier.partner_released_at && dossier.matched_partner_ids.length === 1 &&
+                      job.key === `${job.payload.diagnosticId}:manual-partner:${recipient}`));
+                if (!authorized) {
+                    const {error: cancelError} = await supabase.from("notification_jobs").update({state:"cancelled",locked_until:null}).eq("id",job.id);
+                    if (cancelError) throw cancelError;
+                    continue;
+                }
                 result = await sendPartnerLeadNotification(job.payload);
+            }
             else if (job.kind === "water")
                 result = await sendWaterAssistanceResumeLink(job.payload);
             else

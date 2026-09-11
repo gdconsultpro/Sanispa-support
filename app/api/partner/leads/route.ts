@@ -1,4 +1,5 @@
 import { loadPartnerLeadBilling } from "@/lib/partner-billing";
+import { canViewPartnerOffer } from "@/lib/partner-release";
 import { apiError } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase
     .from("diagnostics")
     .select(
-      "id, created_at, problem_type, department, assigned_partner_id, lead_locked_until, customers(spa_brand, spa_model, address), diagnostic_answers(question_key, answer)"
+      "id, choice, partner_released_at, matched_partner_ids, created_at, problem_type, department, assigned_partner_id, lead_locked_until, customers(spa_brand, spa_model, address), diagnostic_answers(question_key, answer)"
     )
     .eq("request_type", "TECHNICAL_REQUEST")
     .in("status", partnerLeadStatuses)
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
   }
 
   const billingStates = await loadPartnerLeadBilling(supabase, partner, (data ?? []).map(row => row.id));
-  const leads = (data ?? []).map(row => {
+  const leads = (data ?? []).filter(row => canViewPartnerOffer(row, partner.id, billingStates.get(row.id)?.ownReservation)).map(row => {
     const state = billingStates.get(row.id)!;
     const lead = sanitizePartnerLead(row, state.billing);
     lead.canUnlock = !state.reservedElsewhere && (lead.canUnlock || state.ownReservation) && state.billing.available;

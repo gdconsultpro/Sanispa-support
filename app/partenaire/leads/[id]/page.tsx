@@ -7,6 +7,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { StepHeader } from "@/components/StepHeader";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
+import { partnerLoginPath, withPartnerTimeout } from "@/lib/partner-navigation";
 import type { PartnerLeadPreview, PartnerLeadFull } from "@/lib/partner-leads";
 
 type PartnerLead = PartnerLeadPreview | PartnerLeadFull;
@@ -32,16 +34,15 @@ export default function PartnerLeadDetailPage() {
     setError("");
     setLead(null);
     try {
-      const supabase = getSupabaseBrowser();
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) throw new Error("Connectez-vous avec un compte partenaire pour consulter ce lead.");
+      const token = await partnerToken(`/partenaire/leads/${params.id}`);
+      if (!token) return null;
 
-      const response = await fetch(`/api/partner/leads/${params.id}`, {
+      const response = await withPartnerTimeout(fetch(`/api/partner/leads/${params.id}`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
         cache: "no-store"
-      });
+      }));
+      if (redirectPartnerAccess(response, `/partenaire/leads/${params.id}`)) return null;
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "Ce dossier n’a pas pu être chargé. Réessayez.");
       if (!isPartnerLead(payload?.lead)) throw new Error("La réponse ne permet pas de confirmer l’accès au dossier. Actualisez la page pour réessayer.");
@@ -112,6 +113,7 @@ export default function PartnerLeadDetailPage() {
 
   return (
     <AppShell compact>
+      <p className="mb-4 text-sm"><Link href="/partenaire" className="font-bold text-sanispa-blue underline">Mon espace partenaire et mon mot de passe</Link></p>
       <div className="mb-5">
         <Link href="/partenaire/leads" className="text-sm font-bold text-sanispa-blue">
           ← Retour aux leads

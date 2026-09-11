@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ButtonLink } from "@/components/Button";
 import { StepHeader } from "@/components/StepHeader";
-import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { loadPartnerSession, partnerToken, partnerAuthError } from "@/lib/partner-browser";
+import { partnerPasswordPath } from "@/lib/partner-navigation";
 
 type Partner = {
   id: string;
@@ -20,29 +21,14 @@ export default function PartnerHomePage() {
 
   useEffect(() => {
     async function loadPartner() {
-      const supabase = getSupabaseBrowser();
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-
-      if (!token) {
-        setError("Connectez-vous avec un compte partenaire pour accéder à cet espace.");
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch("/api/partner/session", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        setError(payload.error ?? "Accès partenaire refusé.");
-        setLoading(false);
-        return;
-      }
-
-      setPartner(payload.partner);
-      setLoading(false);
+      try {
+        const token = await partnerToken("/partenaire");
+        if (!token) return;
+        const session = await loadPartnerSession(token);
+        if (session.passwordChangeRequired) { window.location.replace(partnerPasswordPath("/partenaire")); return; }
+        setPartner(session.partner as Partner);
+      } catch (cause) { setError(partnerAuthError(cause)); }
+      finally { setLoading(false); }
     }
 
     loadPartner();
@@ -75,7 +61,8 @@ export default function PartnerHomePage() {
             Les dossiers affichés sont limités aux informations de préqualification. Les coordonnées complètes du client restent masquées.
           </p>
           <div className="mt-5">
-            <ButtonLink href="/partenaire/leads">Voir les leads</ButtonLink>
+            <ButtonLink href="/partenaire/leads">Voir les demandes</ButtonLink>
+            <ButtonLink href="/partenaire/mot-de-passe">Modifier mon mot de passe</ButtonLink>
           </div>
         </PartnerCard>
       ) : null}

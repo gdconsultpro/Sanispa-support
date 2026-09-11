@@ -6,6 +6,8 @@ import { AppShell } from "@/components/AppShell";
 import { ButtonLink } from "@/components/Button";
 import { StepHeader } from "@/components/StepHeader";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
+import { partnerLoginPath, withPartnerTimeout } from "@/lib/partner-navigation";
 import type { PartnerLeadPreview } from "@/lib/partner-leads";
 
 export default function PartnerLeadsPage() {
@@ -21,16 +23,15 @@ export default function PartnerLeadsPage() {
     setLoading(true);
     setError("");
     try {
-      const supabase = getSupabaseBrowser();
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) throw new Error("Connectez-vous avec un compte partenaire pour consulter les leads.");
+      const token = await partnerToken(`/partenaire/leads`);
+      if (!token) return;
 
-      const response = await fetch("/api/partner/leads", {
+      const response = await withPartnerTimeout(fetch("/api/partner/leads", {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
         cache: "no-store"
-      });
+      }));
+      if (redirectPartnerAccess(response, `/partenaire/leads`)) return;
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "Chargement impossible. Réessayez.");
       if (!Array.isArray(payload?.leads) || !payload.leads.every(isLeadPreview)) throw new Error("La liste des demandes n’a pas pu être chargée. Réessayez.");
@@ -52,6 +53,7 @@ export default function PartnerLeadsPage() {
 
   return (
     <AppShell compact>
+      <p className="mb-4 text-sm"><Link href="/partenaire" className="font-bold text-sanispa-blue underline">Mon espace partenaire et mon mot de passe</Link></p>
       <StepHeader
         eyebrow="Espace partenaire"
         title="Leads techniques"
@@ -65,7 +67,7 @@ export default function PartnerLeadsPage() {
           <p className="font-bold text-sanispa-navy" role="alert">{error}</p>
           <div className="mt-4 flex flex-wrap items-center gap-4">
             <button type="button" onClick={() => void loadLeads()} className="focus-ring rounded text-sm font-bold text-sanispa-blue underline">Réessayer</button>
-            <ButtonLink href="/partenaire/connexion">Connexion partenaire</ButtonLink>
+            <ButtonLink href={partnerLoginPath(`/partenaire/leads`)}>Connexion partenaire</ButtonLink>
           </div>
         </InfoCard>
       ) : null}

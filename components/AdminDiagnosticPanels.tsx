@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminPartnerRelease } from "@/components/AdminPartnerRelease";
 import { AdminActions } from "@/components/AdminActions";
 import { AdminClientDocuments } from "@/components/AdminClientDocuments";
 import { AdminDossierHistory } from "@/components/AdminDossierHistory";
@@ -70,6 +71,7 @@ export function diagnosticPanels(diagnostic: AdminDiagnostic, details?: AdminDos
       <AdminClientDocuments diagnosticId={diagnostic.id} documents={details?.documents ?? []} error={details?.documentsError}/>
     </div>,
     followup: <div className="grid min-w-0 gap-5">
+      {diagnostic.choice === "intervention" && diagnostic.request_type === "TECHNICAL_REQUEST" ? <AdminPartnerRelease diagnosticId={diagnostic.id}/> : null}
       <AdminNextAction diagnosticId={diagnostic.id} initialAction={{text:diagnostic.next_action_text,dueAt:diagnostic.next_action_at,state:diagnostic.next_action_state,version:diagnostic.next_action_version}}/>
       <section><h3 className="font-bold text-sanispa-navy">Statut et notes internes</h3><SavActions id={diagnostic.id} initialStatus={diagnostic.status} initialNotes={diagnostic.internal_notes || ""}/></section>
       <AdminActions diagnosticId={diagnostic.id} archived={Boolean(diagnostic.archived_at)}/>
