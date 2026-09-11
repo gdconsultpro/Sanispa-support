@@ -72,3 +72,7 @@ test("notification sender uses the simulated transport and exposes no credential
  assert.equal(result.sent,1);assert.equal(requests.length,1);assert(requests[0].html.includes("Consulter la demande"));assert(!requests[0].html.includes(input.password));
  }finally{globalThis.fetch=fetchBefore;keys.forEach((k,i)=>{if(before[i]===undefined)delete process.env[k];else process.env[k]=before[i];});}
 });
+test("existing account lookup requires no provisional password and performs no mutation",()=>fixture(async({state,client})=>{
+ state.existing=true;const r=await createPartnerAccess(client,partnerId,id,{mode:'lookup',name:input.name,email:input.email});assert.equal(r.conflict,true);assert.equal(state.created,0);assert.equal(state.linked,0);
+ state.existing=false;await assert.rejects(createPartnerAccess(client,partnerId,id,{mode:'lookup',name:input.name,email:input.email}),/Aucun compte/);assert.equal(state.created,0);
+}));

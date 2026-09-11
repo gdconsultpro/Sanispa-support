@@ -49,7 +49,7 @@ export default async function AdminPage({ searchParams }: {
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">Administration</p>
         <h1 className="mt-1 text-2xl font-bold text-sanispa-navy sm:text-3xl">{tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"}</h1>
         <p className="mt-2 text-sm text-sanispa-steel">{tab === "partners"
-            ? "Gestion des partenaires et des départements couverts pour préparer la future diffusion des dossiers."
+            ? "Gérez les entreprises partenaires, leurs accès, leurs départements couverts et la facturation des leads."
             : "Repérez le client et le motif, puis ouvrez le dossier pour le consulter ou le traiter."}</p>
       </header>
       <AdminSignOut />

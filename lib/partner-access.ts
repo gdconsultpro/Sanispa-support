@@ -4,6 +4,7 @@ import { HttpError } from "./http";
 import { needsPartnerPasswordChange } from "./partner-navigation";
 
 export const partnerAccessSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("lookup"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150) }).strict(),
   z.object({ mode: z.literal("create"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150), password: z.string().min(12).max(128) }).strict(),
   z.object({ mode: z.literal("link"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150), existingUserId: z.string().uuid(), reactivate: z.boolean().default(false) }).strict()
 ]);
@@ -25,6 +26,10 @@ export async function createPartnerAccess(supabase: SupabaseClient, partnerId: s
   if (!company?.active) throw new HttpError(409, "Activez d’abord l’entreprise partenaire avant de créer son accès.");
   let user: User | null = await userByEmail(supabase, input.email);
   let created = false;
+  if (input.mode === "lookup") {
+    if (!user) throw new HttpError(404, "Aucun compte de connexion ne correspond à cette adresse. Choisissez « Créer un nouveau compte » pour préparer son accès.");
+    return { conflict: true as const, existingUserId: user.id, message: "Compte existant trouvé. Vérifiez l’entreprise puis confirmez son rattachement. Son mot de passe sera conservé." };
+  }
   if (input.mode === "create") {
     if (user) return { conflict: true as const, existingUserId: user.id, message: "Cette adresse possède déjà un compte. Son mot de passe n’a pas été modifié. Vérifiez l’entreprise puis confirmez explicitement le rattachement ci-dessous." };
     const result = await supabase.auth.admin.createUser({ email: input.email, password: input.password,
