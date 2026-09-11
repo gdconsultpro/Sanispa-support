@@ -1,3 +1,4 @@
+import { normalizeDiagnostic } from "./diagnostic-answers";
 import { DiagnosticDraft } from "@/lib/types";
 import { getSupabaseBrowser } from "./supabase-browser";
 export const draftKey = "sanispa-diagnostic-draft";
@@ -6,7 +7,7 @@ export function readDraft(): DiagnosticDraft {
     if (typeof window === "undefined")
         return { ...emptyDraft };
     try {
-        return { ...emptyDraft, ...JSON.parse(window.localStorage.getItem(draftKey) || "{}") };
+        return normalizeDiagnostic({ ...emptyDraft, ...JSON.parse(window.localStorage.getItem(draftKey) || "{}") });
     }
     catch {
         return { ...emptyDraft };
@@ -14,7 +15,7 @@ export function readDraft(): DiagnosticDraft {
 }
 export function writeDraft(draft: DiagnosticDraft) {
     try {
-        window.localStorage.setItem(draftKey, JSON.stringify({ ...draft, version: draft.draftId ? versions.get(draft.draftId) ?? draft.version : draft.version }));
+        window.localStorage.setItem(draftKey, JSON.stringify({ ...normalizeDiagnostic(draft), version: draft.draftId ? versions.get(draft.draftId) ?? draft.version : draft.version }));
     }
     catch {
         throw new Error("La sauvegarde sur cet appareil est impossible. Réduisez les photos ou libérez de l'espace.");
@@ -29,7 +30,8 @@ export async function authHeaders() {
 }
 const versions = new Map<string, number>();
 let queue: Promise<unknown> = Promise.resolve();
-export async function saveDraft(draft: DiagnosticDraft, step: string) {
+export async function saveDraft(input: DiagnosticDraft, step: string) {
+    const draft = normalizeDiagnostic(input);
     const work = queue.catch(() => { }).then(async () => {
         const id = draft.draftId || crypto.randomUUID();
         const { data } = await getSupabaseBrowser().auth.getSession();
@@ -56,7 +58,7 @@ export async function restoreDraft(id: string) {
     if (!response.ok)
         throw new Error(result.error || "Diagnostic introuvable.");
     if (result.draft.submitted_at) {clearDraft();return { submitted: true, step: "/espace-client" };}
-    const draft = { ...emptyDraft, ...result.draft.payload, draftId: result.draft.id, version: result.draft.version };
+    const draft = normalizeDiagnostic({ ...emptyDraft, ...result.draft.payload, draftId: result.draft.id, version: result.draft.version });
     versions.set(id, draft.version);
     writeDraft(draft);
     return { submitted: false, step: result.draft.step, draft };

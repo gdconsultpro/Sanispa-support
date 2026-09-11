@@ -11,13 +11,14 @@ export async function buildSummaryPdf(lines: string[]) {
     catch {
         return "?";
     } }).join("");
-    for (const raw of lines) {
+    for (const raw of lines.flatMap(line => line.split(/\r?\n/))) {
         let line = "";
         const chunks: string[] = [];
         for (const c of printable(raw)) {
             if (font.widthOfTextAtSize(line + c, 10) > 495) {
-                chunks.push(line);
-                line = "";
+                const space = line.lastIndexOf(" ");
+                chunks.push(space > 0 ? line.slice(0, space) : line);
+                line = space > 0 ? line.slice(space + 1) : "";
             }
             line += c;
         }

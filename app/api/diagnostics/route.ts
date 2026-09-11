@@ -1,6 +1,7 @@
+import { serializeAnswers } from "@/lib/diagnostic-answers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getPhotoRequirements, questionSets, problemTypes } from "@/lib/questions";
+import { getPhotoRequirements, problemTypes } from "@/lib/questions";
 import { requireUser, rateLimit } from "@/lib/client-auth";
 import { readJson, apiError, HttpError } from "@/lib/http";
 import { validateSubmission } from "@/lib/draft-schema";
@@ -29,9 +30,9 @@ export async function POST(request: Request) {
         const isWaterAnalysis = payload.problemType === "traitement-eau" && payload.choice === "remote";
         const department = getDepartmentFromPostalCode(payload.postalCode);
         const partnerIds = isWaterAnalysis || payload.choice === "intervention" ? [] : await findPartnerIdsForDepartment(supabase, department);
-        const answers = questionSets[payload.problemType].filter(q => payload.answers[q.id] && (!q.showWhen || payload.answers[q.showWhen.questionId] === q.showWhen.equals)).map(q => ({ question_key: q.id, question_label: q.label, answer: payload.answers[q.id] }));
+        const answers = serializeAnswers(payload);
         const photos = [];
-        for (const photo of getPhotoRequirements(payload.problemType)) {
+        for (const photo of getPhotoRequirements(payload.problemType, payload.photos)) {
             if (!payload.photos[photo.id])
                 continue;
             let upload;

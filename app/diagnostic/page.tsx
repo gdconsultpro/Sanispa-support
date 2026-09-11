@@ -7,6 +7,7 @@ import { Button } from "@/components/Button";
 import { BackLink } from "@/components/BackLink";
 import { Field, SelectField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
+import { normalizeDiagnostic } from "@/lib/diagnostic-answers";
 import { problemTypes } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
 import { emptyDraft, readDraft, writeDraft, saveDraft, clearDraft } from "@/lib/storage";
@@ -31,14 +32,14 @@ function DiagnosticContent() {
     const [selectedSpaId, setSelectedSpaId] = useState("");
     const [error, setError] = useState("");
     useEffect(() => {
-        const requestedProblem = searchParams.get("problemType") as DiagnosticDraft["problemType"];
+        const requestedProblem = problemTypes.find(p => p.value === searchParams.get("problemType"))?.value;
         if (searchParams.get("new") === "1")
             clearDraft();
         const savedDraft = readDraft();
-        setDraft({
+        setDraft(normalizeDiagnostic({
             ...savedDraft,
             problemType: requestedProblem || savedDraft.problemType
-        });
+        }));
         async function prefillFromClientAccount() {
             try {
                 const supabase = getSupabaseBrowser();
@@ -90,7 +91,7 @@ function DiagnosticContent() {
             draft.problemType);
     }, [draft]);
     function update<K extends keyof DiagnosticDraft>(key: K, value: DiagnosticDraft[K]) {
-        setDraft((current) => ({ ...current, [key]: value }));
+        setDraft((current) => normalizeDiagnostic({ ...current, [key]: value }));
     }
     function selectSpa(spaId: string) {
         setSelectedSpaId(spaId);
