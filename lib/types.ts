@@ -75,6 +75,7 @@ export type AdminDiagnostic = {
         spa_model: string | null;
     } | null;
     diagnostic_answers: Array<{
+        question_key?: string;
         question_label: string;
         answer: string;
     }>;

@@ -46,6 +46,10 @@ export function AdminNextAction({ diagnosticId, initialAction }: {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const editorButton = useRef<HTMLButtonElement>(null);
+  const editorInput = useRef<HTMLTextAreaElement>(null);
+  const focusEditor = useRef(false);
   const requestPending = useRef(false);
   const initialSnapshot = useRef(initialAction);
   const dirty = ready && (text !== (savedAction.state === "pending" ? savedAction.text || "" : "") ||
@@ -57,6 +61,12 @@ export function AdminNextAction({ diagnosticId, initialAction }: {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
     setReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!focusEditor.current || busy) return;
+    (editorOpen ? editorInput.current : editorButton.current)?.focus();
+    focusEditor.current = false;
+  }, [editorOpen, busy]);
 
   useEffect(() => {
     if (!ready || busy || dirty || initialAction.version <= savedAction.version) return;
@@ -118,6 +128,8 @@ export function AdminNextAction({ diagnosticId, initialAction }: {
       setDueAt(action.state === "pending" ? localDateTime(action.dueAt) : "");
       setConflict(false);
       setMessage(operation === "save" ? "L’action et son échéance sont enregistrées." : operation === "complete" ? "L’action est marquée comme réalisée." : "L’action est annulée.");
+      focusEditor.current = true;
+      setEditorOpen(false);
       router.refresh();
     } catch (cause) {
       const interrupted = !(cause instanceof Error) || cause instanceof TypeError;
@@ -136,10 +148,34 @@ export function AdminNextAction({ diagnosticId, initialAction }: {
       <p className="mt-1 whitespace-pre-wrap break-words text-sanispa-steel">{savedAction.text || "Action non renseignée"}</p>
       <p className="mt-2 text-sanispa-steel">Échéance : {actionDate(savedAction.dueAt)} (heure de Paris)</p>
     </div> : <p className="mt-2 text-sm text-sanispa-steel">Aucune action enregistrée pour ce dossier.</p>}
-    <form className="mt-4 grid min-w-0 gap-3" onSubmit={event => { event.preventDefault(); void submit("save"); }}>
+    <div className="mt-3 flex flex-wrap gap-2">
+      <button ref={editorButton} type="button" aria-expanded={editorOpen} aria-controls={`next-action-editor-${diagnosticId}`}
+        disabled={busy || !ready} onClick={() => { focusEditor.current = true; setEditorOpen(!editorOpen); }}
+        className="focus-ring inline-flex min-h-11 items-center justify-center rounded-md border border-sanispa-line bg-white px-4 py-2 text-sm font-bold text-sanispa-navy hover:border-sanispa-blue disabled:cursor-not-allowed disabled:opacity-50">
+        {editorOpen ? "Replier le formulaire" : dirty ? "Reprendre la modification" : savedAction.state === "pending" ? "Modifier l’action" : savedAction.state ? "Planifier une nouvelle action" : "Planifier une action"}
+      </button>
+      {savedAction.state === "pending" ? <>
+        <Button type="button" variant="secondary" disabled={busy || !ready || dirty || newerVersion} onClick={() => void submit("complete")}>Marquer réalisée</Button>
+        <Button type="button" variant="secondary" disabled={busy || !ready || dirty || newerVersion} onClick={() => void submit("cancel")}>Annuler l’action</Button>
+      </> : null}
+    </div>
+    {dirty ? <p className="mt-2 text-xs text-sanispa-steel">{savedAction.state === "pending"
+      ? "Enregistrez vos modifications avant de marquer l’action comme réalisée ou de l’annuler."
+      : "Une saisie non enregistrée est conservée dans le formulaire."}</p> : null}
+    <div className="mt-3 grid gap-3">
+      {newerVersion ? <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+        <p>Une version plus récente de l’action est disponible. Votre saisie n’a pas été remplacée.</p>
+        <button type="button" disabled={busy} onClick={useLatestAction} className="focus-ring mt-2 font-bold underline">Recharger l’action enregistrée et remplacer ma saisie</button>
+      </div> : null}
+      {error ? <p className="rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</p> : null}
+      {conflict && !newerVersion ? <button type="button" disabled={busy} onClick={() => router.refresh()} className="focus-ring justify-self-start text-sm font-bold text-sanispa-blue underline">Actualiser le dossier sans effacer ma saisie</button> : null}
+      {message ? <p className="rounded-md bg-green-50 p-3 text-sm text-green-700" role="status">{message}</p> : null}
+    </div>
+    <form id={`next-action-editor-${diagnosticId}`} hidden={!editorOpen} className={editorOpen ? "mt-4 grid min-w-0 gap-3 border-t border-sanispa-line pt-4" : "hidden"}
+      onSubmit={event => { event.preventDefault(); void submit("save"); }}>
       <label className="block min-w-0 text-sm font-bold text-sanispa-navy">
         {savedAction.state === "done" || savedAction.state === "cancelled" ? "Nouvelle action à réaliser *" : "Action à réaliser *"}
-        <textarea value={text} maxLength={1000} required disabled={busy || !ready} rows={3}
+        <textarea ref={editorInput} value={text} maxLength={1000} required disabled={busy || !ready} rows={3}
           onChange={event => { setText(event.target.value); setMessage(""); }}
           className="focus-ring mt-2 block w-full min-w-0 rounded-md border border-sanispa-line bg-white p-3 font-normal"
           placeholder="Exemple : rappeler le client pour préciser les symptômes" />
@@ -150,21 +186,9 @@ export function AdminNextAction({ diagnosticId, initialAction }: {
           className="focus-ring mt-2 block w-full min-w-0 max-w-full rounded-md border border-sanispa-line bg-white p-3 font-normal" />
       </label>
       <p className="text-xs text-sanispa-steel">* Champs obligatoires. {timeZone ? `Saisie dans le fuseau de votre appareil : ${timeZone}.` : "Chargement du fuseau horaire…"}</p>
-      {newerVersion ? <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
-        <p>Une version plus récente de l’action est disponible. Votre saisie n’a pas été remplacée.</p>
-        <button type="button" disabled={busy} onClick={useLatestAction} className="focus-ring mt-2 font-bold underline">Recharger l’action enregistrée et remplacer ma saisie</button>
-      </div> : null}
-      {error ? <p className="rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</p> : null}
-      {conflict && !newerVersion ? <button type="button" disabled={busy} onClick={() => router.refresh()} className="focus-ring justify-self-start text-sm font-bold text-sanispa-blue underline">Actualiser le dossier sans effacer ma saisie</button> : null}
-      {message ? <p className="rounded-md bg-green-50 p-3 text-sm text-green-700" role="status">{message}</p> : null}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={busy || !ready || newerVersion}>{busy ? "Traitement…" : "Enregistrer l’action"}</Button>
-        {savedAction.state === "pending" ? <>
-          <Button type="button" variant="secondary" disabled={busy || !ready || dirty || newerVersion} onClick={() => void submit("complete")}>Marquer réalisée</Button>
-          <Button type="button" variant="secondary" disabled={busy || !ready || dirty || newerVersion} onClick={() => void submit("cancel")}>Annuler l’action</Button>
-        </> : null}
       </div>
-      {dirty && savedAction.state === "pending" ? <p className="text-xs text-sanispa-steel">Enregistrez vos modifications avant de marquer l’action comme réalisée ou de l’annuler.</p> : null}
     </form>
   </section>;
 }

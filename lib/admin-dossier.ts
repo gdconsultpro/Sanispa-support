@@ -5,6 +5,7 @@ export type AdminActivity = {
   diagnostic_id: string;
   created_at: string;
   actor: string | null;
+  actor_name?: string | null;
   status: string | null;
   event_type: string | null;
   old_status: string | null;
@@ -79,6 +80,21 @@ export async function loadAdminDossierDetails(
     readRows<AdminClientDocument>("client_documents", documentColumns, "diagnostic_id", ids),
   ]);
   const activity = history.status === "fulfilled" ? history.value : [];
+  // Names are display-only; permissions still depend on the existing server guard.
+  const actorIds = [...new Set(activity.flatMap(event => event.actor &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(event.actor) ? [event.actor] : []))];
+  const actorNames = new Map<string, string>();
+  for (let offset = 0; offset < actorIds.length; offset += 100) {
+    try {
+      const {data,error} = await supabase.from("client_profiles").select("user_id,first_name,last_name").in("user_id",actorIds.slice(offset,offset+100));
+      if (error) continue;
+      for (const profile of data ?? []) {
+        const name = [profile.first_name,profile.last_name].filter(Boolean).join(" ").trim();
+        if (name) actorNames.set(profile.user_id,name);
+      }
+    } catch { /* A missing display name must not hide the recorded events. */ }
+  }
+  for (const event of activity) event.actor_name = event.actor ? actorNames.get(event.actor) ?? null : null;
   const documents = [...new Map([...(clientDocuments.status === "fulfilled" ? clientDocuments.value : []),
     ...(dossierDocuments.status === "fulfilled" ? dossierDocuments.value : [])].map(document => [document.id, document])).values()]
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
