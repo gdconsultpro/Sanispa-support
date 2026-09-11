@@ -62,6 +62,6 @@ export function PartnerAccessAdmin({ partner }: { partner: PartnerAdminItem }) {
       {!partner.active ? <p className="text-sm sm:col-span-2">Réactivez l’entreprise avant de créer un accès.</p> : null}
     </form>
     {message ? <p role="status" className="mt-4 rounded-md bg-sanispa-ice p-3 text-sm">{message}</p> : null}
-    <p className="mt-3 text-sm text-sanispa-steel">Aucun mot de passe n’est envoyé par e-mail. Le partenaire choisira son mot de passe personnel lors de sa première connexion.</p>
+    <p className="mt-3 text-sm text-sanispa-steel">Aucun mot de passe n’est envoyé par e-mail. Seuls les nouveaux comptes créés avec un mot de passe provisoire doivent le remplacer lors de leur première connexion.</p>
   </section>;
 }
