@@ -32,6 +32,7 @@ function actorLabel(item: AdminActivity & { actor_name?: string | null }) {
   const name = item.actor_name?.trim();
   if (name && !uuid.test(name)) return name;
   const actor = item.actor?.trim();
+  if (actor && uuid.test(actor) && ["partner_kept", "partner_released"].includes(item.event_type || "")) return "Administrateur SANISPA · nom non renseigné";
   return actor && !uuid.test(actor) ? actor : "Auteur non renseigné";
 }
 
