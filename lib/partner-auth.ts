@@ -7,6 +7,7 @@ export type AuthenticatedPartner = {
   email: string;
   active: boolean;
   role: string;
+  leads_paid: boolean;
 };
 
 export async function getAuthenticatedPartner(request: Request) {
@@ -15,7 +16,7 @@ export async function getAuthenticatedPartner(request: Request) {
 
   const { data: link, error: partnerError } = await supabase
     .from("partner_users")
-    .select("role, active, partners!inner(id, company_name, contact_name, email, active)")
+    .select("role, active, partners!inner(id, company_name, contact_name, email, active, leads_paid)")
     .eq("user_id", user.id)
     .eq("active", true)
     .eq("partners.active", true)
@@ -38,7 +39,8 @@ export async function getAuthenticatedPartner(request: Request) {
         contact_name: partnerRow.contact_name,
         email: partnerRow.email,
         active: partnerRow.active,
-        role: row.role ?? "owner"
+        role: row.role ?? "owner",
+        leads_paid: partnerRow.leads_paid !== false
       } satisfies AuthenticatedPartner)
     : null;
 

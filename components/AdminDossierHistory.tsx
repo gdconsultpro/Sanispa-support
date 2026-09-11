@@ -14,6 +14,7 @@ function eventLabel(item: AdminActivity) {
     return "Statut modifié";
   }
   const labels: Record<string, string> = {
+    partner_assigned: "Prise en charge gratuite par un partenaire",
     notes_updated: "Notes internes modifiées",
     action_created: "Action créée",
     action_updated: "Action modifiée",

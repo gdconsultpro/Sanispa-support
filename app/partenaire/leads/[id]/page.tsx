@@ -3,48 +3,11 @@ import { PrivateFile } from "@/components/PrivateFile";
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { StepHeader } from "@/components/StepHeader";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
-
-type PartnerLeadPreview = {
-  id: string;
-  access: "preview";
-  createdAt: string;
-  problemType: string;
-  problemTypeKey: string;
-  department: string | null;
-  postalCode: string;
-  city: string;
-  spaBrand: string | null;
-  spaModel: string | null;
-  description: string | null;
-  canUnlock: boolean;
-  lockedUntil: string | null;
-};
-
-type PartnerLeadFull = Omit<PartnerLeadPreview, "access" | "canUnlock"> & {
-  access: "full";
-  canUnlock: false;
-  status: string;
-  customer: {
-    name: string;
-    phone: string;
-    email: string;
-    address: string;
-    postalCode: string;
-    city: string;
-  };
-  spa: {
-    brand: string | null;
-    model: string | null;
-    year: string | null;
-  };
-  answers: Array<{ question: string; answer: string }>;
-  photos: Array<{ type: string; url: string | null }>;
-  documents: Array<{ id: string; name: string; type: string; url: string | null }>;
-};
+import type { PartnerLeadPreview, PartnerLeadFull } from "@/lib/partner-leads";
 
 type PartnerLead = PartnerLeadPreview | PartnerLeadFull;
 
@@ -56,73 +19,96 @@ export default function PartnerLeadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [unlocking, setUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState("");
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [acquisitionConfirmed, setAcquisitionConfirmed] = useState(false);
+  const unlockPending = useRef(false);
+  const currentRequest = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    async function loadLead() {
+  const loadLead = useCallback(async (): Promise<PartnerLead | null> => {
+    currentRequest.current?.abort();
+    const controller = new AbortController();
+    currentRequest.current = controller;
+    setLoading(true);
+    setError("");
+    setLead(null);
+    try {
       const supabase = getSupabaseBrowser();
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
-
-      if (!token) {
-        setError("Connectez-vous avec un compte partenaire pour consulter ce lead.");
-        setLoading(false);
-        return;
-      }
+      if (!token) throw new Error("Connectez-vous avec un compte partenaire pour consulter ce lead.");
 
       const response = await fetch(`/api/partner/leads/${params.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+        cache: "no-store"
       });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        setError(payload.error ?? "Lead introuvable.");
-        setLoading(false);
-        return;
-      }
-
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "Ce dossier n’a pas pu être chargé. Réessayez.");
+      if (!isPartnerLead(payload?.lead)) throw new Error("La réponse ne permet pas de confirmer l’accès au dossier. Actualisez la page pour réessayer.");
+      if (controller.signal.aborted) return null;
       setLead(payload.lead);
-      setLoading(false);
+      return payload.lead;
+    } catch (cause) {
+      if (!controller.signal.aborted) setError(cause instanceof Error && !(cause instanceof TypeError) ? cause.message : "La connexion a été interrompue. Actualisez le dossier pour réessayer.");
+      return null;
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
     }
-
-    if (params.id) loadLead();
   }, [params.id]);
 
+  useEffect(() => {
+    setUnlockError("");
+    setAwaitingConfirmation(false);
+    setAcquisitionConfirmed(false);
+    if (params.id) void loadLead();
+    return () => currentRequest.current?.abort();
+  }, [params.id, loadLead]);
+
   async function unlockLead() {
+    if (unlockPending.current || !lead || lead.access !== "preview" || !lead.canUnlock || !lead.billing.available) return;
+    unlockPending.current = true;
+    let redirecting = false;
     setUnlockError("");
     setUnlocking(true);
-
-    const supabase = getSupabaseBrowser();
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-
-    if (!token) {
-      setUnlockError("Connectez-vous avec un compte partenaire pour débloquer ce dossier.");
-      setUnlocking(false);
-      return;
+    try {
+      const supabase = getSupabaseBrowser();
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error("Connectez-vous avec un compte partenaire pour prendre en charge ce dossier.");
+      const response = await fetch(`/api/partner/leads/${params.id}/checkout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "La prise en charge n’a pas pu être confirmée. Actualisez le dossier avant de réessayer.");
+      if (payload?.acquired === true) {
+        setAwaitingConfirmation(true);
+        const refreshed = await loadLead();
+        if (refreshed?.access === "full") {
+          setAwaitingConfirmation(false);
+          setAcquisitionConfirmed(true);
+        }
+        return;
+      }
+      if (typeof payload?.url === "string" && payload.url) {
+        window.location.assign(payload.url);
+        redirecting = true;
+        return;
+      }
+      throw new Error("La réponse ne permet pas de confirmer la prise en charge. Actualisez le dossier avant de réessayer.");
+    } catch (cause) {
+      setUnlockError(cause instanceof Error && !(cause instanceof TypeError) ? cause.message : "La connexion a été interrompue. Actualisez le dossier pour vérifier son attribution avant de réessayer.");
+    } finally {
+      if (!redirecting) {
+        unlockPending.current = false;
+        setUnlocking(false);
+      }
     }
-
-    const response = await fetch(`/api/partner/leads/${params.id}/checkout`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const payload = await response.json();
-
-    if (!response.ok) {
-      setUnlockError(payload.error ?? "Déblocage impossible pour le moment.");
-      setUnlocking(false);
-      return;
-    }
-
-    if (payload.url) {
-      window.location.href = payload.url;
-      return;
-    }
-
-    setUnlockError("Stripe n'a pas retourné de page de paiement.");
-    setUnlocking(false);
   }
 
   const unlockStatus = searchParams.get("unlock");
+  const amountLabel = lead ? formatAmount(lead.billing.amount, lead.billing.currency) : null;
+  const confirmationRequested = unlockStatus === "success" || awaitingConfirmation || acquisitionConfirmed;
 
   return (
     <AppShell compact>
@@ -142,19 +128,32 @@ export default function PartnerLeadDetailPage() {
         }
       />
 
-      {unlockStatus === "success" ? (
-        <div className="mb-5 rounded-md border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">
-          Dossier débloqué avec succès.
+      {confirmationRequested && !loading && lead?.access === "full" ? (
+        <div className="mb-5 rounded-md border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800" role="status">
+          Ce dossier vous est attribué. Vous pouvez consulter les coordonnées et les éléments disponibles.
         </div>
       ) : null}
-      {unlockStatus === "cancel" ? (
+      {confirmationRequested && lead?.access !== "full" ? (
+        <div className="mb-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
+          <p>{loading ? "Vérification de l’attribution du dossier…" : "La confirmation de l’attribution est encore attendue. Les coordonnées restent masquées tant que votre accès n’est pas confirmé."}</p>
+          {!loading ? <button type="button" disabled={unlocking} onClick={() => void loadLead()} className="focus-ring mt-3 rounded font-bold underline disabled:opacity-50">Actualiser le dossier</button> : null}
+        </div>
+      ) : null}
+      {unlockStatus === "cancel" && !confirmationRequested && !loading && lead?.access === "preview" ? (
         <div className="mb-5 rounded-md border border-sanispa-line bg-white p-4 text-sm font-bold text-sanispa-steel">
-          Déblocage annulé. Le dossier reste disponible tant qu'il n'a pas été acheté par un autre partenaire.
+          Paiement interrompu. Ce dossier ne vous est pas encore attribué.
         </div>
       ) : null}
 
       {loading ? <DetailCard>Chargement du lead...</DetailCard> : null}
-      {!loading && error ? <DetailCard>{error}</DetailCard> : null}
+      {!loading && error ? <DetailCard>
+        <p role="alert">{error}</p>
+        <button type="button" disabled={unlocking} onClick={() => void loadLead()} className="focus-ring mt-3 rounded text-sm font-bold text-sanispa-blue underline disabled:opacity-50">Réessayer</button>
+      </DetailCard> : null}
+      {unlockError ? <div className="mb-3 rounded-md bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">
+        <p>{unlockError}</p>
+        <button type="button" disabled={loading || unlocking} onClick={() => { setUnlockError(""); void loadLead(); }} className="focus-ring mt-3 rounded font-bold underline disabled:opacity-50">Actualiser le dossier</button>
+      </div> : null}
 
       {!loading && lead ? (
         <DetailCard>
@@ -162,6 +161,12 @@ export default function PartnerLeadDetailPage() {
           <h2 className="mt-2 text-3xl font-black text-sanispa-navy">
             {lead.postalCode} {lead.city}
           </h2>
+          {lead.access === "preview" || lead.billing.amount !== null ? <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+            <span className={`rounded-full px-3 py-1 font-bold ${lead.billing.paymentRequired ? "bg-sanispa-ice text-sanispa-navy" : "bg-green-50 text-green-800"}`}>
+              {lead.billing.paymentRequired ? "Payant" : "Gratuit"}
+            </span>
+            {lead.billing.paymentRequired ? <span className="font-bold text-sanispa-navy">{amountLabel ?? "Tarif indisponible"}</span> : null}
+          </div> : null}
 
           <dl className="mt-6 grid gap-4 md:grid-cols-2">
             <PreviewItem label="Département" value={lead.department ?? "Non renseigné"} />
@@ -179,20 +184,26 @@ export default function PartnerLeadDetailPage() {
 
           {lead.access === "preview" ? (
             <div className="mt-6">
-              {unlockError ? <div className="mb-3 rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{unlockError}</div> : null}
+              {lead.billing.reserved ? <p className="mb-3 text-sm text-sanispa-steel">
+                Conditions réservées{amountLabel ? ` : ${amountLabel}` : ""}. Reprenez le paiement engagé pour ce dossier.
+              </p> : null}
               <button
                 type="button"
-                disabled={!lead.canUnlock || unlocking}
+                disabled={!lead.canUnlock || !lead.billing.available || (lead.billing.paymentRequired && !amountLabel) || unlocking}
                 onClick={unlockLead}
                 className="inline-flex min-h-12 items-center justify-center rounded-md bg-sanispa-navy px-5 py-3 text-sm font-bold text-white focus-ring disabled:cursor-not-allowed disabled:bg-sanispa-steel/30 disabled:text-sanispa-navy"
               >
-                {unlocking ? "Ouverture Stripe..." : "Débloquer ce dossier - 10 € TTC"}
+                {unlocking ? "Traitement en cours…" : !lead.billing.paymentRequired ? "Prendre en charge gratuitement"
+                  : `${lead.billing.reserved ? "Reprendre le paiement" : "Payer pour prendre en charge"}${amountLabel ? ` — ${amountLabel}` : ""}`}
               </button>
-              {!lead.canUnlock ? (
+              {!lead.billing.available || (lead.billing.paymentRequired && !amountLabel) ? (
                 <p className="mt-3 text-sm font-semibold text-sanispa-steel">
-                  Ce dossier est temporairement verrouillé ou déjà en cours de déblocage.
+                  La prise en charge est indisponible pour le moment. Actualisez le dossier pour consulter les conditions disponibles.
                 </p>
+              ) : !lead.canUnlock ? (
+                <p className="mt-3 text-sm font-semibold text-sanispa-steel">Ce dossier n’est pas disponible pour une prise en charge. Actualisez le dossier pour vérifier son état.</p>
               ) : null}
+              {!lead.canUnlock || !lead.billing.available ? <button type="button" disabled={unlocking} onClick={() => void loadLead()} className="focus-ring mt-3 rounded text-sm font-bold text-sanispa-blue underline disabled:opacity-50">Actualiser le dossier</button> : null}
             </div>
           ) : null}
 
@@ -285,5 +296,29 @@ function FullLead({ lead }: { lead: PartnerLeadFull }) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(date) : "Date non renseignée";
+}
+
+function formatAmount(amount: number | null, currency: string) {
+  if (amount === null || !Number.isFinite(amount) || amount < 0) return null;
+  try {
+    const formatter = new Intl.NumberFormat("fr-FR", { style: "currency", currency });
+    const digits = formatter.resolvedOptions().maximumFractionDigits ?? 2;
+    return formatter.format(amount / 10 ** digits);
+  } catch {
+    return null;
+  }
+}
+
+function isPartnerLead(value: unknown): value is PartnerLead {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<PartnerLead>;
+  if (typeof candidate.id !== "string" || !candidate.billing || typeof candidate.billing.paymentRequired !== "boolean" ||
+    typeof candidate.billing.available !== "boolean" || typeof candidate.billing.reserved !== "boolean" ||
+    typeof candidate.billing.currency !== "string" ||
+    !(candidate.billing.amount === null || (typeof candidate.billing.amount === "number" && Number.isFinite(candidate.billing.amount)))) return false;
+  if (candidate.access === "preview") return typeof candidate.canUnlock === "boolean";
+  return candidate.access === "full" && Boolean(candidate.customer) &&
+    Array.isArray(candidate.answers) && Array.isArray(candidate.photos) && Array.isArray(candidate.documents);
 }

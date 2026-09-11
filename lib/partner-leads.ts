@@ -1,3 +1,4 @@
+import type { PartnerLeadBilling } from "@/lib/partner-billing";
 import { problemTypes } from "@/lib/questions";
 export const partnerLeadStatuses = ["NEW", "AVAILABLE", "nouvelle"];
 const descriptionQuestionKeys = ["description", "pump_details", "noise_description"];
@@ -15,8 +16,9 @@ export type PartnerLeadPreview = {
     description: string | null;
     canUnlock: boolean;
     lockedUntil: string | null;
+    billing: PartnerLeadBilling;
 };
-export function sanitizePartnerLead(row: any): PartnerLeadPreview {
+export function sanitizePartnerLead(row: any, billing: PartnerLeadBilling = {paymentRequired:true,amount:null,currency:"eur",reserved:false,available:false}): PartnerLeadPreview {
     const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers;
     const location = parseLocation(customer?.address, row.department);
     return {
@@ -32,7 +34,8 @@ export function sanitizePartnerLead(row: any): PartnerLeadPreview {
         spaModel: customer?.spa_model ?? null,
         description: null,
         canUnlock: !isLocked(row.lead_locked_until) && !row.assigned_partner_id,
-        lockedUntil: row.lead_locked_until ?? null
+        lockedUntil: row.lead_locked_until ?? null,
+        billing
     };
 }
 export type PartnerLeadFull = Omit<PartnerLeadPreview, "access" | "canUnlock"> & {

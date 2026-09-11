@@ -95,6 +95,7 @@ export type PartnerAdminItem = {
     postal_code: string | null;
     city: string | null;
     active: boolean;
+    leads_paid: boolean;
     created_at: string;
     departments: string[];
 };

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { PartnerAdminItem } from "@/lib/types";
+import { PartnerLeadBilling } from "@/components/PartnerLeadBilling";
 
 const emptyForm = {
   id: "",
@@ -21,6 +22,7 @@ export function PartnerAdmin({ initialPartners }: { initialPartners: PartnerAdmi
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const isEditing = Boolean(form.id);
+  const editingPartner = partners.find(partner => partner.id === form.id);
 
   const sortedPartners = useMemo(
     () => [...partners].sort((a, b) => Number(b.active) - Number(a.active) || a.company_name.localeCompare(b.company_name)),
@@ -127,6 +129,9 @@ export function PartnerAdmin({ initialPartners }: { initialPartners: PartnerAdmi
             ) : null}
           </div>
         </form>
+        {editingPartner ? <PartnerLeadBilling key={editingPartner.id} partner={editingPartner}
+          onSaved={updated => setPartners(current => current.map(partner => partner.id === updated.id ? updated : partner))} /> :
+          <p className="mt-4 text-sm text-sanispa-steel">Les nouveaux partenaires sont créés avec des leads payants. Après l’ajout, ouvrez « Modifier » pour changer ce réglage.</p>}
         {message ? <p className="mt-4 rounded-md bg-sanispa-ice p-3 text-sm font-semibold text-sanispa-navy">{message}</p> : null}
       </section>
 
@@ -140,6 +145,9 @@ export function PartnerAdmin({ initialPartners }: { initialPartners: PartnerAdmi
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">{partner.active ? "Actif" : "Inactif"}</p>
+                <span className="mt-2 inline-flex rounded-md bg-sanispa-ice px-2 py-1 text-xs font-bold text-sanispa-navy" aria-label={`Mode des leads : ${typeof partner.leads_paid === "boolean" ? partner.leads_paid ? "Payant" : "Gratuit" : "Non disponible"}`}>
+                  {typeof partner.leads_paid === "boolean" ? partner.leads_paid ? "Payant" : "Gratuit" : "Mode non disponible"}
+                </span>
                 <h3 className="mt-1 text-lg font-bold text-sanispa-navy">{partner.company_name}</h3>
                 <p className="mt-1 text-sm text-sanispa-steel">{partner.contact_name || "Contact non renseigné"} · {partner.email}</p>
                 <p className="mt-1 text-sm text-sanispa-steel">{[partner.postal_code, partner.city].filter(Boolean).join(" ") || "Ville non renseignée"}</p>

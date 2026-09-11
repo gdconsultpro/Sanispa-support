@@ -1,8 +1,11 @@
+import { loadPartnerLeadBilling } from "@/lib/partner-billing";
+import { apiError } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
 import { partnerLeadStatuses, sanitizePartnerLead } from "@/lib/partner-leads";
 
 export async function GET(request: Request) {
+  try {
   const { user, partner, supabase } = await getAuthenticatedPartner(request);
 
   if (!user) {
@@ -21,6 +24,7 @@ export async function GET(request: Request) {
     .eq("request_type", "TECHNICAL_REQUEST")
     .in("status", partnerLeadStatuses)
     .is("assigned_partner_id", null)
+    .is("archived_at", null)
     .contains("matched_partner_ids", [partner.id])
     .order("created_at", { ascending: false });
 
@@ -32,5 +36,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Chargement impossible." }, { status: 500 });
   }
 
-  return NextResponse.json({ leads: (data ?? []).map(sanitizePartnerLead) });
+  const billingStates = await loadPartnerLeadBilling(supabase, partner, (data ?? []).map(row => row.id));
+  const leads = (data ?? []).map(row => {
+    const state = billingStates.get(row.id)!;
+    const lead = sanitizePartnerLead(row, state.billing);
+    lead.canUnlock = !state.reservedElsewhere && (lead.canUnlock || state.ownReservation) && state.billing.available;
+    return lead;
+  });
+  return NextResponse.json({ leads }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) { return apiError(error); }
 }

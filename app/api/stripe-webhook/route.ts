@@ -74,39 +74,9 @@ async function handlePartnerLeadUnlockNotPaid(session: any, status: "expired" | 
     if (!diagnosticId || !partnerId || !leadPurchaseId)
         return;
     const supabase = getSupabaseAdmin();
-    const { data: purchase } = await supabase
-        .from("lead_purchases")
-        .select("status, locked_until")
-        .eq("id", leadPurchaseId)
-        .eq("request_id", diagnosticId)
-        .eq("partner_id", partnerId)
-        .maybeSingle();
-    if (!purchase || purchase.status === "paid")
-        return;
-    await supabase
-        .from("lead_purchases")
-        .update({ status, locked_until: null })
-        .eq("id", leadPurchaseId)
-        .neq("status", "paid");
-    const { data: paidPurchase } = await supabase
-        .from("lead_purchases")
-        .select("id")
-        .eq("request_id", diagnosticId)
-        .eq("status", "paid")
-        .maybeSingle();
-    if (!paidPurchase && purchase.locked_until) {
-        await supabase
-            .from("diagnostics")
-            .update({ lead_locked_until: null })
-            .eq("id", diagnosticId)
-            .is("assigned_partner_id", null)
-            .eq("lead_locked_until", purchase.locked_until);
-    }
-    console.log("[SANISPA Stripe partenaire] lead libéré après session non payée", {
-        diagnosticId,
-        partnerId,
-        leadPurchaseId,
-        status,
-        stripeSessionId: session.id
+    const { error } = await supabase.rpc("finish_partner_checkout", {
+        p_purchase: leadPurchaseId, p_partner: partnerId, p_diagnostic: diagnosticId,
+        p_session: session.id, p_status: status
     });
+    if (error) throw error;
 }

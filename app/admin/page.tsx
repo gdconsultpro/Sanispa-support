@@ -225,7 +225,7 @@ async function loadLeadPurchaseMap(supabase: any) {
         .order("purchased_at", { ascending: false });
     const purchases = new Map();
     for (const purchase of data ?? []) {
-        if (!purchases.has(purchase.request_id) || purchase.status === "paid") {
+        if (!purchases.has(purchase.request_id) || purchase.status === "paid" || purchase.status === "granted") {
             purchases.set(purchase.request_id, purchase);
         }
     }
