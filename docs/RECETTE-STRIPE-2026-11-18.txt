@@ -36,3 +36,6 @@ Les jetons d’accès, mots de passe et URL privées de paiement/portail ne figu
 
 LIMITES ET SUITE
 111 tests automatisés et 21 contrôles SQL transactionnels ont déjà réussi avant cette phase. Les tests Stripe réels ci-dessus utilisent uniquement le mode TEST, aucun argent réel. Aucun litige ni renouvellement mensuel futur n’a été déclenché dans cette phase ; ces cas restent couverts par les tests automatisés. Le contrôle du vrai lien d’inscription sur deux appareils et la reprise planifiée des notifications restent à terminer avant production. Toute activation de production nécessite une nouvelle autorisation explicite.
+
+FACTURATION À CONFIRMER AVANT PRODUCTION
+Le total de la facture TEST Gestion est bien de 30000 centimes, mais la réponse Stripe observée indique tax=null, total_tax_amounts=[] et total_excluding_tax=30000. Le montant payé est validé ; la ventilation de TVA n’est pas validée. Confirmer le régime et le taux applicables à SANISPA, puis configurer et tester la facture correspondante en recette avant activation commerciale. Aucun taux fiscal n’a été supposé ni paramètre de production modifié.
