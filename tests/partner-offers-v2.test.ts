@@ -1,0 +1,212 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { fullDatabase } from "./helpers/full-database";
+import { ids } from "./helpers/dispatch-fixture";
+import { leadCatalog, subscriptionPlans } from "../lib/partner-catalog";
+import { dispatchCommand } from "../lib/admin-partner-dispatch";
+import { canViewPartnerOffer } from "../lib/partner-release";
+async function fixture() {
+  const db = await fullDatabase();
+  await db.exec(`insert into auth.users(id)values('${ids.admin}'),('${ids.user}'),('${ids.otherUser}');
+ insert into admin_users(user_id)values('${ids.admin}');
+ insert into partners(id,company_name,email)values('${ids.a}','Entreprise A','a@example.invalid'),('${ids.b}','Entreprise B','b@example.invalid');
+ insert into partner_users(partner_id,user_id,active)values('${ids.a}','${ids.user}',true),('${ids.b}','${ids.otherUser}',true);
+ insert into partner_departments(partner_id,department)values('${ids.a}','67'),('${ids.b}','67');
+ insert into customers(id,name,phone,email,address,spa_brand,spa_year,installation_type,power_supply)values('${ids.customer}','PRIVATE NAME','0612345678','private@example.invalid','PRIVATE STREET - 67000 - Strasbourg','TEST','2020','exterieur','230V');
+ insert into diagnostics(id,customer_id,user_id,problem_type,choice,department)values('${ids.d}','${ids.customer}','${ids.user}','fuite','devis','67');
+ insert into diagnostic_photos(diagnostic_id,photo_type,storage_path)values('${ids.d}','visible_problem','selected/photo.jpg');`);
+  return db;
+}
+const publish = (db: any, photos = ["selected/photo.jpg"]) =>
+  db.query("select publish_partner_offer($1,$2,$3,$4,$5,$6)", [
+    ids.d,
+    ids.a,
+    ids.admin,
+    "fuite",
+    "Fuite visible au niveau d’un raccord du spa.",
+    photos,
+  ]);
+const acquire = (db: Awaited<ReturnType<typeof fullDatabase>>) =>
+  db.query<any>("select acquire_partner_offer($1,$2,$3) as value", [
+    ids.d,
+    ids.a,
+    ids.user,
+  ]);
+test("every technical offer requires manual release, active paid subscription, and an approved photo from the same dossier", async () => {
+  const db = await fixture();
+  try {
+    assert.equal(
+      canViewPartnerOffer(
+        {
+          choice: "devis",
+          request_type: "TECHNICAL_REQUEST",
+          matched_partner_ids: [ids.a],
+        },
+        ids.a,
+      ),
+      false,
+    );
+    await assert.rejects(acquire(db), /LEAD_UNAVAILABLE/);
+    await assert.rejects(
+      publish(db, ["foreign/customer.jpg"]),
+      /INVALID_PREVIEW/,
+    );
+    await publish(db);
+    await assert.rejects(acquire(db), /SUBSCRIPTION_REQUIRED/);
+    await db.exec(
+      `insert into partner_subscriptions values('${ids.a}','complete','active','sub_fixture','cus_fixture',now()+interval '1 month',1);`,
+    );
+    assert.equal((await acquire(db)).rows[0].value.kind, "assigned");
+    assert.equal((await acquire(db)).rows[0].value.kind, "assigned");
+    assert.equal(
+      (
+        await db.query<any>(
+          "select count(*)::int n from lead_purchases where status='granted'",
+        )
+      ).rows[0].n,
+      1,
+    );
+    assert.equal(
+      (
+        await db.query<any>(
+          "select count(*)::int n from notification_jobs where kind='partner_accepted'",
+        )
+      ).rows[0].n,
+      1,
+    );
+    await assert.rejects(
+      db.query("select acquire_partner_offer($1,$2,$3)", [
+        ids.d,
+        ids.b,
+        ids.otherUser,
+      ]),
+      /LEAD_UNAVAILABLE/,
+    );
+  } finally {
+    await db.close();
+  }
+});
+test("management plan freezes the exact TTC lead price and unlocks only after the matching paid session", async () => {
+  const db = await fixture();
+  try {
+    await publish(db);
+    await db.exec(
+      `insert into partner_subscriptions values('${ids.a}','management','active','sub_fixture','cus_fixture',now()+interval '1 month',1);`,
+    );
+    const { purchase } = (await acquire(db)).rows[0].value;
+    assert.equal(purchase.amount, 2500);
+    assert.equal(purchase.payment_required, true);
+    assert.equal(
+      (await db.query<any>("select assigned_partner_id from diagnostics"))
+        .rows[0].assigned_partner_id,
+      null,
+    );
+    await db.query("select attach_partner_checkout($1,$2,$3,$4)", [
+      purchase.id,
+      ids.a,
+      ids.d,
+      "cs_fixture",
+    ]);
+    await assert.rejects(
+      db.query("select apply_partner_payment($1,$2,$3,$4,$5,now())", [
+        "wrong",
+        purchase.id,
+        ids.a,
+        ids.d,
+        "pi_fixture",
+      ]),
+      /SESSION_MISMATCH/,
+    );
+    for (let i = 0; i < 2; i++)
+      await db.query("select apply_partner_payment($1,$2,$3,$4,$5,now())", [
+        "cs_fixture",
+        purchase.id,
+        ids.a,
+        ids.d,
+        "pi_fixture",
+      ]);
+    assert.equal(
+      (
+        await db.query<any>(
+          "select count(*)::int n from notification_jobs where kind='partner_accepted'",
+        )
+      ).rows[0].n,
+      1,
+    );
+    assert.equal(
+      (await db.query<any>("select assigned_partner_id from diagnostics"))
+        .rows[0].assigned_partner_id,
+      ids.a,
+    );
+  } finally {
+    await db.close();
+  }
+});
+test("expired or canceled subscription cannot acquire new contacts; catalog and SQL agree on all nine TTC prices", async () => {
+  const db = await fixture();
+  try {
+    await publish(db);
+    await db.exec(
+      `insert into partner_subscriptions values('${ids.a}','complete','active','sub_fixture','cus_fixture',now()-interval '1 day',1);`,
+    );
+    await assert.rejects(acquire(db), /SUBSCRIPTION_REQUIRED/);
+    await db.exec(
+      "update partner_subscriptions set status='canceled',paid_until=now()+interval '1 month'",
+    );
+    await assert.rejects(acquire(db), /SUBSCRIPTION_REQUIRED/);
+    for (const [key, item] of Object.entries(leadCatalog))
+      assert.equal(
+        (await db.query<any>("select catalog_lead_amount($1) as amount", [key]))
+          .rows[0].amount,
+        item.amount,
+      );
+    assert.equal(subscriptionPlans.management.amount, 30000);
+    assert.equal(subscriptionPlans.complete.amount, 70000);
+    await db.exec("set role authenticated");
+    await assert.rejects(
+      db.query("select acquire_partner_offer($1,$2,$3)", [
+        ids.d,
+        ids.a,
+        ids.user,
+      ]),
+      /permission denied/,
+    );
+  } finally {
+    await db.close();
+  }
+});
+test("preview text rejects obvious contact details; an actual intervention is an explicit administrative event", async () => {
+  assert.equal(
+    dispatchCommand.safeParse({
+      action: "release",
+      partnerId: ids.a,
+      category: "fuite",
+      description: "Appelez le 06 12 34 56 78 pour obtenir les détails.",
+      photos: [],
+    }).success,
+    false,
+  );
+  const db = await fixture();
+  try {
+    await assert.rejects(
+      db.query("select record_intervention($1,$2,$3,now())", [
+        ids.d,
+        ids.user,
+        ids.a,
+      ]),
+      /ADMIN_REQUIRED/,
+    );
+    await db.query("select record_intervention($1,$2,$3,now())", [
+      ids.d,
+      ids.admin,
+      ids.a,
+    ]);
+    assert.equal(
+      (await db.query<any>("select intervened_company_name from diagnostics"))
+        .rows[0].intervened_company_name,
+      "Entreprise A",
+    );
+  } finally {
+    await db.close();
+  }
+});

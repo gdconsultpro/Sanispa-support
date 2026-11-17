@@ -1,5 +1,10 @@
 "use client";
-import { statusLabel, problemLabel, installationLabel, paymentLabel } from "@/lib/display-labels";
+import {
+  statusLabel,
+  problemLabel,
+  installationLabel,
+  paymentLabel,
+} from "@/lib/display-labels";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
@@ -10,383 +15,789 @@ import { clearDraft, authHeaders } from "@/lib/storage";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { downloadBlob } from "@/lib/download";
 type Profile = {
-    first_name: string;
-    last_name: string;
-    phone: string;
-    email: string;
-    address: string;
-    postal_code: string;
-    city: string;
-    spa_brand: string;
-    spa_model: string;
-    spa_year: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  postal_code: string;
+  city: string;
+  spa_brand: string;
+  spa_model: string;
+  spa_year: string;
 };
 type Diagnostic = {
-    id: string;
-    created_at: string;
-    status: string;
-    problem_type: string;
-    choice: string | null;
-    payment_status: string | null;
+  id: string;
+  created_at: string;
+  status: string;
+  problem_type: string;
+  choice: string | null;
+  payment_status: string | null;
+  intervened_at?: string | null;
+  intervened_company_name?: string | null;
+  assigned_partner?: { company_name: string } | null;
 };
 type Spa = {
-    id: string;
-    brand: string;
-    model: string | null;
-    spa_year: string | null;
-    installation_type: string | null;
+  id: string;
+  brand: string;
+  model: string | null;
+  spa_year: string | null;
+  installation_type: string | null;
 };
 type ClientDocument = {
-    id: string;
-    kind: "summary" | "uploaded";
-    name: string;
-    date: string;
-    type: string;
-    problemType: string;
-    status: string;
-    spa: string;
-    diagnosticId?: string;
+  id: string;
+  kind: "summary" | "uploaded";
+  name: string;
+  date: string;
+  type: string;
+  problemType: string;
+  status: string;
+  spa: string;
+  diagnosticId?: string;
+  issuedBy?: "client" | "sanispa";
 };
 const emptyProfile: Profile = {
-    first_name: "",
-    last_name: "",
-    phone: "",
-    email: "",
-    address: "",
-    postal_code: "",
-    city: "",
-    spa_brand: "",
-    spa_model: "",
-    spa_year: ""
+  first_name: "",
+  last_name: "",
+  phone: "",
+  email: "",
+  address: "",
+  postal_code: "",
+  city: "",
+  spa_brand: "",
+  spa_model: "",
+  spa_year: "",
 };
 const documentTypes = [
-    "Photo du spa",
-    "Photo de la panne",
-    "Facture d'achat",
-    "Notice technique",
-    "Devis",
-    "Autre document"
+  "Photo du spa",
+  "Photo de la panne",
+  "Facture d'achat",
+  "Notice technique",
+  "Devis",
+  "Autre document",
 ];
 export default function EspaceClientPage() {
-    const [drafts, setDrafts] = useState<Array<{
-        id: string;
-        step: string;
-        updated_at: string;
-    }>>([]);
-    const [token, setToken] = useState("");
-    const [profile, setProfile] = useState<Profile>(emptyProfile);
-    const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
-    const [spas, setSpas] = useState<Spa[]>([]);
-    const [documents, setDocuments] = useState<ClientDocument[]>([]);
-    const [spaForm, setSpaForm] = useState({ brand: "", model: "", spa_year: "", installation_type: "" });
-    const [documentForm, setDocumentForm] = useState({ documentType: "Photo du spa", spaId: "", diagnosticId: "" });
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [infoOpen, setInfoOpen] = useState(false);
-    const [loading, setLoading] = useState(true);
-    const [savingProfile, setSavingProfile] = useState(false);
-    const [uploadingDocument, setUploadingDocument] = useState(false);
-    const [message, setMessage] = useState("");
-    const [error, setError] = useState("");
-    const loadAll = useCallback(async (accessToken?: string) => {
-        const headers = accessToken ? {Authorization: `Bearer ${accessToken}`} : await authHeaders();
-        const [profileResponse, dashboardResponse, spasResponse, documentsResponse] = await Promise.all([
-            fetch("/api/client/profile", { headers }),
-            fetch("/api/client/dashboard", { headers }),
-            fetch("/api/client/spas", { headers }),
-            fetch("/api/client/documents", { headers })
-        ]);
-        const draftsResponse = await fetch("/api/client/drafts", { headers });
-        if (![profileResponse, dashboardResponse, spasResponse, documentsResponse, draftsResponse].every(r => r.ok))
-            throw new Error("Chargement incomplet. Réessayez.");
-        setDrafts((await draftsResponse.json()).drafts || []);
-        const profileData = await profileResponse.json();
-        const dashboardData = await dashboardResponse.json();
-        const spasData = await spasResponse.json();
-        const documentsData = await documentsResponse.json();
-        if (profileData.profile)
-            setProfile(profileData.profile);
-        setDiagnostics(dashboardData.diagnostics ?? []);
-        setSpas(spasData.spas ?? []);
-        setDocuments(documentsData.documents ?? []);
-    } , []);
-    useEffect(() => {
-        const supabase = getSupabaseBrowser();
-        let initialized = false;
-        let currentUser: string | null = null;
-        const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (initialized && (session?.user.id ?? null) !== currentUser) {
-                // Erase all in-memory dossier data when another tab switches account.
-                window.location.reload();
-                return;
-            }
-            setToken(session?.access_token ?? "");
-        });
-        async function load() {
-            try {
-                const { data } = await supabase.auth.getSession();
-                currentUser = data.session?.user.id ?? null;
-                initialized = true;
-                if (data.session) await loadAll(data.session.access_token);
-            } catch { setError("Impossible de charger votre espace. Réessayez."); }
-            finally { setLoading(false); }
+  const [drafts, setDrafts] = useState<
+    Array<{
+      id: string;
+      step: string;
+      updated_at: string;
+    }>
+  >([]);
+  const [token, setToken] = useState("");
+  const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
+  const [spas, setSpas] = useState<Spa[]>([]);
+  const [documents, setDocuments] = useState<ClientDocument[]>([]);
+  const [spaForm, setSpaForm] = useState({
+    brand: "",
+    model: "",
+    spa_year: "",
+    installation_type: "",
+  });
+  const [documentForm, setDocumentForm] = useState({
+    documentType: "Photo du spa",
+    spaId: "",
+    diagnosticId: "",
+  });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const loadAll = useCallback(async (accessToken?: string) => {
+    const headers = accessToken
+      ? { Authorization: `Bearer ${accessToken}` }
+      : await authHeaders();
+    const [
+      profileResponse,
+      dashboardResponse,
+      spasResponse,
+      documentsResponse,
+    ] = await Promise.all([
+      fetch("/api/client/profile", { headers }),
+      fetch("/api/client/dashboard", { headers }),
+      fetch("/api/client/spas", { headers }),
+      fetch("/api/client/documents", { headers }),
+    ]);
+    const draftsResponse = await fetch("/api/client/drafts", { headers });
+    if (
+      ![
+        profileResponse,
+        dashboardResponse,
+        spasResponse,
+        documentsResponse,
+        draftsResponse,
+      ].every((r) => r.ok)
+    )
+      throw new Error("Chargement incomplet. Réessayez.");
+    setDrafts((await draftsResponse.json()).drafts || []);
+    const profileData = await profileResponse.json();
+    const dashboardData = await dashboardResponse.json();
+    const spasData = await spasResponse.json();
+    const documentsData = await documentsResponse.json();
+    if (profileData.profile) setProfile(profileData.profile);
+    setDiagnostics(dashboardData.diagnostics ?? []);
+    setSpas(spasData.spas ?? []);
+    setDocuments(documentsData.documents ?? []);
+  }, []);
+  useEffect(() => {
+    const supabase = getSupabaseBrowser();
+    let initialized = false;
+    let currentUser: string | null = null;
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (initialized && (session?.user.id ?? null) !== currentUser) {
+          // Erase all in-memory dossier data when another tab switches account.
+          window.location.reload();
+          return;
         }
-        void load();
-        return () => subscription.subscription.unsubscribe();
-    }, [loadAll]);
-    function updateProfile(key: keyof Profile, value: string) {
-        setProfile((current) => ({ ...current, [key]: value }));
-    }
-    async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        setMessage("");
-        setError("");
-        setSavingProfile(true);
-        try {
-            const response = await fetch("/api/client/profile", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json", ...await authHeaders() },
-                body: JSON.stringify(profile)
-            });
-            const data = await response.json();
-            if (!response.ok || !data.profile)
-                throw new Error(data.error || "Enregistrement impossible.");
-            setProfile(data.profile);
-            setMessage("Informations enregistrées.");
-        }
-        catch (saveError) {
-            setError(saveError instanceof Error ? saveError.message : "Enregistrement impossible pour le moment.");
-        }
-        finally {
-            setSavingProfile(false);
-        }
-    }
-    async function addSpa(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        setError("");
-        const response = await fetch("/api/client/spas", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...await authHeaders() },
-            body: JSON.stringify(spaForm)
-        });
-        const data = await response.json();
-        if (data.spa) {
-            setSpas((current) => [data.spa, ...current]);
-            setSpaForm({ brand: "", model: "", spa_year: "", installation_type: "" });
-        }
-        else {
-            setError(data.error || "Ajout du spa impossible.");
-        }
-    }
-    async function uploadDocument(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        if (!selectedFile) {
-            setError("Sélectionnez un fichier, puis cliquez sur « Ajouter le document ».");
-            return;
-        }
-        setError("");
-        setMessage("");
-        setUploadingDocument(true);
-        try {
-            const formData = new FormData();
-            formData.append("file", selectedFile);
-            formData.append("documentType", documentForm.documentType);
-            formData.append("spaId", documentForm.spaId);
-            formData.append("diagnosticId", documentForm.diagnosticId);
-            const response = await fetch("/api/client/documents/upload", {
-                method: "POST",
-                headers: { ...await authHeaders() },
-                body: formData
-            });
-            const data = await response.json();
-            if (!response.ok)
-                throw new Error(data.error || "Téléversement impossible.");
-            setSelectedFile(null);
-            setMessage("Document ajouté.");
-            await loadAll();
-        }
-        catch (uploadError) {
-            setError(uploadError instanceof Error ? uploadError.message : "Téléversement impossible.");
-        }
-        finally {
-            setUploadingDocument(false);
-        }
-    }
-    async function downloadDocument(document: ClientDocument) {
-      setError("");
+        setToken(session?.access_token ?? "");
+      },
+    );
+    async function load() {
       try {
-        const url = document.kind === "summary" ? `/api/client/documents/${document.id}/pdf` : `/api/client/documents/${document.id}`;
-        const response = await fetch(url, { headers: { ...await authHeaders() } });
-        if (!response.ok) {
-            setError("Téléchargement impossible. Reconnectez-vous et réessayez.");
-            return;
-        }
-        downloadBlob(await response.blob(), document.kind === "summary" ? `${document.name}.pdf` : document.name);
-      } catch { setError("Téléchargement impossible. Reconnectez-vous et réessayez."); }
+        const { data } = await supabase.auth.getSession();
+        currentUser = data.session?.user.id ?? null;
+        initialized = true;
+        if (data.session) await loadAll(data.session.access_token);
+      } catch {
+        setError("Impossible de charger votre espace. Réessayez.");
+      } finally {
+        setLoading(false);
+      }
     }
-    async function deleteDocument(document: ClientDocument) {
-        if (document.kind !== "uploaded")
-            return;
-        const response = await fetch(`/api/client/documents/${document.id}`, {
-            method: "DELETE",
-            headers: { ...await authHeaders() }
-        });
-        if (response.ok) {
-            setDocuments((current) => current.filter((item) => item.id !== document.id));
-        }
+    void load();
+    return () => subscription.subscription.unsubscribe();
+  }, [loadAll]);
+  function updateProfile(key: keyof Profile, value: string) {
+    setProfile((current) => ({ ...current, [key]: value }));
+  }
+  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+    setSavingProfile(true);
+    try {
+      const response = await fetch("/api/client/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(await authHeaders()),
+        },
+        body: JSON.stringify(profile),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.profile)
+        throw new Error(data.error || "Enregistrement impossible.");
+      setProfile(data.profile);
+      setMessage("Informations enregistrées.");
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Enregistrement impossible pour le moment.",
+      );
+    } finally {
+      setSavingProfile(false);
     }
-    async function logout() {
-        const supabase = getSupabaseBrowser();
-        await supabase.auth.signOut();
-        clearDraft();
-        window.location.href = "/";
+  }
+  async function addSpa(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    const response = await fetch("/api/client/spas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      body: JSON.stringify(spaForm),
+    });
+    const data = await response.json();
+    if (data.spa) {
+      setSpas((current) => [data.spa, ...current]);
+      setSpaForm({ brand: "", model: "", spa_year: "", installation_type: "" });
+    } else {
+      setError(data.error || "Ajout du spa impossible.");
     }
-    if (loading) {
-        return (<AppShell compact>
-        <div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">Chargement de votre espace client...</div>
-      </AppShell>);
+  }
+  async function uploadDocument(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedFile) {
+      setError(
+        "Sélectionnez un fichier, puis cliquez sur « Ajouter le document ».",
+      );
+      return;
     }
-    if (!token) {
-        return (<AppShell compact>
-        <StepHeader eyebrow="Espace client" title="Connectez-vous" description="Accédez à vos brouillons, vos demandes et vos documents après connexion."/>
-        <div className="flex flex-wrap gap-3">
-          <Link href="/acces" className="rounded-md bg-sanispa-navy px-5 py-3 font-bold text-white focus-ring">Se connecter</Link>
-          <Link href="/acces" className="rounded-md border border-sanispa-line bg-white px-5 py-3 font-bold text-sanispa-navy focus-ring">Créer un compte</Link>
+    setError("");
+    setMessage("");
+    setUploadingDocument(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("documentType", documentForm.documentType);
+      formData.append("spaId", documentForm.spaId);
+      formData.append("diagnosticId", documentForm.diagnosticId);
+      const response = await fetch("/api/client/documents/upload", {
+        method: "POST",
+        headers: { ...(await authHeaders()) },
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.error || "Téléversement impossible.");
+      setSelectedFile(null);
+      setMessage("Document ajouté.");
+      await loadAll();
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Téléversement impossible.",
+      );
+    } finally {
+      setUploadingDocument(false);
+    }
+  }
+  async function downloadDocument(document: ClientDocument) {
+    setError("");
+    try {
+      const url =
+        document.kind === "summary"
+          ? `/api/client/documents/${document.id}/pdf`
+          : `/api/client/documents/${document.id}`;
+      const response = await fetch(url, {
+        headers: { ...(await authHeaders()) },
+      });
+      if (!response.ok) {
+        setError("Téléchargement impossible. Reconnectez-vous et réessayez.");
+        return;
+      }
+      downloadBlob(
+        await response.blob(),
+        document.kind === "summary" ? `${document.name}.pdf` : document.name,
+      );
+    } catch {
+      setError("Téléchargement impossible. Reconnectez-vous et réessayez.");
+    }
+  }
+  async function deleteDocument(document: ClientDocument) {
+    if (document.kind !== "uploaded" || document.issuedBy === "sanispa") return;
+    const response = await fetch(`/api/client/documents/${document.id}`, {
+      method: "DELETE",
+      headers: { ...(await authHeaders()) },
+    });
+    if (response.ok) {
+      setDocuments((current) =>
+        current.filter((item) => item.id !== document.id),
+      );
+    }
+  }
+  async function logout() {
+    const supabase = getSupabaseBrowser();
+    await supabase.auth.signOut();
+    clearDraft();
+    window.location.href = "/";
+  }
+  if (loading) {
+    return (
+      <AppShell compact>
+        <div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">
+          Chargement de votre espace client...
         </div>
-      </AppShell>);
-    }
-    return (<AppShell compact>
+      </AppShell>
+    );
+  }
+  if (!token) {
+    return (
+      <AppShell compact>
+        <StepHeader
+          eyebrow="Espace client"
+          title="Connectez-vous"
+          description="Accédez à vos brouillons, vos demandes et vos documents après connexion."
+        />
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/acces"
+            className="rounded-md bg-sanispa-navy px-5 py-3 font-bold text-white focus-ring"
+          >
+            Se connecter
+          </Link>
+          <Link
+            href="/acces"
+            className="rounded-md border border-sanispa-line bg-white px-5 py-3 font-bold text-sanispa-navy focus-ring"
+          >
+            Créer un compte
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
+  return (
+    <AppShell compact>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <StepHeader eyebrow="Espace client" title="Mon espace SANISPA" description="Lancez une demande, suivez vos dossiers et retrouvez vos documents."/>
-        <button onClick={logout} className="rounded-md border border-sanispa-line bg-white px-4 py-2 text-sm font-bold text-sanispa-steel focus-ring">Déconnexion</button>
+        <StepHeader
+          eyebrow="Espace client"
+          title="Mon espace SANISPA"
+          description="Lancez une demande, suivez vos dossiers et retrouvez vos documents."
+        />
+        <button
+          onClick={logout}
+          className="rounded-md border border-sanispa-line bg-white px-4 py-2 text-sm font-bold text-sanispa-steel focus-ring"
+        >
+          Déconnexion
+        </button>
       </div>
 
       <div className="grid gap-5">
-        {error ? <p className="rounded-md bg-red-50 p-3 text-red-700" role="alert">{error}</p> : null}
-        {drafts.length ? <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft"><h2 className="text-xl font-bold">Mes brouillons</h2><p className="mt-2 text-sanispa-steel">Ces saisies sont enregistrées dans votre espace client. Elles ne sont pas encore envoyées à SANISPA.</p><div className="mt-4 grid gap-3">{drafts.map(d => <div key={d.id} className="rounded-md bg-sanispa-ice p-4"><p className="font-bold">Brouillon {d.id.slice(0, 8).toUpperCase()}</p><p className="my-2 text-sm">Dernière sauvegarde le {new Date(d.updated_at).toLocaleString("fr-FR")}</p><Link className="font-bold text-sanispa-blue underline" href={`/reprendre?id=${d.id}`}>Reprendre mon brouillon</Link></div>)}</div></section> : null}
+        {error ? (
+          <p className="rounded-md bg-red-50 p-3 text-red-700" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {drafts.length ? (
+          <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
+            <h2 className="text-xl font-bold">Mes brouillons</h2>
+            <p className="mt-2 text-sanispa-steel">
+              Ces saisies sont enregistrées dans votre espace client. Elles ne
+              sont pas encore envoyées à SANISPA.
+            </p>
+            <div className="mt-4 grid gap-3">
+              {drafts.map((d) => (
+                <div key={d.id} className="rounded-md bg-sanispa-ice p-4">
+                  <p className="font-bold">
+                    Brouillon {d.id.slice(0, 8).toUpperCase()}
+                  </p>
+                  <p className="my-2 text-sm">
+                    Dernière sauvegarde le{" "}
+                    {new Date(d.updated_at).toLocaleString("fr-FR")}
+                  </p>
+                  <Link
+                    className="font-bold text-sanispa-blue underline"
+                    href={`/reprendre?id=${d.id}`}
+                  >
+                    Reprendre mon brouillon
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold text-sanispa-navy">Nouvelle demande d'assistance</h2>
+          <h2 className="text-xl font-bold text-sanispa-navy">
+            Nouvelle demande d'assistance
+          </h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
-            ["Traitement d'eau IA", "traitement-eau"],
-            ["Fuite", "fuite"],
-            ["Panne électrique", "electrique"],
-            ["Filtration", "filtration"],
-            ["Pompe", "pompe"],
-            ["Chauffage", "chauffage"],
-            ["Autre problème", "autre"]
-        ].map(([label, problemType]) => (<Link key={problemType} onClick={() => clearDraft()} href={`/diagnostic?new=1&problemType=${problemType}`} className="rounded-md border border-sanispa-line bg-sanispa-ice px-4 py-3 text-sm font-bold text-sanispa-navy transition hover:border-sanispa-blue hover:bg-white focus-ring">
+              ["Traitement d'eau IA", "traitement-eau"],
+              ["Fuite", "fuite"],
+              ["Panne électrique", "electrique"],
+              ["Filtration", "filtration"],
+              ["Pompe", "pompe"],
+              ["Chauffage", "chauffage"],
+              ["Autre problème", "autre"],
+            ].map(([label, problemType]) => (
+              <Link
+                key={problemType}
+                onClick={() => clearDraft()}
+                href={`/diagnostic?new=1&problemType=${problemType}`}
+                className="rounded-md border border-sanispa-line bg-sanispa-ice px-4 py-3 text-sm font-bold text-sanispa-navy transition hover:border-sanispa-blue hover:bg-white focus-ring"
+              >
                 {label}
-              </Link>))}
+              </Link>
+            ))}
           </div>
         </section>
 
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold text-sanispa-navy">Mes demandes envoyées</h2>
+          <h2 className="text-xl font-bold text-sanispa-navy">
+            Mes demandes envoyées
+          </h2>
           <div className="mt-4 grid gap-3">
-            {diagnostics.length ? diagnostics.map((diagnostic) => (<div key={diagnostic.id} className="rounded-md bg-sanispa-ice p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">Dossier n°{diagnostic.id.slice(0, 8).toUpperCase()}</p>
-                <p className="mt-2 font-bold text-sanispa-navy">{problemLabel(diagnostic.problem_type)} · {statusLabel(diagnostic.status)}</p>
-                <p className="text-sm text-sanispa-steel">{new Date(diagnostic.created_at).toLocaleString("fr-FR")} · Paiement : {paymentLabel(diagnostic.payment_status, diagnostic.choice)}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button onClick={() => downloadDocument({ id: diagnostic.id, kind: "summary", name: `Résumé de demande n°${diagnostic.id.slice(0, 8).toUpperCase()}`, date: diagnostic.created_at, type: "Résumé", problemType: diagnostic.problem_type, status: diagnostic.status, spa: "" })} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
-                    Télécharger le résumé PDF
-                  </button>
-                  <Link href={diagnostic.problem_type === "traitement-eau" ? `/paiement?diagnosticId=${diagnostic.id}` : `/diagnostic?new=1&problemType=${diagnostic.problem_type}`} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-blue focus-ring">
-                    {diagnostic.problem_type === "traitement-eau" ? "Mon assistance eau" : "Nouvelle demande similaire"}
-                  </Link>
+            {diagnostics.length ? (
+              diagnostics.map((diagnostic) => (
+                <div
+                  key={diagnostic.id}
+                  className="rounded-md bg-sanispa-ice p-4"
+                >
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">
+                    Dossier n°{diagnostic.id.slice(0, 8).toUpperCase()}
+                  </p>
+                  <p className="mt-2 font-bold text-sanispa-navy">
+                    {problemLabel(diagnostic.problem_type)} ·{" "}
+                    {statusLabel(diagnostic.status)}
+                  </p>
+                  <p className="text-sm text-sanispa-steel">
+                    {new Date(diagnostic.created_at).toLocaleString("fr-FR")} ·
+                    Paiement :{" "}
+                    {paymentLabel(diagnostic.payment_status, diagnostic.choice)}
+                  </p>
+                  {diagnostic.intervened_at &&
+                  diagnostic.intervened_company_name ? (
+                    <p className="mt-3 text-sm font-bold">
+                      Intervention effectuée par{" "}
+                      {diagnostic.intervened_company_name} le{" "}
+                      {new Date(diagnostic.intervened_at).toLocaleDateString(
+                        "fr-FR",
+                      )}
+                      .
+                    </p>
+                  ) : diagnostic.assigned_partner ? (
+                    <p className="mt-3 text-sm">
+                      Dossier confié à{" "}
+                      {diagnostic.assigned_partner.company_name} · intervention
+                      non encore confirmée.
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() =>
+                        downloadDocument({
+                          id: diagnostic.id,
+                          kind: "summary",
+                          name: `Résumé de demande n°${diagnostic.id.slice(0, 8).toUpperCase()}`,
+                          date: diagnostic.created_at,
+                          type: "Résumé",
+                          problemType: diagnostic.problem_type,
+                          status: diagnostic.status,
+                          spa: "",
+                        })
+                      }
+                      className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring"
+                    >
+                      Télécharger le résumé PDF
+                    </button>
+                    <Link
+                      href={
+                        diagnostic.problem_type === "traitement-eau"
+                          ? `/paiement?diagnosticId=${diagnostic.id}`
+                          : `/diagnostic?new=1&problemType=${diagnostic.problem_type}`
+                      }
+                      className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-blue focus-ring"
+                    >
+                      {diagnostic.problem_type === "traitement-eau"
+                        ? "Mon assistance eau"
+                        : "Nouvelle demande similaire"}
+                    </Link>
+                  </div>
                 </div>
-              </div>)) : <p className="text-sanispa-steel">Aucune demande transmise pour le moment.</p>}
+              ))
+            ) : (
+              <p className="text-sanispa-steel">
+                Aucune demande transmise pour le moment.
+              </p>
+            )}
           </div>
         </section>
 
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">Mes spas</h2>
           <form onSubmit={addSpa} className="mt-4 grid gap-4 sm:grid-cols-4">
-            <Field label="Marque" name="brand" value={spaForm.brand} onChange={(value) => setSpaForm((current) => ({ ...current, brand: value }))}/>
-            <Field label="Modèle" name="model" value={spaForm.model} onChange={(value) => setSpaForm((current) => ({ ...current, model: value }))}/>
-            <Field label="Année" name="spa_year" value={spaForm.spa_year} onChange={(value) => setSpaForm((current) => ({ ...current, spa_year: value }))}/>
-            <SelectField label="Installation" name="installation_type" value={spaForm.installation_type} onChange={(value) => setSpaForm((current) => ({ ...current, installation_type: value }))} options={[{ value: "interieur", label: "Intérieur" }, { value: "exterieur", label: "Extérieur" }]}/>
+            <Field
+              label="Marque"
+              name="brand"
+              value={spaForm.brand}
+              onChange={(value) =>
+                setSpaForm((current) => ({ ...current, brand: value }))
+              }
+            />
+            <Field
+              label="Modèle"
+              name="model"
+              value={spaForm.model}
+              onChange={(value) =>
+                setSpaForm((current) => ({ ...current, model: value }))
+              }
+            />
+            <Field
+              label="Année"
+              name="spa_year"
+              value={spaForm.spa_year}
+              onChange={(value) =>
+                setSpaForm((current) => ({ ...current, spa_year: value }))
+              }
+            />
+            <SelectField
+              label="Installation"
+              name="installation_type"
+              value={spaForm.installation_type}
+              onChange={(value) =>
+                setSpaForm((current) => ({
+                  ...current,
+                  installation_type: value,
+                }))
+              }
+              options={[
+                { value: "interieur", label: "Intérieur" },
+                { value: "exterieur", label: "Extérieur" },
+              ]}
+            />
             <div className="sm:col-span-4">
               <Button type="submit">Ajouter ce spa</Button>
             </div>
           </form>
 
           <div className="mt-4 grid gap-3">
-            {spas.map((spa) => (<div key={spa.id} className="rounded-md bg-sanispa-ice p-4 text-sm text-sanispa-steel">
-                <strong className="text-sanispa-navy">{spa.brand}</strong> {spa.model ?? ""} {spa.spa_year ? `· ${spa.spa_year}` : ""} {spa.installation_type ? `· ${installationLabel(spa.installation_type)}` : ""}
-              </div>))}
+            {spas.map((spa) => (
+              <div
+                key={spa.id}
+                className="rounded-md bg-sanispa-ice p-4 text-sm text-sanispa-steel"
+              >
+                <strong className="text-sanispa-navy">{spa.brand}</strong>{" "}
+                {spa.model ?? ""} {spa.spa_year ? `· ${spa.spa_year}` : ""}{" "}
+                {spa.installation_type
+                  ? `· ${installationLabel(spa.installation_type)}`
+                  : ""}
+              </div>
+            ))}
           </div>
         </section>
 
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold text-sanispa-navy">Mes documents</h2>
+          <h2 className="text-xl font-bold text-sanispa-navy">
+            Mes factures et documents
+          </h2>
 
-          <form onSubmit={uploadDocument} className="mt-4 grid gap-4 rounded-md border border-dashed border-sanispa-line bg-sanispa-ice p-4">
+          <form
+            onSubmit={uploadDocument}
+            className="mt-4 grid gap-4 rounded-md border border-dashed border-sanispa-line bg-sanispa-ice p-4"
+          >
             <div className="grid gap-4 sm:grid-cols-3">
-              <SelectField label="Type de document" name="documentType" value={documentForm.documentType} onChange={(value) => setDocumentForm((current) => ({ ...current, documentType: value }))} options={documentTypes.map((type) => ({ value: type, label: type }))}/>
-              <SelectField label="Spa concerné (facultatif)" name="spaId" value={documentForm.spaId} onChange={(value) => setDocumentForm((current) => ({ ...current, spaId: value }))} options={spas.map((spa) => ({ value: spa.id, label: [spa.brand, spa.model].filter(Boolean).join(" - ") }))}/>
-              <SelectField label="Dossier SAV lié (facultatif)" name="diagnosticId" value={documentForm.diagnosticId} onChange={(value) => setDocumentForm((current) => ({ ...current, diagnosticId: value }))} options={diagnostics.map((diagnostic) => ({ value: diagnostic.id, label: `Dossier ${diagnostic.id.slice(0, 8).toUpperCase()} - ${problemLabel(diagnostic.problem_type)}` }))}/>
+              <SelectField
+                label="Type de document"
+                name="documentType"
+                value={documentForm.documentType}
+                onChange={(value) =>
+                  setDocumentForm((current) => ({
+                    ...current,
+                    documentType: value,
+                  }))
+                }
+                options={documentTypes.map((type) => ({
+                  value: type,
+                  label: type,
+                }))}
+              />
+              <SelectField
+                label="Spa concerné (facultatif)"
+                name="spaId"
+                value={documentForm.spaId}
+                onChange={(value) =>
+                  setDocumentForm((current) => ({ ...current, spaId: value }))
+                }
+                options={spas.map((spa) => ({
+                  value: spa.id,
+                  label: [spa.brand, spa.model].filter(Boolean).join(" - "),
+                }))}
+              />
+              <SelectField
+                label="Dossier SAV lié (facultatif)"
+                name="diagnosticId"
+                value={documentForm.diagnosticId}
+                onChange={(value) =>
+                  setDocumentForm((current) => ({
+                    ...current,
+                    diagnosticId: value,
+                  }))
+                }
+                options={diagnostics.map((diagnostic) => ({
+                  value: diagnostic.id,
+                  label: `Dossier ${diagnostic.id.slice(0, 8).toUpperCase()} - ${problemLabel(diagnostic.problem_type)}`,
+                }))}
+              />
             </div>
 
-            <label onDrop={(event) => { event.preventDefault(); setSelectedFile(event.dataTransfer.files?.[0] ?? null); }} onDragOver={(event) => event.preventDefault()} className="block cursor-pointer rounded-md border border-dashed border-sanispa-line bg-white p-5 text-center text-sm font-semibold text-sanispa-steel">
-              {selectedFile ? selectedFile.name : "Déposez un fichier ici ou cliquez pour le sélectionner (PDF, JPG, PNG, HEIC, HEIF ou Word ; 3 Mo maximum)."}
-              <input className="hidden" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.doc,.docx,application/pdf,image/jpeg,image/png,image/heic,image/heif,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}/>
+            <label
+              onDrop={(event) => {
+                event.preventDefault();
+                setSelectedFile(event.dataTransfer.files?.[0] ?? null);
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              className="block cursor-pointer rounded-md border border-dashed border-sanispa-line bg-white p-5 text-center text-sm font-semibold text-sanispa-steel"
+            >
+              {selectedFile
+                ? selectedFile.name
+                : "Déposez un fichier ici ou cliquez pour le sélectionner (PDF, JPG, PNG, HEIC, HEIF ou Word ; 3 Mo maximum)."}
+              <input
+                className="hidden"
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.doc,.docx,application/pdf,image/jpeg,image/png,image/heic,image/heif,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(event) =>
+                  setSelectedFile(event.target.files?.[0] ?? null)
+                }
+              />
             </label>
 
-            <p className="text-sm text-sanispa-steel">Le fichier sélectionné sera ajouté à votre espace client après validation avec le bouton ci-dessous.</p>
-            <Button type="submit" disabled={uploadingDocument}>{uploadingDocument ? "Ajout du document…" : "Ajouter le document"}</Button>
+            <p className="text-sm text-sanispa-steel">
+              Le fichier sélectionné sera ajouté à votre espace client après
+              validation avec le bouton ci-dessous.
+            </p>
+            <Button type="submit" disabled={uploadingDocument}>
+              {uploadingDocument ? "Ajout du document…" : "Ajouter le document"}
+            </Button>
           </form>
 
           <div className="mt-4 grid gap-3">
-            {documents.length ? documents.map((document) => (<div key={`${document.kind}-${document.id}`} className="rounded-md bg-sanispa-ice p-4">
-                <p className="font-bold text-sanispa-navy">{document.name}</p>
-                <p className="mt-1 text-sm text-sanispa-steel">{new Date(document.date).toLocaleString("fr-FR")} · {document.type} · {statusLabel(document.status)}</p>
-                <p className="text-sm text-sanispa-steel">Spa : {document.spa}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button onClick={() => downloadDocument(document)} className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring">
-                    Télécharger le document
-                  </button>
-                  {document.kind === "uploaded" ? (<button onClick={() => deleteDocument(document)} className="rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-bold text-red-700 focus-ring">
-                      Supprimer le document
-                    </button>) : null}
+            {documents.length ? (
+              documents.map((document) => (
+                <div
+                  key={`${document.kind}-${document.id}`}
+                  className="rounded-md bg-sanispa-ice p-4"
+                >
+                  <p className="font-bold text-sanispa-navy">{document.name}</p>
+                  <p className="mt-1 text-sm text-sanispa-steel">
+                    {new Date(document.date).toLocaleString("fr-FR")} ·{" "}
+                    {document.type} · {statusLabel(document.status)}
+                  </p>
+                  <p className="text-sm text-sanispa-steel">
+                    Spa : {document.spa}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => downloadDocument(document)}
+                      className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring"
+                    >
+                      Télécharger le document
+                    </button>
+                    {document.kind === "uploaded" &&
+                    document.issuedBy !== "sanispa" ? (
+                      <button
+                        onClick={() => deleteDocument(document)}
+                        className="rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-bold text-red-700 focus-ring"
+                      >
+                        Supprimer le document
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-              </div>)) : <p className="text-sanispa-steel">Aucun document disponible pour le moment.</p>}
+              ))
+            ) : (
+              <p className="text-sanispa-steel">
+                Aucun document disponible pour le moment.
+              </p>
+            )}
           </div>
         </section>
 
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold text-sanispa-navy">Justificatifs de paiement</h2>
-          <p className="mt-2 text-sanispa-steel">Pour obtenir une facture, contactez SANISPA en précisant le numéro de votre dossier. Les documents transmis sont disponibles dans « Mes documents ».</p>
+          <h2 className="text-xl font-bold text-sanispa-navy">
+            Justificatifs de paiement
+          </h2>
+          <p className="mt-2 text-sanispa-steel">
+            Pour obtenir une facture, contactez SANISPA en précisant le numéro
+            de votre dossier. Les documents transmis sont disponibles dans « Mes
+            documents ».
+          </p>
         </section>
 
         <section className="rounded-md border border-sanispa-line bg-white shadow-soft">
-          <button type="button" onClick={() => setInfoOpen((open) => !open)} className="flex w-full items-center justify-between px-5 py-4 text-left focus-ring">
+          <button
+            type="button"
+            onClick={() => setInfoOpen((open) => !open)}
+            className="flex w-full items-center justify-between px-5 py-4 text-left focus-ring"
+          >
             <span>
-              <span className="block text-xl font-bold text-sanispa-navy">Mes informations</span>
-              <span className="mt-1 block text-sm text-sanispa-steel">Modifier mes coordonnées et les informations de mon spa.</span>
+              <span className="block text-xl font-bold text-sanispa-navy">
+                Mes informations
+              </span>
+              <span className="mt-1 block text-sm text-sanispa-steel">
+                Modifier mes coordonnées et les informations de mon spa.
+              </span>
             </span>
-            <span className="text-2xl font-bold text-sanispa-blue">{infoOpen ? "−" : "+"}</span>
+            <span className="text-2xl font-bold text-sanispa-blue">
+              {infoOpen ? "−" : "+"}
+            </span>
           </button>
 
-          {infoOpen ? (<form onSubmit={saveProfile} className="grid gap-4 border-t border-sanispa-line p-5 sm:grid-cols-2">
-              <Field label="Prénom" name="first_name" value={profile.first_name ?? ""} onChange={(value) => updateProfile("first_name", value)}/>
-              <Field label="Nom" name="last_name" value={profile.last_name ?? ""} onChange={(value) => updateProfile("last_name", value)}/>
-              <Field label="Téléphone" name="phone" value={profile.phone ?? ""} onChange={(value) => updateProfile("phone", value)}/>
-              <Field label="Adresse e-mail du compte" name="email" value={profile.email ?? ""} onChange={(value) => updateProfile("email", value)}/>
-              <Field label="Adresse" name="address" value={profile.address ?? ""} onChange={(value) => updateProfile("address", value)}/>
-              <Field label="Code postal" name="postal_code" value={profile.postal_code ?? ""} onChange={(value) => updateProfile("postal_code", value)}/>
-              <Field label="Ville" name="city" value={profile.city ?? ""} onChange={(value) => updateProfile("city", value)}/>
-              <Field label="Marque du spa" name="spa_brand" value={profile.spa_brand ?? ""} onChange={(value) => updateProfile("spa_brand", value)}/>
-              <Field label="Modèle du spa" name="spa_model" value={profile.spa_model ?? ""} onChange={(value) => updateProfile("spa_model", value)}/>
-              <Field label="Année approximative" name="spa_year" value={profile.spa_year ?? ""} onChange={(value) => updateProfile("spa_year", value)}/>
+          {infoOpen ? (
+            <form
+              onSubmit={saveProfile}
+              className="grid gap-4 border-t border-sanispa-line p-5 sm:grid-cols-2"
+            >
+              <Field
+                label="Prénom"
+                name="first_name"
+                value={profile.first_name ?? ""}
+                onChange={(value) => updateProfile("first_name", value)}
+              />
+              <Field
+                label="Nom"
+                name="last_name"
+                value={profile.last_name ?? ""}
+                onChange={(value) => updateProfile("last_name", value)}
+              />
+              <Field
+                label="Téléphone"
+                name="phone"
+                value={profile.phone ?? ""}
+                onChange={(value) => updateProfile("phone", value)}
+              />
+              <Field
+                label="Adresse e-mail du compte"
+                name="email"
+                value={profile.email ?? ""}
+                onChange={(value) => updateProfile("email", value)}
+              />
+              <Field
+                label="Adresse"
+                name="address"
+                value={profile.address ?? ""}
+                onChange={(value) => updateProfile("address", value)}
+              />
+              <Field
+                label="Code postal"
+                name="postal_code"
+                value={profile.postal_code ?? ""}
+                onChange={(value) => updateProfile("postal_code", value)}
+              />
+              <Field
+                label="Ville"
+                name="city"
+                value={profile.city ?? ""}
+                onChange={(value) => updateProfile("city", value)}
+              />
+              <Field
+                label="Marque du spa"
+                name="spa_brand"
+                value={profile.spa_brand ?? ""}
+                onChange={(value) => updateProfile("spa_brand", value)}
+              />
+              <Field
+                label="Modèle du spa"
+                name="spa_model"
+                value={profile.spa_model ?? ""}
+                onChange={(value) => updateProfile("spa_model", value)}
+              />
+              <Field
+                label="Année approximative"
+                name="spa_year"
+                value={profile.spa_year ?? ""}
+                onChange={(value) => updateProfile("spa_year", value)}
+              />
               <div className="sm:col-span-2">
-                <p className="mb-3 text-sm text-sanispa-steel">L’adresse e-mail reste celle de votre compte de connexion. Ce formulaire ne permet pas de la modifier.</p>
-                {message ? <p className="mb-3 rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">{message}</p> : null}
-                {error ? <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
-                <Button type="submit" disabled={savingProfile}>{savingProfile ? "Enregistrement..." : "Enregistrer mes informations"}</Button>
+                <p className="mb-3 text-sm text-sanispa-steel">
+                  L’adresse e-mail reste celle de votre compte de connexion. Ce
+                  formulaire ne permet pas de la modifier.
+                </p>
+                {message ? (
+                  <p className="mb-3 rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">
+                    {message}
+                  </p>
+                ) : null}
+                {error ? (
+                  <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">
+                    {error}
+                  </p>
+                ) : null}
+                <Button type="submit" disabled={savingProfile}>
+                  {savingProfile
+                    ? "Enregistrement..."
+                    : "Enregistrer mes informations"}
+                </Button>
               </div>
-            </form>) : null}
+            </form>
+          ) : null}
         </section>
       </div>
-    </AppShell>);
+    </AppShell>
+  );
 }

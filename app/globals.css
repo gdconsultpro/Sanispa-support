@@ -27,3 +27,48 @@ button {
 .focus-ring {
   @apply focus:outline-none focus:ring-2 focus:ring-sanispa-blue focus:ring-offset-2;
 }
+
+.app-background {
+  background:
+    radial-gradient(ellipse at top left, #dff4ef, transparent 55%),
+    radial-gradient(ellipse at top right, #e5efff, transparent 55%), #f5f9fc;
+}
+.problem-card {
+  display: block;
+  cursor: pointer;
+  padding: 1.15rem;
+  border: 2px solid #d1e4e7;
+  border-radius: 1.25rem;
+  background: white;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.problem-card:hover,
+.answer-choice:hover {
+  border-color: #096a80;
+}
+.problem-card.is-selected,
+.answer-choice.is-selected {
+  border-color: #096a80;
+  background: #e7f5f3;
+  box-shadow: 0 0 0 1px #096a80;
+}
+.answer-choice {
+  border-color: #d1e4e7;
+  background: #f8fbfc;
+}
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: #096a80;
+}
+form.rounded-md,
+section.rounded-md {
+  border-radius: 1.5rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
