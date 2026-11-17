@@ -4,6 +4,23 @@ import { HttpError } from "./http";
 import { subscriptionPlans, type SubscriptionPlan } from "./partner-catalog";
 const idOf = (value: any): string =>
   typeof value === "string" ? value : value?.id || "";
+// Webhook payloads use the endpoint API version, independently of the SDK version.
+type SubscriptionReference = {
+  subscription?: unknown;
+  parent?: {
+    type?: string;
+    subscription_details?: { subscription?: unknown };
+    subscription_item_details?: { subscription?: unknown };
+  } | null;
+};
+function subscriptionIdOf(value: SubscriptionReference): string {
+  if (value.subscription) return idOf(value.subscription);
+  if (value.parent?.type === "subscription_details")
+    return idOf(value.parent.subscription_details?.subscription);
+  if (value.parent?.type === "subscription_item_details")
+    return idOf(value.parent.subscription_item_details?.subscription);
+  return "";
+}
 export async function subscriptionCheckout(
   supabase: any,
   partnerId: string,
@@ -114,16 +131,19 @@ export async function processSubscriptionEvent(
     event.type === "charge.refunded" ||
     event.type === "charge.dispute.created"
   ) {
-    const charge =
+    let charge =
       event.type === "charge.refunded"
         ? (event.data.object as Stripe.Charge)
         : await stripe.charges.retrieve(
             idOf((event.data.object as Stripe.Dispute).charge),
           );
+    // New event formats can omit invoice; retrieve through our pinned SDK API.
+    if (!Object.prototype.hasOwnProperty.call(charge, "invoice"))
+      charge = await stripe.charges.retrieve(charge.id);
     const invoiceId = idOf(charge.invoice);
     if (invoiceId) {
       const invoice = await stripe.invoices.retrieve(invoiceId);
-      const subscriptionId = idOf(invoice.subscription);
+      const subscriptionId = subscriptionIdOf(invoice);
       if (subscriptionId) {
         const sub = await stripe.subscriptions.retrieve(subscriptionId);
         if (sub.metadata.type === "partner_subscription") {
@@ -138,7 +158,7 @@ export async function processSubscriptionEvent(
   }
   if (event.type === "invoice.paid") {
     const invoice = event.data.object as Stripe.Invoice;
-    const subscriptionId = idOf(invoice.subscription);
+    const subscriptionId = subscriptionIdOf(invoice);
     if (!subscriptionId) return;
     const sub = await stripe.subscriptions.retrieve(subscriptionId);
     if (sub.metadata.type !== "partner_subscription") return;
@@ -173,7 +193,7 @@ export async function processSubscriptionEvent(
     )
       throw new Error("SUBSCRIPTION_MISMATCH");
     const until = invoice.lines.data
-      .filter((line) => idOf(line.subscription) === sub.id)
+      .filter((line) => subscriptionIdOf(line) === sub.id)
       .reduce((max, line) => Math.max(max, line.period.end), 0);
     if (!until) throw new Error("PAID_PERIOD_MISSING");
     const result = await supabase.rpc("record_partner_subscription", {

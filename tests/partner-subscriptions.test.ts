@@ -83,6 +83,36 @@ test("a signed payment event must match the checkout, plan, exact TTC amount and
     assert.equal(row.plan, "management");
     assert.equal(row.status, "active");
     assert.equal(Date.parse(row.paid_until), 2000000000000);
+    const modernInvoice = {
+      ...invoice,
+      subscription: undefined,
+      parent: {
+        type: "subscription_details",
+        subscription_details: { subscription: "sub_fixture" },
+      },
+      lines: {
+        data: [
+          {
+            parent: {
+              type: "subscription_item_details",
+              subscription_item_details: { subscription: "sub_fixture" },
+            },
+            period: { end: 2000000100 },
+          },
+        ],
+      },
+    };
+    await processSubscriptionEvent(
+      { ...event, created: 101, data: { object: modernInvoice } },
+      supabase,
+      stripe,
+    );
+    row = (await db.query<any>("select * from partner_subscriptions")).rows[0];
+    assert.equal(
+      Date.parse(row.paid_until),
+      2000000100000,
+      "Basil/Dahlia invoice and line parent references must activate the paid period",
+    );
     await assert.rejects(
       processSubscriptionEvent(
         { ...event, data: { object: { ...invoice, amount_paid: 29999 } } },
@@ -110,7 +140,12 @@ test("a signed payment event must match the checkout, plan, exact TTC amount and
     row = (await db.query<any>("select * from partner_subscriptions")).rows[0];
     assert.equal(row.status, "canceled");
     assert.equal(Number(row.event_created), 200);
-    stripe.invoices = { retrieve: async () => invoice };
+    stripe.invoices = { retrieve: async () => modernInvoice };
+    let retrievedCharge = "";
+    stripe.charges = { retrieve: async (id: string) => {
+      retrievedCharge = id;
+      return { id, invoice: "in_fixture" };
+    } };
     const refundDatabase: any = {
       from: () => ({
         update: (values: any) => ({
@@ -128,11 +163,12 @@ test("a signed payment event must match the checkout, plan, exact TTC amount and
       {
         type: "charge.refunded",
         created: 201,
-        data: { object: { invoice: "in_fixture" } },
+        data: { object: { id: "ch_fixture" } },
       } as any,
       refundDatabase,
       stripe,
     );
+    assert.equal(retrievedCharge, "ch_fixture");
     await processSubscriptionEvent(
       { ...event, created: 300 },
       supabase,

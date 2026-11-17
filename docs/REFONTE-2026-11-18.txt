@@ -1,7 +1,7 @@
 SANISPA SUPPORT — Refonte du parcours client et du modèle partenaire
 18 novembre 2026
 
-État : version préparée sur une branche distincte. Aucune migration ni modification des comptes, abonnements ou tarifs Stripe de production n’a été exécutée.
+État : version déployée en recette sur une branche distincte ; migration appliquée uniquement au projet Supabase de recette nkfoboqponvropiggndv. Aucun déploiement, migration, compte, abonnement ou tarif Stripe de production n’a été modifié.
 
 1. QUESTIONNAIRES ET INSCRIPTION
 Les neuf questionnaires commencent par les symptômes propres au problème choisi. Les circonstances proposées sont adaptées à chaque catégorie. Pour une fuite, le formulaire porte sur la zone visible, la baisse de niveau et sa durée, le fonctionnement ou l’arrêt du spa ; les questions d’écran et d’électricité ne sont pas proposées dans un nouveau questionnaire fuite. Les anciens relevés restent lisibles dans les dossiers et brouillons.
@@ -30,16 +30,20 @@ La catégorie carte mère est une classification validée par SANISPA, pas un di
 L’abonnement est confirmé uniquement après une facture Stripe payée, du bon montant, pour le bon abonnement et la bonne période. Une redirection de succès ne suffit pas. Les abonnements expirés ou résiliés ne permettent pas de nouvelles acquisitions. Le renouvellement est mensuel sans période d’essai ni réduction ajoutée par ce code. Le portail Stripe sert aux factures, au moyen de paiement et à la résiliation. Les changements de formule en cours de période ne sont pas automatisés par cette version.
 
 5. VÉRIFICATIONS
-110 tests automatisés réussis (dont migrations sur PostgreSQL jetable, contrôle des rôles, attribution exclusive, deux plans, prix TTC, périodes de facturation, ancien événement de paiement, protection des photos et factures, sauvegarde/restauration des questionnaires et restitution PDF).
+111 tests automatisés réussis (dont migrations sur PostgreSQL jetable, contrôle des rôles, attribution exclusive, deux plans, prix TTC, périodes de facturation, ancien événement de paiement, protection des photos et factures, sauvegarde/restauration des questionnaires et restitution PDF).
 TypeScript : réussi. Lint : aucune erreur, deux avertissements existants sur les images.
 Build Next.js de production : réussi. Présence du logo vérifiée dans le paquet serveur de génération PDF.
 Navigateur local, services externes simulés : un seul envoi de lien, retour au questionnaire, cohérence des branches écran/pompe/filtration/fuite/chauffage, autre panne, grille d’abonnements, absence de débordement mobile et d’exception JavaScript.
 PDF : exemplaire du dossier D8804DA2 rendu et vérifié visuellement sur ses deux pages. Les fichiers contenant les informations de ce client ne sont pas inclus dans GitHub.
 Aucun e-mail, abonnement ni paiement réel n’a été effectué pour ces tests.
 
-6. AVANT ACTIVATION — VALIDATION DE DÉPLOIEMENT NÉCESSAIRE
-- Sauvegarder la base et appliquer en recette uniquement la nouvelle migration 20261117230515_partner_offers_and_client_documents.sql, après comparaison de l’historique. Ne pas réappliquer les anciennes migrations.
-- Isoler les variables de recette des variables de production. Ne pas tester une preview reliée à la production. Les remplacements Vercel actuels étant limités à une ancienne branche, il faut configurer la branche de recette avant de faire des essais connectés.
+6. RECETTE CONNECTÉE ET AVANT ACTIVATION DE PRODUCTION
+- Migration partner_offers_and_client_documents appliquée uniquement en recette ; version enregistrée par Supabase : 20261117232351. Historique et fonctions comparés avant application. Anciennes migrations non réappliquées. Les tests en base ont été exécutés dans des transactions annulées ; les volumes clients/demandes/documents sont inchangés.
+- 21 contrôles connectés en recette réussis : décision SANISPA obligatoire, photos, cloisonnement des rôles, sauvegarde cloud, absence de diffusion automatique, notification entrante, acquisition exclusive, paiement du bon montant TTC, abonnements actifs/expirés/review, formule complète, idempotence.
+- Branche de recette codex/espace-client-et-fiabilisation mise à jour avec les mêmes corrections que la PR 13. Ses variables dédiées existantes sont conservées, sans copie des secrets. Le build refuse désormais toute preview si l’URL Supabase n’est pas nkfoboqponvropiggndv, si la clé service_role historique vise un autre projet, ou si Stripe n’utilise pas une clé TEST. Aucun changement des variables de production.
+- Stripe TEST inspecté dans Safari : destination existante we_1UE5fGCt1cluNZsKhbZtM7fk désactivée, API 2026-08-26.dahlia, cinq événements seulement. Aucun réglage Stripe enregistré. L’appel POST sans authentification au webhook de recette retourne une redirection Vercel 302 ; il n’atteint pas le contrôleur de paiement. Un lien de partage temporaire retourne aussi une redirection 307, donc ne suffit pas pour Stripe.
+- Compatibilité des événements d’abonnement corrigée pour les formats Acacia et Basil/Dahlia (parent de facture et parent des lignes). Les remboursements récents sans champ invoice déclenchent une relecture via l’API Stripe épinglée. Les deux formats sont couverts par les tests avec contrôle de la période réellement payée.
+- Les essais de paiements Stripe de bout en bout restent à exécuter après ouverture contrôlée de l’accès de Stripe à la recette et activation du webhook TEST ; ne pas confondre les contrôles SQL et les objets Stripe simulés avec cette validation.
 - Dans Supabase Auth, vérifier SMTP, confirmation d’adresse et URL de retour exacte /auth/retour, ainsi que les URL avec paramètres next=diagnostic et problemType utilisées par le nouveau lien. Installer les modèles confirmation et magic_link de docs/auth-emails/templates-fr.json. Vérifier un vrai e-mail de recette sur le même appareil et sur un second appareil.
 - Dans Stripe TEST, configurer le portail client (moyen de paiement, factures, résiliation) et le webhook avec checkout.session.completed, checkout.session.expired, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, invoice.paid, customer.subscription.updated, customer.subscription.deleted, charge.refunded, charge.dispute.created. Vérifier les échecs et événements répétés avec les identifiants de recette.
 - Ajouter CRON_SECRET et un ordonnanceur de reprise des notifications compatible avec le plan d’hébergement ; les envois immédiats et la reprise manuelle existent, mais aucune planification ni variable de production n’est créée par cette branche.
