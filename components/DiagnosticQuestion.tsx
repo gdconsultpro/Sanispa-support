@@ -79,7 +79,7 @@ export function DiagnosticQuestion({
               className="focus-ring mt-2 min-h-12 w-full rounded-md border border-sanispa-line px-4 py-3 text-base"
               name={q.id}
               type="text"
-              inputMode="decimal"
+              inputMode={q.integer ? "numeric" : "decimal"}
               value={
                 q.unknownOptions?.includes(answerText(value))
                   ? ""

@@ -69,6 +69,7 @@ export type Question = {
   section?: string;
   help?: string;
   legacyOnly?: boolean;
+  integer?: boolean;
   min?: number;
   max?: number;
 };

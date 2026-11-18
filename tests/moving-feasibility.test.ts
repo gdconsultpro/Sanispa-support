@@ -13,6 +13,8 @@ test("moving dossier keeps both addresses, seats, unknown empty weight and lifti
  assert.equal(saved.find(a=>a.question_key==="moving_destination")?.answer,payload.answers.moving_destination);
  assert.equal(confirmedClientDestination(draft,draft.email),"/upload");assert.equal(confirmedClientDestination(draft,"other@example.invalid"),"/diagnostic");
  assert.throws(()=>validateSubmission({...draft,answers:{...draft.answers,moving_places:"0"}}));
+ assert.throws(()=>validateSubmission({...draft,answers:{...draft.answers,moving_places:"5,5"}}));
+ assert.throws(()=>validateSubmission({...draft,answers:{...draft.answers,moving_weight:"Écran illisible"}}));
  for(const next of ["carnet","releves","notices"] as const){assert.equal(publicClientIntent(next),next);assert.equal(new URL(clientTokenConfirmationUrl("https://support.sani-spa.fr","x".repeat(64),next)).searchParams.get("next"),next);}
  assert.equal(publicClientIntent("https://evil.invalid"),"diagnostic");
 });
