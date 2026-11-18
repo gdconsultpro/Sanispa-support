@@ -1,6 +1,8 @@
 import { acquirePartnerLead } from "./partner-acquisition";
 import { getStripe } from "./stripe";
 import { HttpError } from "./http";
+import type Stripe from "stripe";
+import { getPartnerTaxRate, partnerTaxPolicy } from "./partner-tax";
 import {
   activeSubscription,
   leadCatalog,
@@ -82,12 +84,14 @@ export async function acquireOffer({
   userId,
   diagnosticId,
   origin,
+  stripeClient,
 }: {
   supabase: any;
   partner: AuthenticatedPartner;
   userId: string;
   diagnosticId: string;
   origin: string;
+  stripeClient?: Stripe;
 }) {
   const { data: existing, error: existingError } = await supabase
     .from("diagnostics")
@@ -140,7 +144,7 @@ export async function acquireOffer({
     !purchase.payment_required
   )
     throw new HttpError(409, "Réservation non confirmée.");
-  const stripe = getStripe();
+  const stripe = stripeClient ?? getStripe();
   if (purchase.stripe_checkout_session_id) {
     const session = await stripe.checkout.sessions.retrieve(
       purchase.stripe_checkout_session_id,
@@ -173,12 +177,21 @@ export async function acquireOffer({
   const item = leadCatalog[category];
   if (!item || item.amount !== purchase.amount || purchase.currency !== "eur")
     throw new HttpError(409, "Tarif non confirmé.");
+  const taxRate = await getPartnerTaxRate(stripe);
+  const { data: subscription, error: customerError } = await supabase
+    .from("partner_subscriptions").select("stripe_customer_id")
+    .eq("partner_id", partner.id).single();
+  if (customerError || !subscription?.stripe_customer_id)
+    throw new HttpError(503, "Compte de facturation partenaire indisponible.");
   const session = await stripe.checkout.sessions.create(
     {
       mode: "payment",
       payment_method_types: ["card"],
+      customer: subscription.stripe_customer_id,
+      invoice_creation: { enabled: true },
       line_items: [
         {
+          tax_rates: [taxRate],
           price_data: {
             currency: "eur",
             unit_amount: purchase.amount,
@@ -191,6 +204,8 @@ export async function acquireOffer({
       success_url: `${origin}/partenaire/leads/${diagnosticId}?unlock=success`,
       cancel_url: `${origin}/partenaire/leads/${diagnosticId}?unlock=cancel`,
       metadata: {
+        tax_policy: partnerTaxPolicy,
+        tax_rate_id: taxRate,
         type: "partner_lead_unlock",
         diagnostic_id: diagnosticId,
         partner_id: partner.id,

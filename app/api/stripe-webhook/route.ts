@@ -1,4 +1,5 @@
 import { processSubscriptionEvent } from "@/lib/partner-subscriptions";
+import { assertPartnerInvoiceTax, partnerTaxPolicy } from "@/lib/partner-tax";
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -47,6 +48,13 @@ export async function POST(request: Request) {
           session.currency !== purchase.currency
         )
           throw new Error("PAYMENT_AMOUNT_MISMATCH");
+        if (session.metadata.tax_policy === partnerTaxPolicy)
+          await assertPartnerInvoiceTax(
+            getStripe(),
+            typeof session.invoice === "string" ? session.invoice : session.invoice?.id || "",
+            purchase.amount,
+            session.metadata.tax_rate_id || "",
+          );
         const { error } = await supabase.rpc("apply_partner_payment", {
           p_session: session.id,
           p_purchase: session.metadata.lead_purchase_id,

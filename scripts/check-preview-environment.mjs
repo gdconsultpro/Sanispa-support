@@ -29,5 +29,7 @@ if (process.env.VERCEL_ENV === "preview") {
   }
   if (!/^(?:sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY || ""))
     fail("Stripe doit être configuré en mode TEST.");
+  if (!/^txr_[A-Za-z0-9]+$/.test(process.env.STRIPE_PARTNER_TAX_RATE_ID || ""))
+    fail("taux de TVA partenaire de recette absent.");
   console.log("SANISPA : isolation recette et mode Stripe TEST vérifiés.");
 }

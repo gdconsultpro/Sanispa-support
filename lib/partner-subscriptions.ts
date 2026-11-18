@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { getStripe } from "./stripe";
 import { HttpError } from "./http";
+import { getPartnerTaxRate, assertPartnerInvoiceTax, partnerTaxPolicy } from "./partner-tax";
 import { subscriptionPlans, type SubscriptionPlan } from "./partner-catalog";
 const idOf = (value: any): string =>
   typeof value === "string" ? value : value?.id || "";
@@ -27,6 +28,7 @@ export async function subscriptionCheckout(
   userId: string,
   plan: SubscriptionPlan,
   origin: string,
+  stripe = getStripe(),
 ) {
   const { data: attempt, error } = await supabase.rpc(
     "prepare_partner_subscription",
@@ -37,7 +39,6 @@ export async function subscriptionCheckout(
       409,
       "Un abonnement ou un paiement existe déjà. Consultez son état avant de réessayer.",
     );
-  const stripe = getStripe();
   if (attempt.stripe_session_id) {
     const session = await stripe.checkout.sessions.retrieve(
       attempt.stripe_session_id,
@@ -69,6 +70,7 @@ export async function subscriptionCheckout(
     .eq("partner_id", partnerId)
     .maybeSingle();
   if (oldError) throw oldError;
+  const taxRate = await getPartnerTaxRate(stripe);
   const session = await stripe.checkout.sessions.create(
     {
       mode: "subscription",
@@ -93,7 +95,10 @@ export async function subscriptionCheckout(
         plan,
       },
       subscription_data: {
+        default_tax_rates: [taxRate],
         metadata: {
+          tax_policy: partnerTaxPolicy,
+          tax_rate_id: taxRate,
           type: "partner_subscription",
           checkout_id: attempt.id,
           partner_id: partnerId,
@@ -165,6 +170,8 @@ export async function processSubscriptionEvent(
     const plan = sub.metadata.plan as SubscriptionPlan,
       item = subscriptionPlans[plan];
     if (!item || sub.status !== "active") return;
+    if (sub.metadata.tax_policy === partnerTaxPolicy)
+      await assertPartnerInvoiceTax(stripe, invoice.id, item.amount, sub.metadata.tax_rate_id || "");
     if (
       invoice.status !== "paid" ||
       invoice.currency !== "eur" ||

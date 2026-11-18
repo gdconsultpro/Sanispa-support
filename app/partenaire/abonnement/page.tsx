@@ -74,7 +74,7 @@ export default function SubscriptionPage() {
       </Link>
       <h1 className="mt-5 text-3xl font-bold">Mon abonnement</h1>
       <p className="my-4 text-sanispa-steel">
-        Tous les tarifs sont TTC. Chaque dossier reste soumis à la validation de
+        Tous les tarifs sont TTC, TVA à 20 % incluse. Chaque dossier reste soumis à la validation de
         SANISPA, quel que soit l’abonnement.
       </p>
       {error ? (

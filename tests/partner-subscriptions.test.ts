@@ -63,6 +63,7 @@ test("a signed payment event must match the checkout, plan, exact TTC amount and
       },
     };
     const invoice = {
+      id: "in_fixture",
       subscription: "sub_fixture",
       status: "paid",
       currency: "eur",
@@ -113,6 +114,20 @@ test("a signed payment event must match the checkout, plan, exact TTC amount and
       2000000100000,
       "Basil/Dahlia invoice and line parent references must activate the paid period",
     );
+    const taxMetadata = sub.metadata as Record<string, string>;
+    taxMetadata.tax_policy = "fr-vat20-inclusive-v1";
+    taxMetadata.tax_rate_id = "txr_fixture";
+    stripe.invoices = { retrieve: async () => ({ ...invoice, total_excluding_tax: 30000, total_tax_amounts: [] }) };
+    await assert.rejects(
+      processSubscriptionEvent({ ...event, created: 102 }, supabase, stripe),
+      /PARTNER_TAX_MISMATCH/,
+    );
+    assert.equal(Number((await db.query<any>("select event_created from partner_subscriptions")).rows[0].event_created), 101);
+    stripe.invoices = { retrieve: async () => ({ ...invoice, total_excluding_tax: 25000,
+      total_tax_amounts: [{ inclusive: true, amount: 5000, tax_rate: "txr_fixture" }] }) };
+    await processSubscriptionEvent({ ...event, created: 102 }, supabase, stripe);
+    delete taxMetadata.tax_policy;
+    delete taxMetadata.tax_rate_id;
     await assert.rejects(
       processSubscriptionEvent(
         { ...event, data: { object: { ...invoice, amount_paid: 29999 } } },
