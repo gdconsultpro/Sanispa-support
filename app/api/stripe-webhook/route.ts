@@ -1,4 +1,5 @@
 import { processSubscriptionEvent } from "@/lib/partner-subscriptions";
+import { processCustomerSubscriptionEvent } from "@/lib/customer-premium";
 import { assertPartnerInvoiceTax, partnerTaxPolicy } from "@/lib/partner-tax";
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
   try {
     const supabase = getSupabaseAdmin();
     await processSubscriptionEvent(event, supabase);
+    await processCustomerSubscriptionEvent(event, supabase);
     if (
       event.type === "checkout.session.completed" ||
       event.type === "checkout.session.async_payment_succeeded"
@@ -33,7 +35,7 @@ export async function POST(request: Request) {
       const session = event.data.object;
       if (session.payment_status !== "paid")
         return NextResponse.json({ received: true });
-      if (session.metadata?.type === "partner_subscription")
+      if (["partner_subscription", "customer_premium"].includes(session.metadata?.type || ""))
         return NextResponse.json({ received: true });
       if (session.metadata?.type === "partner_lead_unlock") {
         const { data: purchase, error: purchaseError } = await supabase
@@ -83,7 +85,7 @@ export async function POST(request: Request) {
           session,
           event.type === "checkout.session.expired" ? "expired" : "failed",
         );
-      else if (session.metadata?.type !== "partner_subscription") {
+      else if (!["partner_subscription", "customer_premium"].includes(session.metadata?.type || "")) {
         const { error } = await supabase
           .from("water_assistance_sessions")
           .update({ status: "expired" })

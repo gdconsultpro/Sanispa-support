@@ -9,6 +9,7 @@ import {
   Filter,
   Volume2,
   CircleHelp,
+  Truck,
 } from "lucide-react";
 import { problemTypes } from "@/lib/questions";
 import type { ProblemType } from "@/lib/types";
@@ -22,6 +23,7 @@ const icons = [
   Filter,
   Volume2,
   CircleHelp,
+  Truck,
 ];
 const examples = [
   "De l’eau s’échappe ou le niveau baisse",
@@ -33,6 +35,7 @@ const examples = [
   "L’eau circule mal ou le cycle semble anormal",
   "Un bruit nouveau ou inhabituel",
   "Éclairage, soufflerie, accessoires…",
+  "Transport, accès de départ et d’arrivée",
 ];
 export function ProblemPicker({
   value,

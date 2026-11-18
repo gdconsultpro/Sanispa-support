@@ -5,11 +5,13 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import {
   subscriptionPlans,
+  availableSubscriptionPlans,
   leadCatalog,
   activeSubscription,
   type SubscriptionPlan,
 } from "@/lib/partner-catalog";
 import { partnerToken } from "@/lib/partner-browser";
+import { PartnerCharter } from "@/components/PartnerCharter";
 export default function SubscriptionPage() {
   const [subscription, setSubscription] = useState<{
       plan: SubscriptionPlan;
@@ -77,6 +79,7 @@ export default function SubscriptionPage() {
         Tous les tarifs sont TTC, TVA à 20 % incluse. Chaque dossier reste soumis à la validation de
         SANISPA, quel que soit l’abonnement.
       </p>
+      <PartnerCharter />
       {error ? (
         <p role="alert" className="my-4 text-red-700">
           {error}
@@ -92,7 +95,7 @@ export default function SubscriptionPage() {
               : "Aucun abonnement confirmé. Un retour de paiement ne vaut pas confirmation : attendez sa validation puis actualisez."}
           </p>
           <div className="grid gap-4 md:grid-cols-2">
-            {Object.entries(subscriptionPlans).map(([key, plan]) => (
+            {Object.entries(availableSubscriptionPlans).map(([key, plan]) => (
               <section
                 key={key}
                 className="rounded-2xl border border-sanispa-line bg-white p-6"
@@ -139,7 +142,7 @@ export default function SubscriptionPage() {
       </button>
       <section className="rounded-2xl bg-white p-6">
         <h2 className="mb-3 text-xl font-bold">
-          Prix des contacts — offre à 300 €/mois
+          Prix provisoires des contacts — abonnement à 350 € TTC/mois
         </h2>
         <dl className="grid gap-2">
           {Object.entries(leadCatalog).map(([key, item]) => (
@@ -150,9 +153,7 @@ export default function SubscriptionPage() {
           ))}
         </dl>
         <p className="mt-4 text-sm">
-          L’offre à 700 €/mois inclut ces contacts après validation SANISPA et
-          acceptation du dossier. L’abonnement ne garantit pas un nombre de
-          demandes.
+          Chaque contact est réglé séparément après validation SANISPA. L’abonnement ne garantit pas un nombre de demandes.
         </p>
       </section>
     </AppShell>

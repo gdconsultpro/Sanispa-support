@@ -1,0 +1,29 @@
+SANISPA — ESTIMATION DU COÛT DE L’ASSISTANCE EAU, 18 NOVEMBRE 2026
+
+Implémentation inspectée : app/api/water-assistant/route.ts et lib/water-context.ts.
+Un appel Chat Completions par message, modèle OPENAI_MODEL ou gpt-4o-mini par défaut.
+Aucune variable OPENAI_MODEL trouvée dans l’inventaire Vercel. Les secrets n’ont pas été lus.
+L’IA reçoit les réponses du questionnaire et les 20 derniers messages de l’historique.
+Les photos ne sont pas envoyées ni interprétées. Pas de recherche web, de voix, de fine-tuning ou de stockage vectoriel facturé dans ce parcours.
+Le dernier message est présent dans l’historique et répété dans le prompt : petite redondance à supprimer lors du prochain lot IA.
+
+Tarifs GPT-4o mini consultés dans la documentation officielle le 18 novembre 2026 :
+https://developers.openai.com/api/docs/models/gpt-4o-mini
+Entrée : 0,15 USD / million de tokens ; sortie : 0,60 USD / million de tokens.
+Hypothèse prudente sans remise de cache. La fiche marque désormais le modèle comme déprécié : vérifier le calendrier de retrait et choisir/tester un remplaçant avant ouverture publique.
+
+Exemples de consommation totale, incluant le renvoi de l’historique :
+- 10 réponses, moyenne 4 000 tokens d’entrée + 600 de sortie par appel : 0,0096 USD / dossier.
+- 20 réponses, moyenne 8 000 tokens d’entrée + 1 000 de sortie par appel : 0,036 USD / dossier.
+- Usage soutenu de 50 réponses, moyenne 12 000 + 1 500 tokens par appel : 0,135 USD / dossier.
+Les deux premiers scénarios représentent environ 1 à 4 USD / 100 dossiers et 10 à 40 USD / 1 000 dossiers.
+Ce sont des hypothèses de volume, pas un relevé de facturation ni un plafond garanti.
+Les montants sont en USD, avant taxes/conversion bancaire. Vercel, Supabase, e-mails, Stripe et travail humain sont exclus.
+Prix client affiché dans remotePlans : 9 EUR ; ne pas confondre prix commercial et coût API.
+
+Contrôles existants : compte authentifié propriétaire du dossier, session payée et non expirée, 7 jours par défaut, message client limité à 3 000 caractères, 12 requêtes/minute/session, timeout API de 25 secondes, historique limité à 20 messages.
+Manques pour une maîtrise chiffrée : aucun quota global de réponses par dossier ; aucun plafond explicite de sortie ; absence de stockage des champs usage.prompt_tokens / completion_tokens et du modèle effectivement renvoyé ; aucun budget mensuel applicatif bloquant.
+La recette contient quatre sessions et deux messages assistant. Ces messages peuvent inclure le texte d’indisponibilité : ce décompte ne prouve pas deux appels OpenAI facturés. Aucun accès à la facturation OpenAI n’a été utilisé.
+
+Prochain lot IA conseillé : quota transactionnel par dossier + maximum de sortie + journal technique des tokens sans copier les messages + contrôle de budget + migration de modèle après évaluation sur dossiers d’eau représentatifs. Les limites commerciales doivent rester cohérentes avec la promesse de l’offre à 9 EUR.
+Aucun changement de modèle, de clé ou de facturation n’est effectué pour cette estimation.

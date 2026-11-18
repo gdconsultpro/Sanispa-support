@@ -66,11 +66,11 @@ export async function DELETE(
       { error: "Document introuvable." },
       { status: 404 },
     );
-  if (document.issued_by === "sanispa")
+  if (document.issued_by !== "client")
     return NextResponse.json(
       {
         error:
-          "Les documents émis par SANISPA sont conservés dans votre dossier.",
+          "Les factures et documents émis par les professionnels sont conservés dans votre dossier.",
       },
       { status: 403 },
     );

@@ -8,22 +8,24 @@ export const leadCatalog = {
   filtration: { label: "Filtration", amount: 4900 },
   "clavier-ecran": { label: "Clavier", amount: 3900 },
   autre: { label: "Autre", amount: 2000 },
+  demenagement: { label: "Déménagement de spa", amount: 5000 },
 } as const;
 export type LeadCategory = keyof typeof leadCatalog;
 export const subscriptionPlans = {
   management: {
-    label: "Gestion + leads à la demande",
-    amount: 30000,
+    label: "Gestion et communication",
+    amount: 35000,
     description:
-      "300 € TTC / mois de gestion, puis règlement de chaque contact selon sa catégorie.",
+      "350 € TTC / mois de gestion et de communication, puis règlement de chaque contact après validation SANISPA.",
   },
   complete: {
-    label: "Complet",
+    label: "Ancien forfait complet — historique des tests",
     amount: 70000,
     description:
       "700 € TTC / mois. Contacts inclus, uniquement après validation et transmission par SANISPA.",
   },
 } as const;
+export const availableSubscriptionPlans = { management: subscriptionPlans.management };
 export type SubscriptionPlan = keyof typeof subscriptionPlans;
 export function activeSubscription(
   subscription: { status: string; paid_until: string } | null,

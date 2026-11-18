@@ -23,6 +23,8 @@ export function AppShell({
             />
           </Link>
           <nav className="flex flex-wrap items-center justify-end gap-2 text-sm font-bold">
+            <Link href="/premium" className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sanispa-navy focus-ring">Premium</Link>
+            <Link href="/diagnostic?new=1&problemType=demenagement" className="rounded-md border border-sanispa-line px-3 py-2 text-sanispa-navy focus-ring">Déménagement</Link>
             <Link
               href="/espace-client"
               className="rounded-md border border-sanispa-line px-3 py-2 text-sanispa-navy focus-ring"

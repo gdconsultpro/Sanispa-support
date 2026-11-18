@@ -85,6 +85,7 @@ export default function PartnerHomePage() {
               Mon abonnement et mes factures
             </ButtonLink>
             <ButtonLink href="/partenaire/leads">Voir les demandes</ButtonLink>
+            <ButtonLink href="/partenaire/interventions">Mes interventions et mon planning</ButtonLink>
             <ButtonLink href="/partenaire/mot-de-passe">
               Modifier mon mot de passe
             </ButtonLink>

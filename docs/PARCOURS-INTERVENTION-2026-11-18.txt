@@ -1,0 +1,35 @@
+SANISPA — PARCOURS D’INTERVENTION ET NOUVEAU MODÈLE, RECETTE UNIQUEMENT
+
+Décisions du propriétaire
+350 EUR TTC/mois pour la gestion et la communication. L’offre 700 EUR est retirée des nouvelles souscriptions. Les prix techniques précédents restent provisoirement inchangés. Déménagement : 50 EUR TTC, TVA à 20 % incluse. Il n’y a encore aucun utilisateur ni paiement réel : les anciennes factures 300/700 EUR ne sont que l’historique des tests.
+350 EUR TTC = 291,67 EUR HT + 58,33 EUR TVA. 50 EUR TTC = 41,67 EUR HT + 8,33 EUR TVA.
+
+Lot prioritaire réalisé dans le code
+- Une nouvelle souscription uniquement à 350 EUR TTC ; prix enregistré côté serveur avant création du paiement, TVA incluse, aucun changement des anciennes factures fictives.
+- Charte de recette : responsabilité du compte partenaire, limitation de l’usage des coordonnées à la mission, interdiction de revente et démarchage hors mission, absence de garantie de commande ou de prédiagnostic certain. Acceptation authentifiée horodatée et versionnée obligatoire avant une nouvelle souscription ; ce mécanisme n’est pas présenté comme une signature électronique qualifiée. Texte commercial à valider avant production.
+- Déménagement accessible depuis l’accueil et la navigation : départ, arrivée, période, dimensions, poids connu, accès/obstacles, levage et déconnexion. Photos du spa et des passages. Aucune question sur un code erreur ou la fréquence d’une panne.
+- Espace partenaire : planning et dossiers attribués, rendez-vous visible du client, rapport sur place attesté avec constats/actions/suite. Un seul rapport attend sa validation ; un devis en cours permet une visite et un rapport ultérieurs. Rapport transmis conservé sans réécriture.
+- Facture PDF privée de 3 Mo maximum déposée par le partenaire dans le dossier attribué. L’utilisateur client, le spa, le dossier et l’entreprise émettrice sont déterminés côté serveur ; le client ne peut pas supprimer une facture professionnelle.
+- Le client lit le compte rendu, choisit spa réparé / devis en cours / projet abandonné et renseigne trois notes de 1 à 5. La clôture d’une réparation attend une facture professionnelle. Un devis ou un abandon sans facture n’exige pas d’en fabriquer une.
+- Notification du rapport et relance unique après trois jours si aucune validation. Annulation des messages encore en attente après validation. File durable, déduplication et arrêt pour examen manuel au-delà de la fenêtre d’idempotence Resend.
+- Administration : rendez-vous à venir, rapports, issues et notes clients, file des déclarations à préparer pour Synchroteam.
+
+Synchroteam : préparation sans envoi, décision explicite du propriétaire
+Le connecteur disponible est en lecture seule. Il n’existe pas d’environnement Synchroteam de test distinct. Aucun client, site, utilisateur, rendez-vous ou chantier n’est créé/modifié dans le compte SANISPA.
+Les nouvelles déclarations, y compris analyse d’eau et déménagement, sont inscrites transactionnellement dans synchroteam_exports avec la clé unique sanispa:<uuid du dossier>. Pas de reprise automatique des dossiers existants pour éviter un transfert de tests et un rapprochement hasardeux.
+Une préparation JSON est téléchargeable par un administrateur MFA. Elle ne déclenche aucun réseau, ne marque rien « transmis », ne contient pas de secret ni d’URL publique de photo. Elle propose les corps customer/send et job/send documentés avec myId stable. Un rapprochement validé avec les fiches clients Synchroteam existantes est indispensable avant activation : un e-mail identique n’est pas une preuve de propriété.
+
+Choix d’architecture conseillé
+Conserver SANISPA Support pour l’accès payant, le rapport partenaire, les factures déposées et la validation client ; utiliser Synchroteam comme vue interne de toutes les demandes, par une file quotidienne indépendante et contrôlée. C’est une recommandation d’architecture, pas l’affirmation d’une synchronisation active.
+L’accès sous-traitant Synchroteam existe et peut être limité aux jobs/clients affectés. Il doit être évalué avec des comptes distincts et des groupes/tags limités, sans autoriser la liste globale des clients ni la création libre d’interventions. Vérifier licences, visibilité de l’historique d’un client partagé entre missions et droits aux documents. Le simple accès portail client/site ne remplace pas un compte sous-traitant et ne doit pas contourner l’achat du contact SANISPA.
+Sources officielles consultées :
+https://support.synchroteam.com/hc/en-us/articles/360015703051-Subcontractor-Management
+https://support.synchroteam.com/hc/en-us/articles/360015618372-Customer-Portal
+https://api.synchroteam.com/ (API v3, POST customer/send et job/send, identification/upsert par id ou myId)
+
+Avant d’activer le transfert réel
+Rapprochement clients existants, correspondances types/sites/équipements et modèles de rapport, destinations des pièces jointes, mapping des comptes sous-traitants, accès API dédié côté serveur, reprises après timeout et doublons côté distant, journal des identifiants distants. Aucun secret API n’est demandé dans le chat.
+Avant de promettre des relances automatiques en production : configurer et vérifier l’appel planifié protégé de /api/cron/notifications. Les previews Vercel ne constituent pas une preuve d’exécution d’un cron de production. Aucune planification de production n’est ajoutée dans ce lot.
+
+Lots suivants, pas présentés comme déjà livrés
+Carnet d’entretien/rappels personnalisés et liens boutique ; recherche de notices par photo avec base officielle validée (ne pas laisser l’IA inventer une notice). Publication stores et diffusion e-mail/QR après autorisation de diffusion. Forum à étudier, annonces et flux AchatSpa.fr, achats groupés avec références/dates à définir. Ces modules demandent leurs règles et contenus propres. L’estimation de coût de l’assistance eau existante est dans COUT-IA-EAU-2026-11-18.txt.

@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         z
           .object({
             action: z.literal("subscribe"),
-            plan: z.enum(["management", "complete"]),
+            plan: z.literal("management"),
           })
           .strict(),
         z.object({ action: z.literal("portal") }).strict(),

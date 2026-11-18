@@ -54,7 +54,7 @@ type ClientDocument = {
   status: string;
   spa: string;
   diagnosticId?: string;
-  issuedBy?: "client" | "sanispa";
+  issuedBy?: "client" | "sanispa" | "partner";
 };
 const emptyProfile: Profile = {
   first_name: "",
@@ -281,7 +281,7 @@ export default function EspaceClientPage() {
     }
   }
   async function deleteDocument(document: ClientDocument) {
-    if (document.kind !== "uploaded" || document.issuedBy === "sanispa") return;
+    if (document.kind !== "uploaded" || document.issuedBy !== "client") return;
     const response = await fetch(`/api/client/documents/${document.id}`, {
       method: "DELETE",
       headers: { ...(await authHeaders()) },
@@ -412,6 +412,7 @@ export default function EspaceClientPage() {
           <h2 className="text-xl font-bold text-sanispa-navy">
             Mes demandes envoyées
           </h2>
+          <p className="mt-3 text-sm">Vos demandes, rapports et factures restent accessibles gratuitement. <Link className="font-bold underline" href="/premium">Premium : IA, carnet, relevés, rappels, notices et forum →</Link></p>
           <div className="mt-4 grid gap-3">
             {diagnostics.length ? (
               diagnostics.map((diagnostic) => (
@@ -449,6 +450,7 @@ export default function EspaceClientPage() {
                     </p>
                   ) : null}
                   <div className="mt-3 flex flex-wrap gap-2">
+                    <Link href={`/espace-client/interventions/${diagnostic.id}`} className="rounded-md border border-sanispa-line px-3 py-2 text-sm font-bold">Suivre l’intervention et donner mon avis</Link>
                     <button
                       onClick={() =>
                         downloadDocument({
@@ -659,7 +661,7 @@ export default function EspaceClientPage() {
                       Télécharger le document
                     </button>
                     {document.kind === "uploaded" &&
-                    document.issuedBy !== "sanispa" ? (
+                    document.issuedBy === "client" ? (
                       <button
                         onClick={() => deleteDocument(document)}
                         className="rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-bold text-red-700 focus-ring"

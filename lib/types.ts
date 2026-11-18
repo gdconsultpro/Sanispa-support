@@ -7,7 +7,8 @@ export type ProblemType =
   | "clavier-ecran"
   | "filtration"
   | "bruit-anormal"
-  | "autre";
+  | "autre"
+  | "demenagement";
 export type ChoiceType = "intervention" | "devis" | "remote";
 export type PaymentPlan = "photo" | "guided" | "premium" | "water";
 export type DiagnosticStatus =

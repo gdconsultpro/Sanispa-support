@@ -30,10 +30,12 @@ export async function subscriptionCheckout(
   origin: string,
   stripe = getStripe(),
 ) {
+  if (plan !== "management") throw new HttpError(400, "Seule l’offre Gestion et communication à 350 € TTC est proposée.");
   const { data: attempt, error } = await supabase.rpc(
     "prepare_partner_subscription",
     { p_partner: partnerId, p_actor: userId, p_plan: plan },
   );
+  if (error?.message?.includes("CHARTER_REQUIRED")) throw new HttpError(409, "Acceptez d’abord la charte de partenariat sur cette page.");
   if (error)
     throw new HttpError(
       409,
@@ -64,6 +66,8 @@ export async function subscriptionCheckout(
       "Paiement incertain à vérifier par SANISPA. Aucun nouveau prélèvement créé.",
     );
   const item = subscriptionPlans[plan];
+  if (attempt.amount !== item.amount)
+    throw new HttpError(409, "Les conditions de ce paiement ont changé. Contactez SANISPA pour fermer l’ancienne tentative.");
   const { data: old, error: oldError } = await supabase
     .from("partner_subscriptions")
     .select("stripe_customer_id")
@@ -167,30 +171,31 @@ export async function processSubscriptionEvent(
     if (!subscriptionId) return;
     const sub = await stripe.subscriptions.retrieve(subscriptionId);
     if (sub.metadata.type !== "partner_subscription") return;
-    const plan = sub.metadata.plan as SubscriptionPlan,
-      item = subscriptionPlans[plan];
-    if (!item || sub.status !== "active") return;
-    if (sub.metadata.tax_policy === partnerTaxPolicy)
-      await assertPartnerInvoiceTax(stripe, invoice.id, item.amount, sub.metadata.tax_rate_id || "");
-    if (
-      invoice.status !== "paid" ||
-      invoice.currency !== "eur" ||
-      invoice.total !== item.amount ||
-      invoice.amount_paid !== item.amount ||
-      sub.items.data.length !== 1 ||
-      sub.items.data[0].price.unit_amount !== item.amount ||
-      sub.items.data[0].price.recurring?.interval !== "month"
-    )
-      throw new Error("SUBSCRIPTION_AMOUNT_MISMATCH");
+    const plan = sub.metadata.plan as SubscriptionPlan;
+    if (!subscriptionPlans[plan] || sub.status !== "active") return;
     const { data: checkout, error } = await supabase
       .from("partner_subscription_checkouts")
-      .select("stripe_session_id")
+      .select("stripe_session_id,amount")
       .eq("id", sub.metadata.checkout_id)
       .eq("partner_id", sub.metadata.partner_id)
       .eq("plan", plan)
       .single();
     if (error || !checkout?.stripe_session_id)
       throw new Error("CHECKOUT_NOT_ATTACHED");
+    // Old fictitious invoices retain their original terms; new terms are stored server-side.
+    const amount = checkout.amount ?? (plan === "complete" ? 70000 : 30000);
+    if (sub.metadata.tax_policy === partnerTaxPolicy)
+      await assertPartnerInvoiceTax(stripe, invoice.id, amount, sub.metadata.tax_rate_id || "");
+    if (
+      invoice.status !== "paid" ||
+      invoice.currency !== "eur" ||
+      invoice.total !== amount ||
+      invoice.amount_paid !== amount ||
+      sub.items.data.length !== 1 ||
+      sub.items.data[0].price.unit_amount !== amount ||
+      sub.items.data[0].price.recurring?.interval !== "month"
+    )
+      throw new Error("SUBSCRIPTION_AMOUNT_MISMATCH");
     const session = await stripe.checkout.sessions.retrieve(
       checkout.stripe_session_id,
     );

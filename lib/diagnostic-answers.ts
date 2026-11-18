@@ -57,7 +57,7 @@ export function toggleAnswer(
 export function questionsFor(draft: AnswerDraft): Question[] {
   if (!draft.problemType || !questionSets[draft.problemType]) return [];
   const questions = [...questionSets[draft.problemType]];
-  if (draft.choice === "intervention" && draft.problemType !== "fuite")
+  if (draft.choice === "intervention" && !["fuite", "demenagement"].includes(draft.problemType))
     questions.push(spaAccessQuestion);
   if (draft.problemType === "electrique" && !draft.photos.keyboard)
     questions.push(photoUnavailableQuestion, photoUnavailableDetail);

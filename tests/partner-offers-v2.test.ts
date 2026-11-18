@@ -160,7 +160,7 @@ test("expired or canceled subscription cannot acquire new contacts; catalog and 
           .rows[0].amount,
         item.amount,
       );
-    assert.equal(subscriptionPlans.management.amount, 30000);
+    assert.equal(subscriptionPlans.management.amount, 35000);
     assert.equal(subscriptionPlans.complete.amount, 70000);
     await db.exec("set role authenticated");
     await assert.rejects(

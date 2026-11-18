@@ -18,3 +18,8 @@ pnpm-debug.log*
 
 # Local Supabase CLI cache
 supabase/.temp/
+
+# Local review artifacts may contain customer information
+output/
+tmp/
+*.tsbuildinfo

@@ -1,5 +1,6 @@
 import { photoRequirements, problemTypes } from "./questions";
 const states: Record<string,string> = {
+  subscription: "Service sur abonnement Premium",
   NEW: "Nouvelle demande", AVAILABLE: "Demande reçue", ASSIGNED: "Technicien assigné", CLOSED: "Dossier clos",
   WATER_ANALYSIS: "Analyse de l’eau", TECHNICAL_REQUEST: "Demande technique",
   nouvelle: "Nouvelle demande", "en analyse": "En analyse", "devis envoyé": "Devis envoyé", "RDV demandé": "Rendez-vous demandé", terminé: "Terminé",

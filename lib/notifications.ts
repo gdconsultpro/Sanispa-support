@@ -1,4 +1,4 @@
-import { sendPartnerAcceptance } from "./email";
+import { sendPartnerAcceptance, sendClientReportNotification, sendPremiumCareReminder } from "./email";
 import { canNotifyPartnerOffer } from "./partner-release";
 import { getSupabaseAdmin } from "./supabase";
 import {
@@ -18,7 +18,41 @@ export async function processNotifications(prefix?: string) {
   for (const job of jobs || []) {
     try {
       let result;
-      if (job.kind === "admin")
+      if (job.kind === "premium_care") {
+        const [reminder, premium] = await Promise.all([
+          supabase.from("care_reminders").select("version,completed_at").eq("id", job.payload.reminderId).eq("user_id", job.payload.userId).maybeSingle(),
+          supabase.rpc("customer_has_premium", { p_user: job.payload.userId }),
+        ]);
+        if (reminder.error || premium.error) throw reminder.error || premium.error;
+        if (!premium.data || !reminder.data || reminder.data.completed_at || reminder.data.version !== job.payload.version) {
+          const cancel = await supabase.from("notification_jobs").update({ state: "cancelled", locked_until: null }).eq("id", job.id);
+          if (cancel.error) throw cancel.error;
+          continue;
+        }
+        const firstAttempt = Date.parse(job.first_delivery_attempt_at || "");
+        if (!Number.isFinite(firstAttempt) || Date.now() - firstAttempt >= 23 * 3600000 || (process.env.EMAIL_PROVIDER || "resend").toLowerCase() !== "resend") {
+          const review = await supabase.from("notification_jobs").update({ state: "delivery_unknown", locked_until: null }).eq("id", job.id);
+          if (review.error) throw review.error;
+          continue;
+        }
+        result = await sendPremiumCareReminder(job.payload);
+      } else if (job.kind === "client_report" || job.kind === "client_review_reminder") {
+        const { data: report, error: reportError } = await supabase.from("intervention_reports").select("client_validated_at,diagnostics!inner(archived_at)").eq("id", job.payload.reportId).maybeSingle();
+        if (reportError) throw reportError;
+        const dossier = Array.isArray(report?.diagnostics) ? report.diagnostics[0] : report?.diagnostics;
+        if (!report || report.client_validated_at || dossier?.archived_at) {
+          const cancelled = await supabase.from("notification_jobs").update({ state: "cancelled", locked_until: null }).eq("id", job.id);
+          if (cancelled.error) throw cancelled.error;
+          continue;
+        }
+        const firstAttempt = Date.parse(job.first_delivery_attempt_at || "");
+        if (!Number.isFinite(firstAttempt) || Date.now() - firstAttempt >= 23 * 3600000 || (process.env.EMAIL_PROVIDER || "resend").toLowerCase() !== "resend") {
+          const review = await supabase.from("notification_jobs").update({ state: "delivery_unknown", locked_until: null }).eq("id", job.id);
+          if (review.error) throw review.error;
+          continue;
+        }
+        result = await sendClientReportNotification(job.payload, job.kind === "client_review_reminder");
+      } else if (job.kind === "admin")
         result = await sendDiagnosticNotification(job.payload);
       else if (job.kind === "partner_accepted") {
         const firstAttempt = Date.parse(job.first_delivery_attempt_at || "");

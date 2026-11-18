@@ -54,7 +54,7 @@ test("all conditional children follow their parents; no parent cycles or duplica
   }
 });
 test("new technical information stays optional; home access has one shared answer", () => {
-  for (const { value } of problemTypes) {
+  for (const { value } of problemTypes.filter(p => p.value !== "demenagement")) {
     const answers: DiagnosticDraft["answers"] = value === "autre" ? { description: "TEST : un éclairage ne fonctionne plus", still_usable: "Je ne sais pas" } : value === "electrique" ? { trip: "Je ne sais pas", keyboard_photo_unavailable: "Impossible de prendre une photo avec mon appareil" } : value === "fuite" ? { visible_leak: "Non observable" } : {};
     assert.doesNotThrow(() => validateSubmission(fixture(value, answers)), value);
     assert.equal(questionsFor(fixture(value)).filter(q => q.id === "spa_access").length, 1);

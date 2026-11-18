@@ -23,7 +23,7 @@ export default function Callback() {
           );
         const draft = readDraft();
         const query = new URLSearchParams(window.location.search);
-        const destination = confirmedClientDestination(
+        const destination = query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
           draft,
           data.session.user.email || "",
           query.get("next") === "diagnostic",
@@ -44,7 +44,7 @@ export default function Callback() {
           });
           window.location.replace("/diagnostic");
         } else if (active) {
-          window.location.replace("/espace-client");
+          window.location.replace(destination);
         }
       } catch (e) {
         if (active)

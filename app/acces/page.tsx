@@ -33,7 +33,7 @@ export default function AccessPage() {
     }
     const subscription = auth.auth.onAuthStateChange((_event, session) => {
       if (session?.user.email_confirmed_at)
-        window.location.replace("/auth/retour?next=diagnostic");
+        window.location.replace(new URLSearchParams(window.location.search).get("next") === "premium" ? "/auth/retour?next=premium" : "/auth/retour?next=diagnostic");
     });
     return () => {
       window.clearInterval(tick);
@@ -60,6 +60,7 @@ export default function AccessPage() {
           emailRedirectTo: clientConfirmationUrl(
             window.location.origin,
             draft.problemType,
+            new URLSearchParams(window.location.search).get("next") === "premium" ? "premium" : "diagnostic",
           ),
         },
       });

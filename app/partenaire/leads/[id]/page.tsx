@@ -375,7 +375,7 @@ export default function PartnerLeadDetailPage() {
             </div>
           ) : null}
 
-          {lead.access === "full" ? <FullLead lead={lead} /> : null}
+          {lead.access === "full" ? <><Link href={`/partenaire/interventions/${lead.id}`} className="my-5 block rounded-xl bg-sanispa-blue p-4 font-bold text-white">Planifier, remplir le rapport et déposer la facture →</Link><FullLead lead={lead} /></> : null}
         </DetailCard>
       ) : null}
     </AppShell>

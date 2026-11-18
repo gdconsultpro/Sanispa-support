@@ -547,3 +547,19 @@ export async function sendPartnerAcceptance(payload: {
     html: `<h2>Dossier accepté</h2><p>${escapeHtml(payload.partnerName)} a accepté le dossier ${escapeHtml(payload.diagnosticId)}.</p><p>L’accès a été confirmé après règlement du contact ou au titre de son abonnement complet.</p><p><a href="${escapeHtml(url)}">Consulter l’administration</a></p>`,
   });
 }
+
+export async function sendClientReportNotification(payload: { diagnosticId: string; email: string; notificationKey: string }, reminder = false) {
+  const url = `${process.env.NEXT_PUBLIC_APP_URL}/espace-client/interventions/${encodeURIComponent(payload.diagnosticId)}`;
+  return sendTransactionalEmail({
+    to: payload.email,
+    subject: reminder ? "SANISPA — Votre avis sur l’intervention est attendu" : "SANISPA — Votre compte rendu d’intervention est disponible",
+    idempotencyKey: payload.notificationKey,
+    html: `<h2>Votre intervention</h2><p>Consultez le compte rendu de votre partenaire, confirmez la suite de votre dossier et donnez votre avis sur sa réactivité, son professionnalisme et son tarif.</p><p>Si une facture manque, votre partenaire doit encore compléter le dossier.</p><p><a href="${escapeHtml(url)}">Retrouver mon dossier et donner mon avis</a></p>`,
+  });
+}
+
+export async function sendPremiumCareReminder(payload: { email: string; title: string; notificationKey: string }) {
+  const url = `${process.env.NEXT_PUBLIC_APP_URL}/premium/carnet`;
+  return sendTransactionalEmail({ to: payload.email, subject: "SANISPA — Votre rappel d’entretien du spa", idempotencyKey: payload.notificationKey,
+    html: `<h2>Un entretien à prévoir</h2><p>${escapeHtml(payload.title)}</p><p>Ce rappel suit la date que vous avez choisie. Consultez la notice du spa et les indications de vos produits avant toute opération.</p><p><a href="${escapeHtml(url)}">Ouvrir mon carnet et mettre à jour le rappel</a></p>` });
+}

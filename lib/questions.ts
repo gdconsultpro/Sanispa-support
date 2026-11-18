@@ -10,6 +10,7 @@ export const problemTypes: Array<{ value: ProblemType; label: string }> = [
   { value: "filtration", label: "Filtration / circulation de l’eau" },
   { value: "bruit-anormal", label: "Bruit anormal" },
   { value: "autre", label: "Autre problème / je ne sais pas où le classer" },
+  { value: "demenagement", label: "Déménagement de mon spa" },
 ];
 
 export const unknown = "Je ne sais pas";
@@ -176,6 +177,20 @@ export const pumpSymptoms = {
   other: "Autre symptôme",
 };
 const specific: Record<ProblemType, Question[]> = {
+  demenagement: [
+    text("moving_departure", "Adresse de départ du spa (adresse, code postal et ville)", { required: true, section: "Le trajet de votre spa" }),
+    text("moving_destination", "Adresse d’arrivée du spa (adresse, code postal et ville)", { required: true }),
+    text("moving_date", "Date ou période souhaitée pour le déménagement", { required: true }),
+    text("moving_dimensions", "Dimensions du spa : longueur × largeur × hauteur", { required: true, help: "Précisez les unités. Si vous ne les connaissez pas, indiquez-le ; ne déplacez pas le spa pour mesurer." }),
+    text("moving_weight", "Poids à vide indiqué sur la notice, si connu", { help: "Facultatif : ne l’estimez pas si vous ne le connaissez pas." }),
+    radio("moving_departure_access", "Accès au spa au départ", ["Accès de plain-pied", "Marches ou escalier", "Terrasse ou étage", "Spa encastré / semi-encastré", unknown], { required: true }),
+    text("moving_departure_details", "Décrivez le passage au départ : largeur du portail, obstacles, distance au véhicule", { type: "textarea", required: true }),
+    radio("moving_destination_access", "Accès à l’emplacement d’arrivée", ["Accès de plain-pied", "Marches ou escalier", "Terrasse ou étage", "Spa à encastrer", unknown], { required: true }),
+    text("moving_destination_details", "Décrivez le passage à l’arrivée : largeur du portail, obstacles, distance au véhicule", { type: "textarea", required: true }),
+    radio("moving_lifting", "Un moyen de levage semble-t-il nécessaire ?", ["Oui, au départ", "Oui, à l’arrivée", "Oui, aux deux adresses", "Non, a priori", unknown], { help: "Le professionnel confirmera les moyens adaptés. Ne tentez pas de déplacer le spa vous-même." }),
+    radio("moving_disconnection", "Faut-il prévoir la vidange et la déconnexion du spa ?", ["Oui", "Non, elles seront réalisées avant", unknown]),
+    text("moving_details", "Autres précisions utiles pour le transport", { type: "textarea" }),
+  ],
   pompe: [
     radio("pump_type", "Quelle pompe semble concernée ?", [
       "Pompe de massage",
@@ -833,6 +848,7 @@ const specific: Record<ProblemType, Question[]> = {
 };
 const contextLabels: Record<ProblemType, { since: string; events: string[] }> =
   {
+    demenagement: { since: "", events: [] },
     fuite: {
       since:
         "Depuis quand avez-vous constaté la fuite ou la baisse du niveau d’eau ?",
@@ -947,7 +963,7 @@ const additionalIssue: Question[] = [
 export const questionSets = Object.fromEntries(
   problemTypes.map(({ value }) => {
     const shared =
-      value === "traitement-eau"
+      ["traitement-eau", "demenagement"].includes(value)
         ? []
         : common.map((q) => {
             let question =
@@ -1013,7 +1029,7 @@ export const questionSets = Object.fromEntries(
             : q,
         ),
         ...shared,
-        ...additionalIssue,
+        ...(value === "demenagement" ? [] : additionalIssue),
       ],
     ];
   }),
@@ -1026,6 +1042,9 @@ type PhotoRequirement = {
   problemTypes?: ProblemType[];
 };
 export const photoRequirements: PhotoRequirement[] = [
+  { id: "moving_spa", label: "Vue d’ensemble du spa à déplacer", required: false, problemTypes: ["demenagement"] },
+  { id: "moving_departure", label: "Passage et accès au départ", required: false, problemTypes: ["demenagement"] },
+  { id: "moving_arrival", label: "Passage et emplacement à l’arrivée", required: false, problemTypes: ["demenagement"] },
   {
     id: "keyboard",
     label: "Photo du clavier / écran avec le défaut visible",
@@ -1102,7 +1121,7 @@ export function getPhotoRequirements(
 ) {
   // Keep already attached legacy photos available when the suggestions evolve.
   const suggested = photoRequirements.filter((photo) =>
-    problemType === "traitement-eau"
+    problemType === "traitement-eau" || problemType === "demenagement"
       ? photo.problemTypes?.includes(problemType)
       : !photo.problemTypes ||
         (problemType && photo.problemTypes?.includes(problemType)),
@@ -1138,8 +1157,8 @@ export function isPhotoRequired(
 export const remotePlans = [
   {
     id: "water",
-    name: "Diagnostic Traitement d'Eau IA",
-    price: 9,
+    name: "SANISPA Premium — assistance IA",
+    price: 9.99,
     stripeEnv: "STRIPE_PRICE_WATER_ASSISTANT",
     enabled: true,
   },
