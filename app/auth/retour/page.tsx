@@ -36,7 +36,7 @@ export default function Callback() {
           );
         const draft = readDraft();
         const query = new URLSearchParams(window.location.search);
-        const destination = query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
+        const destination = query.get("next") === "admin" ? "/admin/connexion" : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
           draft,
           data.session.user.email || "",
           query.get("next") === "diagnostic",

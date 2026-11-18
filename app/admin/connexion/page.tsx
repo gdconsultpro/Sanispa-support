@@ -20,6 +20,8 @@ export default function AdminLogin() {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [method, setMethod] = useState<"email" | "password">("email");
+  const [message, setMessage] = useState("");
 
   const openAdmin = useCallback(async () => {
     const response = await fetch("/api/admin/session", { method: "POST", headers: await authHeaders() });
@@ -46,6 +48,12 @@ export default function AdminLogin() {
   async function login(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
     try {
+      if (method === "email") {
+        const response = await fetch("/api/client/access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, next: "admin" }) });
+        if (!response.ok) throw new Error("Le lien n’a pas pu être envoyé. Vérifiez l’adresse et réessayez dans une minute.");
+        setMessage("Si cette adresse correspond à un administrateur autorisé, un lien de connexion vient de lui être envoyé. Ouvrez-le, puis saisissez le code de votre application d’authentification.");
+        return;
+      }
       const { error } = await getSupabaseBrowser().auth.signInWithPassword({ email, password });
       setPassword("");
       if (error) throw new Error("Adresse ou mot de passe incorrect. Vérifiez aussi la confirmation de votre adresse.");
@@ -87,14 +95,16 @@ export default function AdminLogin() {
     setMode("login"); setQr(""); setCode(""); setError("");
   }
   return <AppShell compact>
-    <StepHeader eyebrow="Administration" title="Connexion sécurisée" description="L’accès aux dossiers nécessite un compte autorisé et le code de votre application d’authentification." />
+    <StepHeader eyebrow="Administration SANISPA" title="Votre accès administrateur" description="Recevez votre lien par e-mail, puis validez le code de votre application d’authentification pour ouvrir les dossiers réels." />
     <div className="mx-auto max-w-lg space-y-5 rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
       {mode === "checking" && <p>Vérification de votre session…</p>}
       {mode === "login" && <form onSubmit={login} className="space-y-4">
+        <div className="flex flex-wrap gap-2" aria-label="Choisir le moyen de connexion"><button type="button" aria-pressed={method === "email"} onClick={() => { setMethod("email"); setMessage(""); setError(""); }} className={`focus-ring rounded-lg border px-4 py-3 text-sm font-bold ${method === "email" ? "bg-sanispa-navy text-white" : "bg-white"}`}>Lien par e-mail</button><button type="button" aria-pressed={method === "password"} onClick={() => { setMethod("password"); setMessage(""); setError(""); }} className={`focus-ring rounded-lg border px-4 py-3 text-sm font-bold ${method === "password" ? "bg-sanispa-navy text-white" : "bg-white"}`}>Mot de passe</button></div>
         <Field label="Adresse e-mail administrateur" name="email" type="email" value={email} onChange={setEmail} required />
-        <Field label="Mot de passe" name="password" type="password" value={password} onChange={setPassword} required />
-        <Button type="submit" disabled={busy}>{busy ? "Connexion…" : "Continuer"}</Button>
-        <Link href="/mot-de-passe-oublie" className="block text-sm font-bold underline">Créer ou réinitialiser mon mot de passe</Link>
+        {method === "password" && <Field label="Mot de passe" name="password" type="password" value={password} onChange={setPassword} required />}
+        <Button type="submit" disabled={busy}>{busy ? "Connexion…" : method === "email" ? "Recevoir mon lien administrateur" : "Continuer"}</Button>
+        {message && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm leading-6">{message}</p>}
+        {method === "password" && <Link href="/mot-de-passe-oublie" className="block text-sm font-bold underline">Créer ou réinitialiser mon mot de passe</Link>}
       </form>}
       {mode === "enroll" && <div className="space-y-4"><p>Compte autorisé : <strong>{email}</strong></p><p>Associez une application d’authentification sur votre téléphone. Elle générera un code à chaque connexion.</p><Button onClick={enroll} disabled={busy}>Associer mon application</Button></div>}
       {mode === "verify" && <form onSubmit={verify} className="space-y-4">
@@ -107,6 +117,7 @@ export default function AdminLogin() {
       {error && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {mode !== "checking" && <button type="button" onClick={switchAccount} className="text-sm underline">Utiliser un autre compte</button>}
       <p className="text-xs text-sanispa-steel">Session administrateur limitée à une heure. En cas de perte de votre téléphone, contactez le responsable du compte SANISPA pour rétablir l’accès.</p>
+      <Link href="/demo" className="focus-ring block rounded-xl border border-sanispa-line p-4 text-sm font-bold">Ouvrir la démonstration sans connexion →</Link>
     </div>
   </AppShell>;
 }

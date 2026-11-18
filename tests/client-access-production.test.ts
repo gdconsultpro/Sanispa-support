@@ -7,10 +7,12 @@ const request = (body: unknown, origin = app) => new Request(app + "/api/client/
 async function fixture(run: (state: any) => Promise<void>) {
   const previousFetch = globalThis.fetch, env = { ...process.env };
   Object.assign(process.env, { NEXT_PUBLIC_APP_URL: app, NEXT_PUBLIC_SUPABASE_URL: db, SUPABASE_SERVICE_ROLE_KEY: "fixture", RESEND_API_KEY: "fixture", EMAIL_PROVIDER: "resend", EMAIL_FROM: "SANISPA <test@example.invalid>" });
-  const state = { calls: [] as any[], limited: false, banned: false, missing: false, sent: null as any };
+  const state = { calls: [] as any[], limited: false, banned: false, missing: false, sent: null as any, adminActive: true, adminEmail: "admin@example.invalid" };
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input)), body = JSON.parse(String(init?.body || "{}")); state.calls.push({ path: url.pathname, body });
     if (url.origin === db && url.pathname.endsWith("/rpc/consume_request_limit")) return Response.json(!state.limited);
+    if (url.origin === db && url.pathname === "/rest/v1/admin_users") { assert.equal(url.searchParams.get("active"), "eq.true"); return Response.json(state.adminActive ? [{ user_id: "40000000-0000-4000-8000-000000000001" }] : []); }
+    if (url.origin === db && url.pathname === "/auth/v1/admin/users/40000000-0000-4000-8000-000000000001") return Response.json({ id: "40000000-0000-4000-8000-000000000001", email: state.adminEmail, email_confirmed_at: "2026-01-01", banned_until: state.banned ? "2099-01-01" : undefined });
     if (url.origin === db && url.pathname === "/auth/v1/admin/generate_link") {
       if (state.missing) return Response.json({ msg: "User not found", code: "user_not_found" }, { status: 404 });
       return Response.json({ id: "40000000-0000-4000-8000-000000000001", email: body.email, banned_until: state.banned ? "2099-01-01" : undefined,
@@ -59,4 +61,20 @@ test("recovery uses its own verification intent and hides missing accounts", () 
   assert.ok(s.sent.html.includes("next=recovery")); assert.ok(s.sent.html.includes("type=recovery"));
   s.missing = true; s.sent = null; const missing = await POST(request({ email: "missing@example.invalid", next: "recovery" }));
   assert.deepEqual(await missing.json(), { ok: true }); assert.equal(s.sent, null);
+}));
+test("administrator links only go to an active confirmed administrator, preserve the admin destination, and return no token", () => fixture(async s => {
+  const r = await POST(request({ email: "admin@example.invalid", next: "admin" }));
+  assert.equal(r.status, 200); assert.deepEqual(await r.json(), { ok: true });
+  assert.equal(s.sent.to, "admin@example.invalid"); assert.ok(s.sent.html.includes("/auth/retour?next=admin"));
+  const link = new URL(clientTokenConfirmationUrl(app, token, "admin"));
+  assert.equal(link.searchParams.get("next"), "admin");
+  assert.equal(new URLSearchParams(link.hash.slice(1)).get("type"), "email");
+}));
+test("administrator requests by ordinary, inactive or banned accounts neither generate a credential nor reveal membership", () => fixture(async s => {
+  for (const scenario of ["ordinary", "inactive", "banned"]) {
+    s.adminActive = scenario !== "inactive"; s.banned = scenario === "banned"; s.calls = []; s.sent = null;
+    const response = await POST(request({ email: scenario === "ordinary" ? "client@example.invalid" : "admin@example.invalid", next: "admin" }));
+    assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ok: true });
+    assert.equal(s.sent, null); assert.ok(!s.calls.some((c: any) => c.path.endsWith("generate_link")));
+  }
 }));
