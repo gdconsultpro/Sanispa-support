@@ -24,12 +24,13 @@ Sources officielles consultées le 18 novembre 2026 :
 https://developers.openai.com/api/docs/models/gpt-4o-mini
 https://developers.openai.com/api/docs/models/gpt-5.4-mini
 
-Validation préparée
+Validation automatisée et navigateur
 132 tests automatisés passent : fiscalité et montants, attribution, données entre clients, accès gratuit/Premium, forum excluant les partenaires, propriété des spas, déduplication IA et relances versionnées. TypeScript, lint sans erreur (deux avertissements image existants) et compilation contrôlés séparément.
 Tests navigateur locaux avec API simulées sur 390 × 844 : blocage du carnet gratuit, création journal/rappel/relevé, valeurs inconnues conservées, transmission du relevé à l’IA, forum en attente et recherche de notice. Débordement du tableau corrigé ; défilement contenu au tableau. Les appels OpenAI et Stripe de ces tests navigateur sont simulés et ne sont pas présentés comme des paiements connectés.
 Migrations appliquées exclusivement à Supabase recette nkfoboqponvropiggndv :
 20261118005439 intervention_workflow_and_management_350 (fichier local généré CLI 20261118003836)
 20261118011557 customer_premium_care_and_forum (fichier local généré CLI 20261118005644)
+20261118012643 service_role_notifications_and_premium_checkout (fichier local généré CLI 20261118012421)
 Advisors : aucune nouvelle alerte WARN/ERROR ; 23 tables internes avec RLS sans policy publique sont volontairement fermées et leurs privilèges révoqués. L’avertissement préexistant de protection des mots de passe compromis reste présent.
 
 Aucun déploiement, secret, migration ou transaction de production. Synchroteam reste en préparation sans envoi, conformément à la décision du propriétaire. Les publications stores, e-mails de diffusion, occasion et achats groupés restent hors ouverture actuelle.
@@ -40,3 +41,13 @@ Tests ajoutés sous SET ROLE service_role sans privilège Auth, puis contrôles 
 
 ARRONDI OBSERVÉ DANS STRIPE TEST
 Le Checkout connecté à 9,99 EUR affiche 8,33 EUR HT et 1,66 EUR de TVA incluse. Pour cette ligne unique à 20 %, le contrôle utilise la base HT arrondie au centime, puis la TVA comme différence du TTC. Le total TTC reste exactement 999 centimes. Le cas 999/833/166 est ajouté aux tests fiscaux ; les abonnements et leads existants conservent leurs totaux validés.
+
+ESSAIS CONNECTÉS TERMINÉS — 18 NOVEMBRE 2026
+Code vérifié en recette : 3dd5a48581b4d1e7e8168b27cf31044f9acb6cb3. Les deux déploiements Vercel de recette/revue sont READY.
+Trois identités fictives distinctes ont servi aux contrôles HTTP authentifiés : client gratuit, client Premium et partenaire. Création de rendez-vous, rapport dédupliqué, refus de clôture sans facture, dépôt PDF privé, téléchargement propriétaire, refus entre comptes, interdiction de suppression d’une facture professionnelle et validation avec trois notes ont été contrôlés sur la vraie base de recette.
+Stripe TEST : Checkout mensuel 9,99 EUR, facture DSLR2KZS-0001 réglée fictivement, 8,33 EUR HT + 1,66 EUR TVA. L’événement invoice.paid a activé les droits ; le portail a permis une résiliation en fin de période sans couper l’accès payé. Un remboursement intégral TEST a ensuite bloqué le Premium (état review), tout en conservant l’accès aux rapports et factures. L’abonnement TEST a enfin été annulé immédiatement pour terminer l’essai. Aucun paiement réel.
+Après activation fictive, les API connectées ont confirmé carnet, rappels, relevé avec valeurs inconnues NULL, six sources de notices et forum en attente, sans coordonnées publiques. Les mêmes services retournent 402 au compte gratuit.
+Un appel réel OpenAI a utilisé le relevé choisi : modèle retourné gpt-5.4-mini-2026-03-17, 560 tokens entrée et 258 sortie, coût estimé 0,001581 USD hors taxes/change/cache. Une seconde demande identique a renvoyé la réponse enregistrée sans second appel. Cela valide le comptage et la déduplication, pas un coût mensuel garanti.
+Clôture : webhook Stripe TEST désactivé avec ses neuf événements conservés ; protection Vercel rétablie (POST anonyme webhook renvoyé vers l’authentification, HTTP 302). Trois comptes fictifs bloqués et sessions révoquées, dossier archivé, publication forum refusée, export Synchroteam en review avec zéro tentative et aucun identifiant distant. Les cinq dossiers précédemment actifs sont conservés. Les fichiers temporaires d’accès sont supprimés ; les preuves locales sans mots de passe restent exclues de Git.
+Production vérifiée inchangée : support.sani-spa.fr pointe toujours sur dpl_DdzPpF645YXWMoUhbd8JYU9aiKBD, main 171c9cf4acd5ea2210134a43b8a358a06d1466f2. PR 13 maintenue en brouillon. Aucune transmission Synchroteam.
+Avant ouverture : activer et observer la planification des e-mails, valider la charte/les conditions commerciales et enrichir les notices. Les essais ne constituent pas l’activation commerciale.
