@@ -6,6 +6,7 @@ import { getStripe } from "@/lib/stripe";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { applyWaterPayment } from "@/lib/payments";
 import { processNotifications } from "@/lib/notifications";
+import { normalizeStripeEvent } from "@/lib/stripe-event";
 export async function POST(request: Request) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   const signature = request.headers.get("stripe-signature");
@@ -25,6 +26,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Signature invalide" }, { status: 400 });
   }
   try {
+    // The signature is verified before any provider read. Re-read old LIVE
+    // invoice events with our pinned SDK schema before checking paid periods.
+    event = await normalizeStripeEvent(event, getStripe());
     const supabase = getSupabaseAdmin();
     await processSubscriptionEvent(event, supabase);
     await processCustomerSubscriptionEvent(event, supabase);

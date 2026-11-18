@@ -20,6 +20,23 @@ if (process.env.VERCEL_ENV === "production") {
     if (!rate.active || !rate.inclusive || rate.percentage !== 20 || rate.country !== "FR" || rate.tax_type !== "vat" || !rate.livemode)
       throw new Error("STRIPE_LIVE_TAX_MISMATCH");
     const configurations = await stripe.billingPortal.configurations.list({ active: true, limit: 100 });
+    let portal = configurations.data.find(c => c.metadata?.application === "sanispa-support" && c.metadata?.policy === "monthly-20261118");
+    if (!portal && process.env.SANISPA_PREPARE_LIVE_PORTAL === "2026-11-18") {
+      portal = await stripe.billingPortal.configurations.create({
+        business_profile: { headline: "Votre abonnement SANISPA Support" },
+        default_return_url: "https://support.sani-spa.fr/premium",
+        features: { invoice_history: { enabled: true }, payment_method_update: { enabled: true },
+          subscription_cancel: { enabled: true, mode: "at_period_end", proration_behavior: "none" },
+          subscription_update: { enabled: false } },
+        metadata: { application: "sanispa-support", policy: "monthly-20261118" },
+      }, { idempotencyKey: "sanispa-live-portal-monthly-20261118" });
+      console.log("SANISPA : portail dédié créé une fois, sans modifier les autres configurations.");
+    }
+    if (!portal || !portal.active || !portal.livemode || !portal.features.invoice_history.enabled ||
+        !portal.features.payment_method_update.enabled || !portal.features.subscription_cancel.enabled ||
+        portal.features.subscription_cancel.mode !== "at_period_end" || portal.features.subscription_update.enabled)
+      throw new Error("STRIPE_LIVE_PORTAL_MISMATCH");
+    console.log("SANISPA portail dédié LIVE :", JSON.stringify({ id: portal.id, invoice_history: true, payment_method_update: true, cancellation: "at_period_end" }));
     console.log("SANISPA portails LIVE :", JSON.stringify(configurations.data.map(c => ({ id: c.id, default: c.is_default, invoice_history: c.features.invoice_history.enabled, payment_method_update: c.features.payment_method_update.enabled, cancellation: c.features.subscription_cancel.enabled, cancellation_mode: c.features.subscription_cancel.mode }))));
     const endpoints = await stripe.webhookEndpoints.list({ limit: 100 });
     const endpoint = endpoints.data.find(e => e.id === "we_1TfJyuCt1cluNZsK1GBmTOyt");

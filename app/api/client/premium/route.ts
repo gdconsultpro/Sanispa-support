@@ -4,6 +4,7 @@ import { requireUser, rateLimit } from "@/lib/client-auth";
 import { premiumActive, premiumCheckout } from "@/lib/customer-premium";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { getStripe } from "@/lib/stripe";
+import { createSanispaPortal } from "@/lib/stripe-portal";
 export async function GET(request: Request) {
   try {
     const { user, supabase } = await requireUser(request);
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
     if (payload.action === "subscribe") return NextResponse.json(await premiumCheckout(supabase, user, origin));
     const result = await supabase.from("customer_subscriptions").select("stripe_customer_id").eq("user_id", user.id).single();
     if (result.error || !result.data) throw new HttpError(404, "Aucun abonnement trouvé.");
-    const session = await getStripe().billingPortal.sessions.create({ customer: result.data.stripe_customer_id, return_url: `${origin}/premium` });
+    const session = await createSanispaPortal(getStripe(), result.data.stripe_customer_id, `${origin}/premium`);
     return NextResponse.json({ url: session.url });
   } catch (e) { return apiError(e); }
 }

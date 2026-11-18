@@ -5,6 +5,7 @@ import { apiError, HttpError, readJson } from "@/lib/http";
 import { subscriptionCheckout } from "@/lib/partner-subscriptions";
 import { getStripe } from "@/lib/stripe";
 import { rateLimit } from "@/lib/client-auth";
+import { createSanispaPortal } from "@/lib/stripe-portal";
 export async function GET(request: Request) {
   try {
     const { partner, supabase } = await getAuthenticatedPartner(request);
@@ -49,10 +50,7 @@ export async function POST(request: Request) {
         .eq("partner_id", partner.id)
         .single();
       if (error || !data) throw new HttpError(404, "Aucun abonnement trouvé.");
-      const session = await getStripe().billingPortal.sessions.create({
-        customer: data.stripe_customer_id,
-        return_url: `${origin}/partenaire/abonnement`,
-      });
+      const session = await createSanispaPortal(getStripe(), data.stripe_customer_id, `${origin}/partenaire/abonnement`);
       return NextResponse.json({ url: session.url });
     }
     return NextResponse.json(
