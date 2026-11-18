@@ -1,6 +1,6 @@
 /** Only known partner screens may be used as post-authentication destinations. */
 export function partnerReturnPath(value: string | null | undefined) {
-  return value && /^\/partenaire(?:\/leads(?:\/[a-f0-9-]{36})?)?$/i.test(value) ? value : "/partenaire/leads";
+  return value && /^\/partenaire(?:\/(?:visio|abonnement|leads(?:\/[a-f0-9-]{36})?|interventions(?:\/[a-f0-9-]{36})?))?$/i.test(value) ? value : "/partenaire/leads";
 }
 export function partnerLoginPath(next?: string | null) {
   return `/partenaire/connexion?next=${encodeURIComponent(partnerReturnPath(next))}`;

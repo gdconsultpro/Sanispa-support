@@ -12,7 +12,7 @@ const token = `e30.${Buffer.from(JSON.stringify({ sub: uid, role: "authenticated
 function req(path: string, body?: unknown) { return new Request(origin+path, { method: body ? "POST" : "GET", headers: { Authorization: `Bearer ${token}`, Origin: origin, "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) }); }
 async function fixture(run: (state: any) => Promise<void>) {
   const previousFetch = globalThis.fetch, previousEnv = { ...process.env };
-  Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: db, SUPABASE_SERVICE_ROLE_KEY: "fixture-only", OPENAI_API_KEY: "fixture-only" });
+  Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: db, SUPABASE_SERVICE_ROLE_KEY: "fixture-only", NEXT_PUBLIC_SANISPA_BILLING_MODE: "live", OPENAI_API_KEY: "fixture-only" });
   const state = { active: false, partner: false, deduplicated: false, calls: [] as string[], aiCalls: 0, usage: null as any };
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input)); state.calls.push(url.pathname);
@@ -26,6 +26,7 @@ async function fixture(run: (state: any) => Promise<void>) {
     assert.equal(url.origin, db, `Unexpected external call ${url.origin}`);
     if (url.pathname === "/auth/v1/user") return Response.json({ id: uid, email: "test@example.invalid", email_confirmed_at: "2026-11-18", app_metadata: {} });
     if (url.pathname.endsWith("/rpc/private_session_status")) return Response.json({ active: true, is_admin: false, mfa_verified: false });
+    if (url.pathname.endsWith("/rpc/customer_has_premium")) return Response.json(state.active);
     if (url.pathname.endsWith("/customer_subscriptions")) return Response.json(state.active ? { status: "active", paid_until: "2099-01-01" } : null);
     if (url.pathname.endsWith("/partner_users")) return Response.json(state.partner ? [{ id: "membership" }] : []);
     if (url.pathname.endsWith("/diagnostics") || url.pathname.endsWith("/client_documents")) return Response.json([]);

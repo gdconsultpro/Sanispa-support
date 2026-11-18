@@ -1,3 +1,4 @@
+import { paymentsPaused } from "@/lib/commercial-mode";
 import type Stripe from "stripe";
 import { requireUser } from "./client-auth";
 import { HttpError } from "./http";
@@ -10,12 +11,14 @@ export function premiumActive(subscription: { status: string; paid_until: string
 }
 export async function requirePremium(request: Request) {
   const context = await requireUser(request);
-  const { data, error } = await context.supabase.from("customer_subscriptions").select("status,paid_until").eq("user_id", context.user.id).maybeSingle();
+  const { data, error } = await context.supabase.rpc(paymentsPaused() ? "grant_customer_trial_access" : "customer_has_premium", { p_user: context.user.id });
   if (error) throw error;
-  if (!premiumActive(data)) throw new HttpError(402, "Ce service est inclus dans SANISPA Premium à 9,99 € TTC par mois.");
+  if (!data) throw new HttpError(402, "Ce service est inclus dans SANISPA Premium à 9,99 € TTC par mois.");
   return context;
 }
-export async function premiumCheckout(supabase: any, user: { id: string; email?: string }, origin: string, stripe = getStripe()) {
+export async function premiumCheckout(supabase: any, user: { id: string; email?: string }, origin: string, stripeClient?: Stripe) {
+  if (paymentsPaused()) return { url: `${origin}/premium`, complimentary: true };
+  const stripe = stripeClient ?? getStripe();
   const prepared = await supabase.rpc("prepare_customer_subscription", { p_user: user.id });
   if (prepared.error) throw new HttpError(409, "Un abonnement ou un paiement existe déjà. Actualisez son état ou ouvrez sa gestion.");
   const attempt = prepared.data;

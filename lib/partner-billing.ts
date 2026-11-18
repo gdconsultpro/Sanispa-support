@@ -68,6 +68,7 @@ export async function loadPartnerLeadBilling(supabase: any, partner: Authenticat
 export function partnerAcquisitionError(error: unknown): never {
   const code = typeof error === "object" && error !== null && "message" in error ? String(error.message) : "";
   const errors: Record<string, [number,string]> = {
+    CHARTER_REQUIRED: [409, "Acceptez d’abord la charte de partenariat depuis la rubrique Accès partenaire."],
     PARTNER_REQUIRED: [403, "Aucun accès partenaire actif n’est associé à ce compte."],
     LEAD_NOT_FOUND: [404, "Dossier introuvable."],
     LEAD_UNAVAILABLE: [403, "Ce dossier n’est pas disponible pour votre compte partenaire."],

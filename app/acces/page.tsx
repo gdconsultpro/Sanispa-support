@@ -6,6 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { emptyDraft, readDraft, writeDraft } from "@/lib/storage";
+import { publicClientIntent } from "@/lib/client-access";
 export default function AccessPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
@@ -32,7 +33,7 @@ export default function AccessPage() {
     }
     const subscription = auth.auth.onAuthStateChange((_event, session) => {
       if (session?.user.email_confirmed_at)
-        window.location.replace(new URLSearchParams(window.location.search).get("next") === "premium" ? "/auth/retour?next=premium" : "/auth/retour?next=diagnostic");
+        window.location.replace(`/auth/retour?next=${publicClientIntent(new URLSearchParams(window.location.search).get("next"))}`);
     });
     return () => {
       window.clearInterval(tick);
@@ -56,7 +57,7 @@ export default function AccessPage() {
       const response = await fetch("/api/client/access", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: normalized, problemType: draft.problemType,
-          next: new URLSearchParams(window.location.search).get("next") === "premium" ? "premium" : "diagnostic" }),
+          next: publicClientIntent(new URLSearchParams(window.location.search).get("next")) }),
       });
       if (!response.ok) throw new Error("Envoi impossible");
       setSent(true);
@@ -80,12 +81,12 @@ export default function AccessPage() {
           Votre compte en un lien
         </p>
         <h1 className="mt-3 text-3xl font-bold">
-          {sent ? "Votre déclaration vous attend" : "Un e-mail, et c’est parti"}
+          {sent ? "Votre espace vous attend" : "Un e-mail, et c’est parti"}
         </h1>
         <p className="my-5 leading-7 text-sanispa-steel">
           {sent
-            ? "Ouvrez le lien reçu par e-mail : il confirme votre adresse et vous ramène directement à votre déclaration. Aucun autre bouton de confirmation à valider."
-            : "Indiquez votre adresse. Le lien reçu confirme votre compte et vous permet de déclarer la panne de votre spa. Aucun mot de passe à créer."}
+            ? "Ouvrez le lien reçu par e-mail : il confirme votre adresse et vous ramène directement à votre parcours SANISPA. Aucun autre bouton de confirmation à valider."
+            : "Indiquez votre adresse. Le lien reçu confirme votre compte et ouvre votre parcours SANISPA. Aucun mot de passe à créer."}
         </p>
         <form onSubmit={send} className="space-y-4">
           <label className="block text-sm font-bold">

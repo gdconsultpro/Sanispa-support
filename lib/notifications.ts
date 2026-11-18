@@ -1,4 +1,4 @@
-import { sendPartnerAcceptance, sendClientReportNotification, sendPremiumCareReminder } from "./email";
+import { sendPartnerAcceptance, sendClientReportNotification, sendPremiumCareReminder, sendVideoNotification } from "./email";
 import { canNotifyPartnerOffer } from "./partner-release";
 import { getSupabaseAdmin } from "./supabase";
 import {
@@ -25,7 +25,31 @@ export async function processNotifications(prefix?: string) {
   for (const job of jobs || []) {
     try {
       let result;
-      if (job.kind === "premium_care") {
+      if (job.kind === "visio_requested" || job.kind === "visio_updated") {
+        const { data: session, error } = await supabase.from("video_assistance_sessions").select("*").eq("id", job.payload.videoSessionId).maybeSingle();
+        if (error) throw error;
+        const isAdmin = job.kind === "visio_requested";
+        if (!session || (isAdmin && session.status !== "requested") || (!isAdmin && session.version !== job.payload.version)) {
+          const canceled = await supabase.from("notification_jobs").update({ state: "cancelled", locked_until: null }).eq("id", job.id);
+          if (canceled.error) throw canceled.error;
+          continue;
+        }
+        const first = Date.parse(job.first_delivery_attempt_at || "");
+        if (!Number.isFinite(first) || Date.now() - first >= 23 * 3600000 || (process.env.EMAIL_PROVIDER || "resend").toLowerCase() !== "resend") {
+          const review = await supabase.from("notification_jobs").update({ state: "delivery_unknown", locked_until: null }).eq("id", job.id);
+          if (review.error) throw review.error;
+          continue;
+        }
+        const recipient = isAdmin ? process.env.ADMIN_NOTIFICATION_EMAIL : await confirmedRecipient(session.requester_id);
+        if (!recipient) {
+          if (isAdmin) throw new Error("Video notification recipient unavailable");
+          const canceled = await supabase.from("notification_jobs").update({ state: "cancelled", locked_until: null }).eq("id", job.id);
+          if (canceled.error) throw canceled.error;
+          continue;
+        }
+        result = await sendVideoNotification({ email: recipient, requesterEmail: session.requester_email, audience: session.audience,
+          details: session.details, availability: session.availability, status: session.status, startsAt: session.starts_at, admin: isAdmin, key: job.payload.notificationKey });
+      } else if (job.kind === "premium_care") {
         const [reminder, premium] = await Promise.all([
           supabase.from("care_reminders").select("version,completed_at").eq("id", job.payload.reminderId).eq("user_id", job.payload.userId).maybeSingle(),
           supabase.rpc("customer_has_premium", { p_user: job.payload.userId }),

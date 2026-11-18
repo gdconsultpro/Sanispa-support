@@ -5,7 +5,7 @@ import { HttpError } from "./http";
 export async function verifySessionToken(token: string, supabase: SupabaseClient) {
   if (token.length > 8192) return null;
   const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data.user?.email_confirmed_at) return null;
+  if (error || !data.user?.email_confirmed_at || (data.user.banned_until && Date.parse(data.user.banned_until) > Date.now())) return null;
   let claims: { sub?: string; session_id?: string; exp?: number; aal?: string; role?: string };
   try { claims = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")); }
   catch { return null; }

@@ -1,4 +1,5 @@
 import { test } from "node:test";
+process.env.NEXT_PUBLIC_SANISPA_BILLING_MODE = "live";
 import assert from "node:assert/strict";
 import { fullDatabase } from "./helpers/full-database";
 import { premiumActive, premiumCheckout, processCustomerSubscriptionEvent, premiumTaxPolicy } from "../lib/customer-premium";

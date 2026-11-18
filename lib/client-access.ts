@@ -1,5 +1,8 @@
 import { problemTypes } from "./questions";
 import type { DiagnosticDraft } from "./types";
+export function publicClientIntent(value: string | null) {
+  return value === "premium" || value === "visio" ? value : "diagnostic";
+}
 
 /** Carry only the category in the link; contact details stay on the original device. */
 export function clientConfirmationUrl(origin: string, problemType?: string, intent: "diagnostic" | "premium" = "diagnostic") {
@@ -11,12 +14,12 @@ export function clientConfirmationUrl(origin: string, problemType?: string, inte
 }
 
 /** Token stays in the URL fragment, outside HTTP logs and Referrer headers. */
-export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin", problemType?: string) {
+export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin" | "visio", problemType?: string) {
   const base = new URL(origin);
   if (base.protocol !== "https:" && !(base.protocol === "http:" && base.hostname === "localhost"))
     throw new Error("Invalid confirmation origin");
   const url = new URL(clientConfirmationUrl(base.origin, problemType, intent === "premium" ? "premium" : "diagnostic"));
-  if (intent === "recovery" || intent === "admin") url.searchParams.set("next", intent);
+  if (intent === "recovery" || intent === "admin" || intent === "visio") url.searchParams.set("next", intent);
   url.hash = new URLSearchParams({ token_hash: token, type: intent === "recovery" ? "recovery" : "email" }).toString();
   return url.href;
 }

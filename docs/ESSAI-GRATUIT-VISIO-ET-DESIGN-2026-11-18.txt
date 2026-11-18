@@ -1,0 +1,42 @@
+SANISPA — Accès offerts, assistance visio et affichage ordinateur
+
+Décisions appliquées
+- Les encaissements de l’application sont suspendus. Aucun nouveau Checkout Stripe n’est créé, y compris par les anciennes routes mensuelles.
+- Les services Premium sont offerts aux clients connectés avec une adresse confirmée : IA, carnet, relevés, rappels, notices et forum. Les rapports et factures restent gratuits. L’accès offert est consigné séparément des abonnements et ne crée aucune fausse souscription.
+- L’accès partenaire et les contacts sont offerts pendant l’essai. SANISPA conserve la décision de diffusion ou de conservation de chaque dossier. Le partenaire accepte la nouvelle charte d’essai avant de débloquer gratuitement un contact validé ; une attribution gratuite de montant zéro est enregistrée.
+- La charte d’essai ne souscrit aucun abonnement et n’autorise aucun prélèvement. Les anciennes acceptations ne sont pas réécrites.
+
+Visio
+- Particulier : demande depuis la fin du prédiagnostic ou /visio, durée de 30 minutes, tarif de référence 59 € TTC (TVA 20 % incluse), offert pendant l’essai.
+- Partenaire : /partenaire/visio, appui technique SANISPA offert pendant l’essai. Aucun futur prix partenaire n’est inventé.
+- Administration : /admin/visio, confirmation de l’horaire et d’un lien Google Meet, Zoom, Teams ou Jitsi, modification, annulation et clôture. Les créneaux de 30 minutes ne se chevauchent pas.
+- Le rendez-vous se déroule dans l’outil de visio choisi par SANISPA ; l’application organise la demande, affiche le lien privé et envoie la notification. Le lien est créé dans cet outil par le responsable.
+- Les demandes et notifications sont dédupliquées. Une modification obsolète est refusée et un ancien message de planification n’est pas envoyé. Les destinataires sont vérifiés avec Auth Admin ; la table Auth reste inaccessible au rôle serveur.
+- Le client revient dans ses visios après une connexion par lien ; les destinations partenaire autorisées incluent la visio.
+
+Exploration et présentation
+- /demo ouvre directement les rubriques avec un sélecteur permanent client / partenaire / administrateur.
+- « Charger un dossier complet » rend immédiatement disponibles le rapport, la facture et les exemples de visio.
+- Une acceptation gratuite remplace le règlement fictif du contact pendant l’essai.
+- L’exploration est isolée en mémoire, sans compte, sans appel aux API métier et sans modification des brouillons privés. Les réponses IA y restent simulées.
+
+Design et ordinateur
+- Référence examinée : https://onlyspa.fr/ ; bleu #0A6ED0, gris #575756, titres Ubuntu et texte Poppins, boutons arrondis et cartes aérées.
+- Sept polices latines auto-hébergées (environ 75 ko) et licences incluses ; aucun appel aux polices Google dans l’application.
+- L’accueil avait une colonne de droite comprimée par la largeur intrinsèque de cinq boutons sur une ligne. Les pistes de grille utilisent minmax(0,...) et les actions reviennent à la ligne ; les enfants de grille et fieldsets peuvent se rétrécir.
+- Sur mobile, le choix de rubrique de l’exploration devient une liste compacte. L’administration réelle conserve sa connexion et son code MFA.
+
+Validation ciblée
+- Procédures SQL testées avec PGlite et le rôle service_role : accès offert, isolation Auth, droits, validation manuelle, charte, attribution gratuite, visio, doublons, versions concurrentes, conflits horaires et absence de paiement.
+- Routes testées : compte non confirmé ou révoqué/banni, adresse destinataire issue de la session, refus des prix/identifiants injectés, appartenance partenaire, MFA administrateur et liens de réunion sûrs.
+- Notifications : destinataire actuel confirmé, heure de Paris, clé d’idempotence et annulation d’un horaire obsolète.
+- Régressions ciblées sur les abonnements, TVA et acquisitions en mode payant explicite ; les anciens contrôles généraux n’ont pas été rejoués.
+- Parcours navigateur : exploration des trois espaces, acceptation gratuite, validation de rapport, demandes et confirmation de visio, composants client/partenaire/admin avec données locales isolées ; aucune requête métier depuis la démo, brouillon existant conservé.
+- Largeurs vérifiées après affichage et chargement des polices : 390, 768, 1024, 1280, 1440 et 1920 px, sans débordement, colonne ordinateur supérieure à 300 px. La vue locale temporaire de contrôle a été supprimée.
+- TypeScript et ESLint vérifiés.
+
+Exploitation
+- NEXT_PUBLIC_SANISPA_BILLING_MODE=paused (valeur par défaut en l’absence de configuration). La configuration privée de la base doit correspondre, sinon la publication est refusée.
+- Les pages de paiement ouvertes et enregistrées par cette application sont clôturées lors de la publication. Le contrôle ne touche pas la boutique et ne crée aucun paiement.
+- Stripe LIVE, ses factures historiques et le webhook restent disponibles pour traiter d’éventuels événements existants. Aucune clé n’est déplacée entre recette et production.
+- Une reprise de la facturation nécessitera une demande explicite, une configuration cohérente et de nouvelles actions de souscription par les utilisateurs. Aucun débit automatique ne découle de la fin de l’essai.

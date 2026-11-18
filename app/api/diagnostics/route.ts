@@ -1,3 +1,4 @@
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { serializeAnswers } from "@/lib/diagnostic-answers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
                 throw error;
             photos.push({ photo_type: photo.id, storage_path: path, public_url: null });
         }
-        const emailPayload = { diagnosticId: draftId, customer: { name: payload.name, phone: payload.phone, email: user.email!, address: [payload.address, payload.postalCode, payload.city].filter(Boolean).join(" - "), spaBrand: payload.spaBrand, spaModel: payload.spaModel, spaYear: payload.spaYear }, problemType: payload.problemType, choice: payload.choice, paymentPlan: isWaterAnalysis ? "water" : null, status: isWaterAnalysis ? "Service Premium — abonnement depuis votre espace" : "Demande enregistrée", answers, photos, appUrl: process.env.NEXT_PUBLIC_APP_URL };
+        const emailPayload = { diagnosticId: draftId, customer: { name: payload.name, phone: payload.phone, email: user.email!, address: [payload.address, payload.postalCode, payload.city].filter(Boolean).join(" - "), spaBrand: payload.spaBrand, spaModel: payload.spaModel, spaYear: payload.spaYear }, problemType: payload.problemType, choice: payload.choice, paymentPlan: isWaterAnalysis ? "water" : null, status: isWaterAnalysis ? paymentsPaused() ? "Service offert — aucun abonnement ni règlement" : "Service Premium — abonnement depuis votre espace" : "Demande enregistrée", answers, photos, appUrl: process.env.NEXT_PUBLIC_APP_URL };
         const jobs: Array<{
             key: string;
             kind: string;

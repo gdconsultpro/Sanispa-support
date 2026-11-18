@@ -1,3 +1,4 @@
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
       .maybeSingle();
     if (error) throw error;
     return NextResponse.json(
-      { subscription: data },
+      { subscription: data, complimentary: paymentsPaused() },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

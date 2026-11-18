@@ -1,3 +1,4 @@
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { AuthArrival } from "@/components/AuthArrival";
 import { ClipboardCheck, ImagePlus, ShieldCheck, Wrench } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -6,7 +7,7 @@ export default function HomePage() {
   return (
     <AppShell>
       <AuthArrival />
-      <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+      <section className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-center">
         <div>
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-sanispa-blue">
             Pré-diagnostic technique de spa
@@ -19,9 +20,9 @@ export default function HomePage() {
             quelques photos. Nous aurons les bons éléments pour orienter votre
             demande. Aucune connaissance technique nécessaire.
           </p>
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <ButtonLink href="/diagnostic?new=1">Déclarer ma panne gratuitement</ButtonLink>
-            <ButtonLink href="/premium" variant="secondary">Découvrir Premium — 9,99 € / mois</ButtonLink>
+            <ButtonLink href="/premium" variant="secondary">{paymentsPaused() ? "Profiter des services offerts" : "Découvrir Premium — 9,99 € / mois"}</ButtonLink>
             <ButtonLink href="/diagnostic?new=1&problemType=demenagement" variant="secondary">Déménager mon spa</ButtonLink>
             <ButtonLink href="/espace-client" variant="secondary">
               Mon compte

@@ -1,4 +1,5 @@
 "use client";
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { PrivateFile } from "@/components/PrivateFile";
 
 import Link from "next/link";
@@ -347,7 +348,7 @@ export default function PartnerLeadDetailPage() {
                 {unlocking
                   ? "Traitement en cours…"
                   : !lead.billing.paymentRequired
-                    ? "Accepter ce dossier inclus"
+                    ? "Accepter ce dossier sans règlement"
                     : `${lead.billing.reserved ? "Reprendre le paiement" : "Payer pour prendre en charge"}${amountLabel ? ` — ${amountLabel}` : ""}`}
               </button>
               {!lead.billing.available ||

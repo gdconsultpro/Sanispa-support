@@ -1,4 +1,5 @@
 import type { AnswerValue, ProblemType } from "./types";
+import { paymentsPaused } from "./commercial-mode";
 import { leadCatalog, type LeadCategory } from "./partner-catalog";
 
 export type DemoRole = "client" | "partenaire" | "admin";
@@ -7,15 +8,18 @@ export const demoNavigation = {
     { id: "accueil", label: "Mon spa" }, { id: "declaration", label: "Déclarer une panne" },
     { id: "documents", label: "Rapports et factures" }, { id: "ia", label: "Assistant IA" },
     { id: "carnet", label: "Carnet et eau" }, { id: "notices", label: "Notices" }, { id: "forum", label: "Forum" },
+    { id: "visio", label: "Mes visios" },
   ],
   partenaire: [
     { id: "demandes", label: "Contacts disponibles" }, { id: "planning", label: "Mon planning" },
     { id: "rapport", label: "Rapport et facture" }, { id: "abonnement", label: "Abonnement et tarifs" },
+    { id: "visio", label: "Assistance en visio" },
   ],
   admin: [
     { id: "demandes", label: "Demandes entrantes" }, { id: "partenaires", label: "Partenaires" },
     { id: "interventions", label: "Suivi des interventions" }, { id: "moderation", label: "Modération du forum" },
     { id: "pilotage", label: "Premium et pilotage" }, { id: "synchroteam", label: "Préparation Synchroteam" },
+    { id: "visio", label: "Gérer les visios" },
   ],
 } as const;
 export function demoView(role?: string, tab?: string) {
@@ -25,6 +29,7 @@ export function demoView(role?: string, tab?: string) {
 }
 export type DemoReading = { id: string; date: string; ph: number | null; tac: number | null; disinfectant: number | null; temperature: number | null };
 export type DemoPost = { id: string; title: string; body: string; state: "pending" | "approved" | "rejected"; author: string };
+export type DemoVideo = { id: string; audience: "client" | "partenaire"; details: string; availability: string; status: "requested" | "scheduled" | "completed"; startsAt: string };
 export type DemoState = {
   premium: boolean; partnerSubscription: boolean; charter: boolean;
   problem: ProblemType; answers: Record<string, AnswerValue>; photos: string[];
@@ -36,11 +41,11 @@ export type DemoState = {
   journal: { id: string; text: string; date: string }[];
   reminders: { id: string; title: string; date: string; done: boolean }[];
   messages: { role: "user" | "assistant"; text: string }[];
-  posts: DemoPost[]; events: string[]; spa: { brand: string; model: string; volume: string };
+  posts: DemoPost[]; events: string[]; spa: { brand: string; model: string; volume: string }; videos: DemoVideo[];
 };
 export function createDemoState(role: DemoRole = "client"): DemoState {
   return {
-    premium: true, partnerSubscription: true, charter: true, problem: "fuite",
+    premium: true, partnerSubscription: true, charter: true, problem: "fuite", videos: [],
     answers: { visible_leak: "Oui", spa_access: "Oui sur les 4 côtés", leak_water_outside: "Oui", level_drop_cm: "3", level_drop_duration: "En 24 heures", running_only: "Non", suspected_area: ["Raccord"], started_when: "Depuis deux jours" },
     photos: ["Vue du spa", "Zone du raccord", "Clavier"], dispatch: role === "partenaire" ? "released" : "pending", contactPaid: false,
     appointment: "", report: null, invoice: false, outcome: null, ratings: null,
@@ -68,6 +73,10 @@ export function demoStatus(state: DemoState) {
 }
 export type DemoAction =
   | { type: "reset"; role: DemoRole }
+  | { type: "scenario"; role: DemoRole }
+  | { type: "videoRequest"; audience: "client" | "partenaire"; details: string; availability: string }
+  | { type: "videoSchedule"; id: string }
+  | { type: "videoComplete"; id: string }
   | { type: "problem"; problem: ProblemType }
   | { type: "answers"; answers: Record<string, AnswerValue> }
   | { type: "photos"; label: string }
@@ -94,17 +103,25 @@ const event = (state: DemoState, text: string) => [text, ...state.events].slice(
 export function demoReducer(state: DemoState, action: DemoAction): DemoState {
   switch (action.type) {
     case "reset": return createDemoState(action.role);
+    case "scenario": return { ...createDemoState(action.role), dispatch: "released", contactPaid: true,
+      appointment: "2026-11-23T10:00", report: { findings: "Raccord humide et joint usé dans cet exemple fictif.", actions: "Remplacement du joint et contrôle d’étanchéité — exemple.", next: "Surveillance du niveau d’eau après intervention." }, invoice: true,
+      videos: [{ id: "demo-visio-client-1", audience: "client", details: "Être accompagné pour préciser la fuite visible sur mon spa.", availability: "Mardi ou jeudi après-midi", status: "requested", startsAt: "" }, { id: "demo-visio-partenaire-1", audience: "partenaire", details: "Appui SANISPA pour identifier un raccord de remplacement.", availability: "Mercredi matin", status: "requested", startsAt: "" }] };
+    case "videoRequest": return action.details.trim().length < 10 || !action.availability.trim() || state.videos.some(video => video.audience === action.audience && video.status !== "completed") ? state : { ...state,
+      videos: [...state.videos, { id: `demo-visio-${state.videos.length + 1}`, audience: action.audience, details: action.details.slice(0, 1500), availability: action.availability.slice(0, 500), status: "requested", startsAt: "" }],
+      events: event(state, "Demande de visio fictive reçue. Notification SANISPA simulée.") };
+    case "videoSchedule": return { ...state, videos: state.videos.map(video => video.id === action.id && video.status === "requested" ? { ...video, status: "scheduled", startsAt: new Date(Date.now() + 86400000).toISOString() } : video), events: event(state, "Visio fictive confirmée. Notification au demandeur simulée.") };
+    case "videoComplete": return { ...state, videos: state.videos.map(video => video.id === action.id && video.status === "scheduled" ? { ...video, status: "completed" } : video) };
     case "problem": return { ...state, problem: action.problem, answers: {}, dispatch: "pending", contactPaid: false, appointment: "", report: null, invoice: false, outcome: null, ratings: null };
     case "answers": return { ...state, answers: action.answers };
     case "photos": return state.photos.includes(action.label) ? state : { ...state, photos: [...state.photos, action.label].slice(0, 5) };
     case "submit": return { ...state, dispatch: "pending", contactPaid: false, appointment: "", report: null, invoice: false, outcome: null, ratings: null, events: event(state, "Nouvelle déclaration fictive : notification SANISPA simulée.") };
     case "dispatch": return state.contactPaid || state.problem === "traitement-eau" ? state : { ...state, dispatch: action.decision, events: event(state, action.decision === "released" ? "SANISPA valide et transmet la proposition au partenaire fictif." : action.decision === "kept" ? "SANISPA conserve ce chantier fictif." : "La déclaration fictive revient à valider.") };
-    case "acquire": return state.dispatch !== "released" || !state.partnerSubscription || !state.charter || state.contactPaid || state.problem === "traitement-eau" ? state : { ...state, contactPaid: true, events: event(state, "Règlement fictif accepté : coordonnées démo débloquées et notification SANISPA simulée.") };
+    case "acquire": return state.dispatch !== "released" || (!paymentsPaused() && !state.partnerSubscription) || !state.charter || state.contactPaid || state.problem === "traitement-eau" ? state : { ...state, contactPaid: true, events: event(state, paymentsPaused() ? "Contact fictif accepté gratuitement : coordonnées démo débloquées et notification SANISPA simulée." : "Règlement fictif accepté : coordonnées démo débloquées et notification SANISPA simulée.") };
     case "schedule": return !state.contactPaid || !action.date ? state : { ...state, appointment: action.date, events: event(state, "Rendez-vous fictif confirmé dans les trois espaces.") };
     case "report": return !state.contactPaid || !state.appointment ? state : { ...state, report: action.report, outcome: null, ratings: null, events: event(state, "Rapport fictif disponible : demande de validation client simulée.") };
     case "invoice": return !state.contactPaid ? state : { ...state, invoice: true, events: state.invoice ? state.events : event(state, "Facture d’intervention fictive ajoutée au dossier client.") };
     case "validate": return !state.report || (action.outcome === "repaired" && !state.invoice) || Object.values(action.ratings).some(n => n < 1 || n > 5) ? state : { ...state, outcome: action.outcome, ratings: action.ratings, events: event(state, "Le client démo a validé le rapport et renseigné ses trois notes.") };
-    case "premium": return { ...state, premium: action.active };
+    case "premium": return { ...state, premium: paymentsPaused() || action.active };
     case "charter": return { ...state, charter: action.accepted };
     case "subscription": return action.active && !state.charter ? state : { ...state, partnerSubscription: action.active };
     case "reading": return !state.premium ? state : { ...state, readings: [action.reading, ...state.readings].slice(0, 20), selectedReading: action.reading.id };

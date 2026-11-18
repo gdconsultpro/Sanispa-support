@@ -1,4 +1,5 @@
 "use client";
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { CheckCircle2, CreditCard, FileText, Home } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -19,6 +20,7 @@ export default function ResumePage() {
     const [draft, setDraft] = useState<DiagnosticDraft>(emptyDraft);
     const [error, setError] = useState("");
     const [saving, setSaving] = useState(false);
+    const [wantsVideo, setWantsVideo] = useState(false);
     useEffect(() => {
         const stored = readDraft();
         setDraft(stored);
@@ -52,7 +54,7 @@ export default function ResumePage() {
             if (!response.ok)
                 throw new Error(payload.error || "Enregistrement impossible.");
             writeDraft({ ...saved, diagnosticId: payload.diagnosticId });
-            router.push(draft.choice === "remote" ? `/paiement?diagnosticId=${payload.diagnosticId}` : `/confirmation?id=${payload.diagnosticId}`);
+            router.push(wantsVideo ? `/visio?diagnosticId=${payload.diagnosticId}` : draft.choice === "remote" ? `/paiement?diagnosticId=${payload.diagnosticId}` : `/confirmation?id=${payload.diagnosticId}`);
         }
         catch (e) {
             setError(e instanceof Error ? e.message : "Votre connexion a été interrompue. Réessayez.");
@@ -80,7 +82,7 @@ export default function ResumePage() {
                 <div>
                   <h2 className="font-bold text-sanispa-navy">SANISPA Premium</h2>
                   <p className="mt-2 text-sm leading-6 text-sanispa-steel">
-                    L’abonnement mensuel à 9,99 € TTC inclut l’assistant IA, le carnet, les relevés, les rappels, les notices et le forum. Il est renouvelé automatiquement et peut être résilié depuis votre espace.
+                    {paymentsPaused() ? "L’assistant IA, le carnet, les relevés, les rappels, les notices et le forum sont offerts pendant la phase d’essai. Aucune carte bancaire ni souscription." : "L’abonnement mensuel à 9,99 € TTC inclut l’assistant IA, le carnet, les relevés, les rappels, les notices et le forum."}
                   </p>
                   <p className="mt-3 rounded-md bg-sanispa-ice p-3 text-sm font-semibold text-sanispa-navy">
                     Service géré uniquement par SANISPA. Aucun partenaire n'a accès aux dossiers de traitement d'eau.
@@ -90,7 +92,7 @@ export default function ResumePage() {
               <div className="mt-4 grid gap-2">
                 {availableRemotePlans.map((plan) => (<button key={plan.id} type="button" onClick={() => setChoice("remote", plan.id)} className={`focus-ring flex min-h-12 items-center justify-between rounded-md border px-3 py-2 text-left text-sm font-bold ${draft.paymentPlan === plan.id ? "border-sanispa-blue bg-sanispa-ice text-sanispa-navy" : "border-sanispa-line bg-white text-sanispa-steel"}`}>
                     <span>{plan.name}</span>
-                    <span>{plan.price.toLocaleString("fr-FR")} € TTC / mois</span>
+                    <span>{paymentsPaused() ? "Offert" : `${plan.price.toLocaleString("fr-FR")} € TTC / mois`}</span>
                   </button>))}
               </div>
             </div>) : null}
@@ -102,6 +104,7 @@ export default function ResumePage() {
               setDraft(next); writeDraft(next);
             }} />
           </section> : null}
+          <section className="rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Un accompagnement en visio ?</h2><p className="mt-3 text-sm leading-7 text-sanispa-steel">30 minutes avec SANISPA pour préciser votre panne et vous guider. Tarif de référence : 59 € TTC. {paymentsPaused() ? "Offert pendant la phase d’essai, aucun règlement." : "Réservation après confirmation de SANISPA."}</p><label className="mt-4 flex items-start gap-3 text-sm font-bold"><input type="checkbox" className="mt-1" checked={wantsVideo} onChange={event => { setWantsVideo(event.target.checked); if (event.target.checked && !draft.choice) setChoice("intervention"); }} />Je souhaite une visio après l’envoi de mon prédiagnostic</label></section>
           {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
           <Button type="button" onClick={submit} disabled={saving} className="w-full">
             {saving ? "Envoi de la demande…" : "Envoyer ma demande"}

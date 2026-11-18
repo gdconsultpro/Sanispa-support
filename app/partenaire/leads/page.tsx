@@ -1,4 +1,5 @@
 "use client";
+import { paymentsPaused } from "@/lib/commercial-mode";
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -138,7 +139,7 @@ export default function PartnerLeadsPage() {
                 >
                   {lead.billing.paymentRequired
                     ? "Payant"
-                    : "Inclus dans l’abonnement"}
+                    : paymentsPaused() ? "Offert pendant l’essai" : "Inclus dans l’abonnement"}
                 </span>
                 {lead.billing.paymentRequired ? (
                   <span className="font-bold text-sanispa-navy">
