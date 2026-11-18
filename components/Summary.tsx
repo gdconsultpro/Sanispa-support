@@ -34,7 +34,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
       </section>
 
       <section className="rounded-md border border-sanispa-line bg-white p-4">
-        <h2 className="mb-3 text-lg font-bold">Type de panne</h2>
+        <h2 className="mb-3 text-lg font-bold">{draft.problemType === "demenagement" ? "Motif de la demande" : "Type de panne"}</h2>
         <p className="font-semibold text-sanispa-navy">{problemLabel}</p>
       </section>
 

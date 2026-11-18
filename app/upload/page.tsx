@@ -2,6 +2,7 @@
 import { missingRequiredPhotos, normalizeDiagnostic, updateDiagnosticAnswer } from "@/lib/diagnostic-answers";
 import { DiagnosticQuestion } from "@/components/DiagnosticQuestion";
 import { compressPhoto } from "@/lib/compress-photo";
+import { MovingMedia } from "@/components/MovingMedia";
 import { Camera } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -16,6 +17,7 @@ import { emptyDraft, readDraft, saveDraft } from "@/lib/storage";
 export default function UploadPage() {
     const router = useRouter();
     const [draft, setDraft] = useState<DiagnosticDraft>(emptyDraft);
+    const [mediaProcessing, setMediaProcessing] = useState(false);
     const [processing, setProcessing] = useState(false);
     const [error, setError] = useState("");
     useEffect(() => {
@@ -47,6 +49,7 @@ export default function UploadPage() {
     }
     async function submit(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        if (processing || mediaProcessing) return;
         const missingPhotos = missingRequiredPhotos(draft);
         if (missingPhotos.length) {
             setError(`Ajoutez la photo obligatoire ou renseignez son impossibilité avant de continuer : ${missingPhotos.map(photo => photo.label).join(" ; ")}.`);
@@ -61,11 +64,13 @@ export default function UploadPage() {
         }
     }
     return (<AppShell compact>
-      <StepHeader eyebrow="Étape 3" title="Photos du spa" description="Les photos marquées d’un * sont obligatoires. Formats acceptés : JPG, PNG ou WebP, 20 Mo maximum par photo, 5 photos maximum. Ne démontez rien pour prendre une photo ; laissez les éléments inaccessibles de côté. Elles sont réduites automatiquement. Attendez la confirmation de sauvegarde avant de quitter la page."/>
+      <StepHeader labels={draft.problemType === "demenagement" ? ["Le transport", "Photos et vidéos", "La validation"] : undefined} eyebrow={draft.problemType === "demenagement" ? "Étape 2" : "Étape 3"} title={draft.problemType === "demenagement" ? "Mon dossier de faisabilité : photos et vidéos" : "Photos du spa"} description="Les photos marquées d’un * sont obligatoires. Formats acceptés : JPG, PNG ou WebP, 20 Mo maximum par photo, 5 photos maximum. Ne démontez rien pour prendre une photo ; laissez les éléments inaccessibles de côté. Elles sont réduites automatiquement. Attendez la confirmation de sauvegarde avant de quitter la page."/>
       <DraftSave draft={draft} step="/upload"/>
-      <BackLink href="/questionnaire"/>
+      <BackLink href={draft.problemType === "demenagement" ? "/diagnostic" : "/questionnaire"}/>
+      {draft.problemType === "demenagement" && draft.draftId ? <MovingMedia draftId={draft.draftId} onBusyChange={setMediaProcessing} /> : null}
 
       <form onSubmit={submit} className="space-y-4 rounded-md border border-sanispa-line bg-white p-4 shadow-soft sm:p-6">
+        {draft.problemType === "demenagement" ? <p className="rounded-xl bg-sanispa-ice p-4 text-sm leading-6">Photographiez le spa, le parcours jusqu’au véhicule, les passages étroits, les obstacles et l’emplacement de livraison. Vous pouvez aussi ajouter une courte vidéo dans le dossier ci-dessus. Ces éléments restent dans votre dossier privé.</p> : null}
         {photos.map((photo) => (<div key={photo.id} className="block rounded-md border border-sanispa-line p-4">
             <span className="mb-3 flex items-center gap-3 text-sm font-bold text-sanispa-navy">
               <Camera size={20} aria-hidden="true"/>
@@ -87,7 +92,7 @@ export default function UploadPage() {
           {draft.answers.keyboard_photo_unavailable === "Autre impossibilité" ? <DiagnosticQuestion question={photoUnavailableDetail} value={draft.answers.keyboard_photo_unavailable_detail} onChange={value => setDraft(current => updateDiagnosticAnswer(current, "keyboard_photo_unavailable_detail", value))} /> : null}
         </section> : null}
         {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
-        <Button disabled={processing} type="submit" className="w-full sm:w-auto">Voir le résumé</Button>
+        <Button disabled={processing || mediaProcessing} type="submit" className="w-full sm:w-auto">Voir le résumé</Button>
       </form>
     </AppShell>);
 }

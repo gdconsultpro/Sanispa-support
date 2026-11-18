@@ -36,14 +36,15 @@ export default function Callback() {
           );
         const draft = readDraft();
         const query = new URLSearchParams(window.location.search);
-        const destination = query.get("next") === "visio" ? "/visio" : query.get("next") === "admin" ? "/admin/connexion" : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
+        const next = query.get("next");
+        const destination = ["carnet", "releves", "notices"].includes(next || "") ? `/premium/${next}` : query.get("next") === "visio" ? "/visio" : query.get("next") === "admin" ? "/admin/connexion" : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
           draft,
           data.session.user.email || "",
           query.get("next") === "diagnostic",
         );
-        if (destination === "/questionnaire") {
-          await saveDraft(draft, "/questionnaire");
-          if (active) window.location.replace("/questionnaire");
+        if (destination === "/questionnaire" || destination === "/upload") {
+          await saveDraft(draft, destination);
+          if (active) window.location.replace(destination);
         } else if (active && destination === "/diagnostic") {
           const requested = new URLSearchParams(window.location.search).get(
             "problemType",

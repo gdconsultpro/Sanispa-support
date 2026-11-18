@@ -8,7 +8,7 @@ export async function fullDatabase() {
  create table auth.mfa_factors(id uuid primary key,user_id uuid,status text,factor_type text);
  create function auth.role() returns text language sql as $$select current_user::text$$;
  create function auth.uid() returns uuid language sql as $$select null::uuid$$;
- create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint);
+ create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
  create table storage.objects(id uuid,bucket_id text);`);
   await db.exec(
     (await readFile("supabase/schema.sql", "utf8")).replace(

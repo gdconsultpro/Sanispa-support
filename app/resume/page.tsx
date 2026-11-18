@@ -1,4 +1,5 @@
 "use client";
+import { MovingMedia } from "@/components/MovingMedia";
 import { paymentsPaused } from "@/lib/commercial-mode";
 import { CheckCircle2, CreditCard, FileText, Home } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -23,7 +24,7 @@ export default function ResumePage() {
     const [wantsVideo, setWantsVideo] = useState(false);
     useEffect(() => {
         const stored = readDraft();
-        setDraft(stored);
+        setDraft(stored.problemType === "demenagement" ? { ...stored, choice: "devis", paymentPlan: "" } : stored);
         if (!stored.problemType)
             router.push("/diagnostic");
     }, [router]);
@@ -64,17 +65,20 @@ export default function ResumePage() {
         }
     }
     return (<AppShell compact>
-      <StepHeader eyebrow="Étape 4" title="Résumé et orientation" description="Vérifiez votre saisie et choisissez une option. Un brouillon enregistré n’est pas encore une demande envoyée. Le bouton « Envoyer ma demande » lance son envoi à SANISPA ; attendez la confirmation."/>
+      <StepHeader eyebrow={draft.problemType === "demenagement" ? "Étape 3" : "Étape 4"} labels={draft.problemType === "demenagement" ? ["Le transport", "Photos et vidéos", "La validation"] : undefined} title={draft.problemType === "demenagement" ? "Vérifier mon projet de déménagement" : "Résumé et orientation"} description={draft.problemType === "demenagement" ? "Vérifiez les deux adresses, les contraintes d’accès et le spa à déplacer. Votre demande sera étudiée par SANISPA avant toute confirmation de faisabilité ou de tarif." : "Vérifiez votre saisie et choisissez une option. Un brouillon enregistré n’est pas encore une demande envoyée. Le bouton « Envoyer ma demande » lance son envoi à SANISPA ; attendez la confirmation."}/>
       <DraftSave draft={draft} step="/resume"/>
       <BackLink href="/upload"/>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
-        <DiagnosticSummary draft={draft}/>
+        <div><DiagnosticSummary draft={draft}/>{draft.problemType === "demenagement" && draft.draftId ? <div className="mt-4"><MovingMedia draftId={draft.draftId} readOnly /></div> : null}</div>
 
         <aside className="space-y-4">
+          {draft.problemType === "demenagement" ? <section className="rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Étude de faisabilité et devis de transport</h2><p className="mt-3 text-sm leading-7">SANISPA étudiera les adresses, les accès, les dimensions et le poids du spa ainsi que les moyens de levage à prévoir. Vos photos et vidéos jointes au dossier aideront à préparer le devis. L’envoi de cette demande n’engage aucune réservation ni aucun règlement.</p></section> : <>
           <ChoiceCard active={draft.choice === "intervention"} icon={<Home size={22}/>} title="Trouver un technicien près de chez vous" text="Décrivez votre panne en quelques minutes afin d’être mis en relation avec un technicien de votre secteur." button="Trouver un technicien" onClick={() => setChoice("intervention")}/>
           <ChoiceCard active={draft.choice === "devis"} icon={<FileText size={22}/>} title="Demande de devis" text="SANISPA analysera votre demande et vous transmettra une estimation si les éléments sont suffisants." button="Demander un devis" onClick={() => setChoice("devis")}/>
           <ShopLinks problemType={draft.problemType}/>
+
+          </>}
 
           {isWaterAnalysis ? (<div className={`rounded-md border bg-white p-4 ${draft.choice === "remote" ? "border-sanispa-blue" : "border-sanispa-line"}`}>
               <div className="flex gap-3">
@@ -104,7 +108,7 @@ export default function ResumePage() {
               setDraft(next); writeDraft(next);
             }} />
           </section> : null}
-          <section className="rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Un accompagnement en visio ?</h2><p className="mt-3 text-sm leading-7 text-sanispa-steel">30 minutes avec SANISPA pour préciser votre panne et vous guider. Tarif de référence : 59 € TTC. {paymentsPaused() ? "Offert pendant la phase d’essai, aucun règlement." : "Réservation après confirmation de SANISPA."}</p><label className="mt-4 flex items-start gap-3 text-sm font-bold"><input type="checkbox" className="mt-1" checked={wantsVideo} onChange={event => { setWantsVideo(event.target.checked); if (event.target.checked && !draft.choice) setChoice("intervention"); }} />Je souhaite une visio après l’envoi de mon prédiagnostic</label></section>
+          {draft.problemType !== "demenagement" ? <section className="rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Un accompagnement en visio ?</h2><p className="mt-3 text-sm leading-7 text-sanispa-steel">30 minutes avec SANISPA pour préciser votre panne et vous guider. Tarif de référence : 59 € TTC. {paymentsPaused() ? "Offert pendant la phase d’essai, aucun règlement." : "Réservation après confirmation de SANISPA."}</p><label className="mt-4 flex items-start gap-3 text-sm font-bold"><input type="checkbox" className="mt-1" checked={wantsVideo} onChange={event => { setWantsVideo(event.target.checked); if (event.target.checked && !draft.choice) setChoice("intervention"); }} />Je souhaite une visio après l’envoi de mon prédiagnostic</label></section> : null}
           {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
           <Button type="button" onClick={submit} disabled={saving} className="w-full">
             {saving ? "Envoi de la demande…" : "Envoyer ma demande"}

@@ -144,6 +144,11 @@ export async function GET(
         session.user.app_metadata?.partner_password_change_required !== true;
     }
     if (!allowed) throw new HttpError(404, "Fichier introuvable.");
+    if (bucket === "moving-videos") {
+      const signed = await supabase.storage.from(bucket).createSignedUrl(path,60,{download:name});
+      if(signed.error) throw new HttpError(503,"Téléchargement impossible.");
+      return new NextResponse(null,{status:303,headers:{Location:signed.data.signedUrl,"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}});
+    }
     const { data, error } = await supabase.storage.from(bucket).download(path);
     if (error || !data)
       throw new HttpError(503, "Téléchargement impossible. Réessayez.");

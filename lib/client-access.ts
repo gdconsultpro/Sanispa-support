@@ -1,7 +1,7 @@
 import { problemTypes } from "./questions";
 import type { DiagnosticDraft } from "./types";
 export function publicClientIntent(value: string | null) {
-  return value === "premium" || value === "visio" ? value : "diagnostic";
+  return ["premium", "visio", "carnet", "releves", "notices"].includes(value || "") ? value as "premium" | "visio" | "carnet" | "releves" | "notices" : "diagnostic";
 }
 
 /** Carry only the category in the link; contact details stay on the original device. */
@@ -14,12 +14,12 @@ export function clientConfirmationUrl(origin: string, problemType?: string, inte
 }
 
 /** Token stays in the URL fragment, outside HTTP logs and Referrer headers. */
-export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin" | "visio", problemType?: string) {
+export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin" | "visio" | "carnet" | "releves" | "notices", problemType?: string) {
   const base = new URL(origin);
   if (base.protocol !== "https:" && !(base.protocol === "http:" && base.hostname === "localhost"))
     throw new Error("Invalid confirmation origin");
   const url = new URL(clientConfirmationUrl(base.origin, problemType, intent === "premium" ? "premium" : "diagnostic"));
-  if (intent === "recovery" || intent === "admin" || intent === "visio") url.searchParams.set("next", intent);
+  if (["recovery", "admin", "visio", "carnet", "releves", "notices"].includes(intent)) url.searchParams.set("next", intent);
   url.hash = new URLSearchParams({ token_hash: token, type: intent === "recovery" ? "recovery" : "email" }).toString();
   return url.href;
 }
@@ -33,6 +33,6 @@ export function confirmedClientDestination(
     !draft.diagnosticId &&
     draft.email.trim().toLowerCase() === email.toLowerCase()
   )
-    return "/questionnaire";
+    return draft.problemType === "demenagement" ? "/upload" : "/questionnaire";
   return declarationIntent ? "/diagnostic" : "/espace-client";
 }

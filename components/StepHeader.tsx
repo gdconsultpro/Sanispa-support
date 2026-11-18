@@ -2,18 +2,20 @@ export function StepHeader({
   eyebrow,
   title,
   description,
+  labels = ["Votre spa", "Les symptômes", "Les photos", "Le résumé"],
 }: {
   eyebrow: string;
   title: string;
   description: string;
+  labels?: string[];
 }) {
   const step = Number(eyebrow.match(/^Étape ([1-4])$/)?.[1] || 0);
   return (
     <div className="mb-6">
       {step ? (
         <nav aria-label="Étapes de votre déclaration" className="mb-6">
-          <ol className="grid grid-cols-4 gap-2">
-            {["Votre spa", "Les symptômes", "Les photos", "Le résumé"].map(
+          <ol className={`grid gap-2 ${labels.length === 3 ? "grid-cols-3" : "grid-cols-4"}`}>
+            {labels.map(
               (label, index) => (
                 <li
                   key={label}
