@@ -26,7 +26,7 @@ export function PartnerCharter() {
     } catch (e) { setError(e instanceof Error ? e.message : "Acceptation impossible."); }
     finally { setBusy(false); }
   }
-  return <section className="my-5 rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">La charte de partenariat</h2><p className="mt-2 text-sm">Version de recette à valider avant l’ouverture commerciale. L’acceptation est enregistrée avec votre compte, sa date et la version du texte.</p>
+  return <section className="my-5 rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">La charte de partenariat</h2><p className="mt-2 text-sm">Les engagements ci-dessous encadrent les missions confiées par SANISPA. Votre acceptation est enregistrée avec votre compte, sa date et la version du texte.</p>
     <div className="mt-4 grid gap-4">{partnerCharterClauses.map(c => <div key={c.title}><h3 className="font-bold">{c.title}</h3><p className="mt-1 text-sm leading-6">{c.text}</p></div>)}</div>
     {error ? <p role="alert" className="mt-3 text-red-800">{error}</p> : null}
     {acceptedAt ? <p role="status" className="mt-4 font-bold text-emerald-800">Charte acceptée le {new Date(acceptedAt).toLocaleString("fr-FR")}.</p> : <form className="mt-4 grid gap-3" onSubmit={e => { e.preventDefault(); void accept(); }}><label className="flex items-start gap-3"><input type="checkbox" checked={checked} required onChange={e => setChecked(e.target.checked)} className="mt-1" />En tant que responsable du partenaire, j’ai lu la charte et j’accepte ses engagements.</label><Button type="submit" disabled={busy || !checked}>Accepter la charte</Button></form>}
