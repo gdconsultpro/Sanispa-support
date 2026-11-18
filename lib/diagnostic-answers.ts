@@ -258,6 +258,7 @@ export function validateAnswers(
       if (
         !/^(?:\d+(?:[.,]\d+)?|[.,]\d+)$/.test(answerText(value)) ||
         !Number.isFinite(n) ||
+        (q.integer && !Number.isInteger(n)) ||
         (q.min !== undefined && n < q.min) ||
         (q.max !== undefined && n > q.max)
       )
