@@ -10,7 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 const schema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
-  next: z.enum(["diagnostic", "premium", "recovery"]),
+  next: z.enum(["diagnostic", "premium", "recovery", "admin"]),
   problemType: z.string().max(60).optional(),
 }).strict();
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -27,6 +27,15 @@ export async function POST(request: Request) {
     await rateLimit(supabase, `access:ip:${hash(ip)}`, 20, 3600);
     await rateLimit(supabase, `access:email:${hash(payload.email)}`, 6, 3600);
     await rateLimit(supabase, `access:cooldown:${hash(payload.email)}`, 1, 60);
+    if (payload.next === "admin") {
+      const members = await supabase.from("admin_users").select("user_id").eq("active", true);
+      if (members.error) throw members.error;
+      const identities = await Promise.all((members.data || []).map(member => supabase.auth.admin.getUserById(member.user_id)));
+      if (identities.some(identity => identity.error)) throw new Error("Administrator identity check unavailable");
+      const allowed = identities.some(({ data }) => data.user?.email?.toLowerCase() === payload.email && data.user.email_confirmed_at &&
+        !(data.user.banned_until && Date.parse(data.user.banned_until) > Date.now()));
+      if (!allowed) return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+    }
     const generated = await supabase.auth.admin.generateLink({ type: payload.next === "recovery" ? "recovery" : "magiclink", email: payload.email });
     // Do not reveal whether an address is registered or blocked. A token is
     // delivered only by e-mail; it is never returned to the requesting browser.

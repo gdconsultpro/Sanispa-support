@@ -3,8 +3,15 @@ import { Fragment, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { reconcileLocalOwner } from "@/lib/session-privacy";
+import { usePathname } from "next/navigation";
 
 export function SessionPrivacy({ children }: { children: React.ReactNode }) {
+  const path = usePathname();
+  if (path === "/demo") return <>{children}</>;
+  return <ApplicationSessionPrivacy>{children}</ApplicationSessionPrivacy>;
+}
+
+function ApplicationSessionPrivacy({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [revision, setRevision] = useState(0);
   const [unavailable, setUnavailable] = useState(false);

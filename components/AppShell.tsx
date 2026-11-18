@@ -45,6 +45,7 @@ export function AppShell({
       >
         {children}
       </div>
+      <footer className="mx-auto flex max-w-5xl flex-wrap justify-between gap-4 border-t border-sanispa-line px-4 py-6 text-sm text-sanispa-steel"><span>SANISPA Support</span><div className="flex flex-wrap gap-5"><Link href="/demo" className="focus-ring rounded underline">Essayer la démo</Link><Link href="/admin/connexion" className="focus-ring rounded underline">Administration</Link></div></footer>
     </main>
   );
 }

@@ -1,0 +1,14 @@
+SANISPA — Démonstration publique et accès administrateur
+
+Accès :
+- /admin/connexion : lien par e-mail, puis code TOTP. Le mot de passe reste disponible en option.
+- /demo : présentation sans connexion, points de vue particulier, technicien et administration simulée.
+- /demo?espace=partenaire : lien partageable directement avec les techniciens.
+
+La demande de lien administrateur vérifie une appartenance active et une identité confirmée, sans créer de nouvel administrateur. La réponse reste générique. La session réelle conserve les contrôles existants : appartenance, MFA aal2, révocation et cookie HttpOnly.
+
+La démo utilise seulement des données fictives dans la mémoire de la page. Aucun compte, brouillon réel, paiement, courriel ou service IA n'est sollicité. Recharger ou recommencer réinitialise l'exemple. Les PDF sont créés dans le navigateur, portent la mention démonstration et n'ont aucune valeur comptable. Synchroteam propose uniquement un brouillon local sans envoi.
+
+Fonctions présentables : questionnaires réels adaptés à la panne ; décision manuelle de diffusion ou conservation SANISPA ; aperçu partenaire, abonnement/charte et règlement fictif ; rendez-vous, rapport et facture ; validation et trois notes client ; gratuit/Premium, assistant simulé avec relevés inconnus conservés, carnet/rappels, notices et forum modéré ; indicateurs fictifs et parcours guidé en 13 scènes.
+
+Vérifications ciblées : 11 tests automatisés (6 démo, 2 accès administrateur, 3 sécurité de session), TypeScript, ESLint des fichiers modifiés, parcours navigateur complet, largeur mobile 390 px, séparation de deux visiteurs, absence d'appels backend et conservation des clés de stockage existantes, PDF rendu et TVA 20 % vérifiée (150 HT + 30 = 180 TTC). Les contrôles déjà terminés pour la mise en production précédente n'ont pas été rejoués.
