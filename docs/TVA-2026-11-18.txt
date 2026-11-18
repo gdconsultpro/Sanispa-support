@@ -1,0 +1,31 @@
+SANISPA — TVA PARTENAIRES CONFIRMÉE LE 18 NOVEMBRE 2026
+
+Le propriétaire confirme une TVA de 20 % incluse dans tous les prix TTC des abonnements et contacts. Aucun prix TTC ne change.
+
+Abonnement Gestion : 300,00 EUR TTC = 250,00 EUR HT + 50,00 EUR TVA.
+Abonnement Complet : 700,00 EUR TTC = 583,33 EUR HT + 116,67 EUR TVA.
+Contact fuite : 25,00 EUR TTC = 20,83 EUR HT + 4,17 EUR TVA.
+Les arrondis au centime sont calculés et facturés par Stripe ; le serveur contrôle leur cohérence.
+
+CONFIGURATION DE RECETTE
+Taux Stripe TEST : txr_1UcwLOCt1cluNZsKNqZ0oAgn, TVA, France, 20 %, inclus, actif.
+Variable STRIPE_PARTNER_TAX_RATE_ID créée uniquement en preview pour codex/espace-client-et-fiabilisation. Aucun taux ni variable de production modifié.
+
+COMPORTEMENT
+Les nouveaux abonnements appliquent le taux aux échéances mensuelles. Chaque nouveau contact payé applique le même taux inclus et génère une facture sur le compte Stripe de l’abonnement ; cette facture rejoint son portail de facturation. Les contacts inclus dans la formule complète ne créent pas de seconde facture.
+Avant création d’un paiement, le serveur refuse un taux absent, inactif, exclusif, étranger, différent de 20 % ou ne correspondant pas à la TVA.
+Les paiements identifiés avec cette politique fiscale ne débloquent l’accès qu’après contrôle de la facture Stripe, de la taxe incluse et du montant TTC convenu. Les anciens paiements conservent leur traitement historique ; aucune facture ancienne n’est réécrite.
+
+VÉRIFICATIONS LOCALES
+114 tests automatisés réussis, complétés par le contrôle d’intégration du refus d’activation sans la bonne TVA. TypeScript, lint (aucune erreur, deux avertissements images existants) et build réussis.
+RECETTE CONNECTÉE RÉUSSIE
+Code déployé en recette : 12e02e60ba1665721ca8ea665736e68eaa9512b6.
+Vercel : dpl_8ee3pYVAmeBwL427i5o8xctEmpD7, branche codex/espace-client-et-fiabilisation.
+Les deux abonnements ont été payés par cartes fictives dans Stripe TEST et activés après vérification serveur de leurs factures avec TVA. Les montants inclus affichés par Stripe sont 50,00 EUR sur 300,00 EUR et 116,67 EUR sur 700,00 EUR.
+Le contact a été payé 25,00 EUR TTC et débloqué après contrôle de sa facture. Le portail du même partenaire présente les deux factures payées (abonnement 300 EUR et contact 25 EUR). La facture du contact LAOT0TP3-0002 a été ouverte : 20,83 EUR HT + TVA France 20 % incluse 4,17 EUR = 25,00 EUR payés, reste dû 0,00 EUR.
+Les factures des abonnements sont in_1UcwQTCt1cluNZsKzmvxIrLe et in_1UcwRGCt1cluNZsKhXA1pjOM.
+Les deux abonnements fictifs sub_1UcwQTCt1cluNZsKNDwFbJPY et sub_1UcwRGCt1cluNZsKSfQXpnfX ont ensuite été résiliés immédiatement. Les deux partenaires d’essai sont désactivés, leurs deux dossiers archivés, les utilisateurs d’essai bannis et leurs sessions révoquées ; les anciens jetons sont refusés en 401.
+Le webhook Stripe TEST est à nouveau désactivé ; l’exception d’alias Vercel est révoquée. Aucun paiement réel, ni modification de production. Les cinq dossiers initiaux restent conservés.
+
+AVANT PRODUCTION
+Créer et vérifier séparément le taux Stripe LIVE après autorisation de production, puis renseigner STRIPE_PARTNER_TAX_RATE_ID dans cet environnement. Ne jamais réutiliser l’identifiant TEST en production. Aucun déploiement ni changement en production n’est autorisé par cette confirmation du taux.
