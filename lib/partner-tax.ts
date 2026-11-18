@@ -28,7 +28,9 @@ export async function assertPartnerInvoiceTax(
   if (!invoiceId || !rateId.startsWith("txr_")) throw new Error("PARTNER_TAX_MISSING");
   const invoice = await stripe.invoices.retrieve(invoiceId);
   const taxes = invoice.total_tax_amounts;
-  const tax = Math.round(gross / 6);
+  // Stripe rounds the tax-exclusive amount first for our single inclusive line.
+  // 999 cents => 833 net + 166 VAT (not 832 + 167).
+  const tax = gross - Math.round(gross * 5 / 6);
   if (invoice.status !== "paid" || invoice.currency !== "eur" ||
       invoice.total !== gross || invoice.amount_paid !== gross ||
       invoice.total_excluding_tax !== gross - tax ||

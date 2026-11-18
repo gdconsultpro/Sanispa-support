@@ -24,7 +24,7 @@ test("missing, inactive, exclusive, foreign and incorrect VAT rates cannot creat
 });
 
 test("invoices retain the agreed TTC total and must contain the exact inclusive VAT, including cent rounding", async () => {
-  for (const [gross, net, tax] of [[35000, 29167, 5833], [5000, 4167, 833], [30000, 25000, 5000], [70000, 58333, 11667], [2500, 2083, 417], [5900, 4917, 983], [4900, 4083, 817], [6900, 5750, 1150], [8900, 7417, 1483], [3900, 3250, 650], [2000, 1667, 333]]) {
+  for (const [gross, net, tax] of [[999, 833, 166], [35000, 29167, 5833], [5000, 4167, 833], [30000, 25000, 5000], [70000, 58333, 11667], [2500, 2083, 417], [5900, 4917, 983], [4900, 4083, 817], [6900, 5750, 1150], [8900, 7417, 1483], [3900, 3250, 650], [2000, 1667, 333]]) {
     const invoice = { status: "paid", currency: "eur", total: gross, amount_paid: gross, total_excluding_tax: net, total_tax_amounts: [{ inclusive: true, tax_rate: rate.id, amount: tax }] };
     const stripe: any = { invoices: { retrieve: async () => invoice } };
     await assertPartnerInvoiceTax(stripe, "in_fixture", gross, rate.id);

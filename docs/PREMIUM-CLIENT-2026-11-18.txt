@@ -37,3 +37,6 @@ Aucun déploiement, secret, migration ou transaction de production. Synchroteam 
 CORRECTION TROUVÉE EN RECETTE CONNECTÉE
 Le rôle service_role n’a pas SELECT sur auth.users. Les nouvelles RPC sont restées SECURITY INVOKER et ont été corrigées pour ne plus lire cette table privée : files contenant des userId et résolution de l’adresse confirmée courante via Auth Admin côté serveur. Aucun droit sur auth.users n’a été ajouté. La préparation du checkout s’appuie sur la session confirmée contrôlée par requireUser ; la RPC reste exclusivement service_role et la clé étrangère vérifie l’existence de l’identité.
 Tests ajoutés sous SET ROLE service_role sans privilège Auth, puis contrôles transactionnels réels en recette sur préparation 999 centimes, rapport et relances. Test de notification vérifiant que l’adresse courante confirmée prime sur une adresse ancienne ou falsifiée en file.
+
+ARRONDI OBSERVÉ DANS STRIPE TEST
+Le Checkout connecté à 9,99 EUR affiche 8,33 EUR HT et 1,66 EUR de TVA incluse. Pour cette ligne unique à 20 %, le contrôle utilise la base HT arrondie au centime, puis la TVA comme différence du TTC. Le total TTC reste exactement 999 centimes. Le cas 999/833/166 est ajouté aux tests fiscaux ; les abonnements et leads existants conservent leurs totaux validés.
