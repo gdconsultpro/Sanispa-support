@@ -1,0 +1,53 @@
+SANISPA PREMIUM — MODÈLE CLIENT ET CONTRÔLES, RECETTE UNIQUEMENT
+
+Décisions confirmées par le propriétaire
+Gratuit : déclaration/prédiagnostic, mise en relation, demande de devis et liens boutique. Le suivi, le rapport, la validation client et la facture d’une intervention restent accessibles gratuitement (confirmation explicite), ainsi que les factures de l’abonnement via son portail.
+Premium : 9,99 EUR TTC par mois, TVA à 20 % incluse, renouvellement mensuel. L’offre remplace les nouveaux achats ponctuels d’assistance eau à 9 EUR. L’historique des essais de l’ancien modèle est conservé.
+Services Premium : IA sans quota mensuel de messages pour un usage personnel normal (eau, symptômes de panne, entretien, aide aux notices), journal de bord, rappels et relevés d’eau transmissibles à l’IA, base de notices et forum des particuliers modéré par Gilles. Aucun partenaire ne peut entrer dans le forum avec un compte partenaire actif, même abonné Premium.
+
+Implémentation
+- /premium présente les offres, l’abonnement et le portail de facturation/résiliation. L’inscription reste par lien e-mail unique avec retour vers Premium si c’est le point d’entrée.
+- Autorisation Premium vérifiée côté serveur sur chaque service payant ; un bouton masqué ne fait pas office de contrôle. Les documents d’intervention restent sur leurs contrôles de propriété gratuits.
+- Paiement Stripe mensuel à 999 centimes, taxe incluse vérifiée, tentative préparée en base, reprise de la même session et contrôle serveur de la facture/du client/de la période avant activation. Aucun accès accordé sur le seul retour du navigateur. Résiliation : fin des prochains renouvellements, période réglée conservée ; impayé, fin de période ou review/refund/litige bloquent l’accès selon leur état. Un renouvellement ne lève pas automatiquement un review.
+- Carnet et relevés liés au compte ET au spa propriétaire ; champs absents stockés NULL. Le client choisit les fréquences selon sa notice et son usage, aucune fréquence universelle n’est inventée. La réalisation d’un rappel est versionnée, crée une entrée et programme le prochain si demandé.
+- Rappels visibles dans l’application. File e-mail dédupliquée par rappel/version ; l’éligibilité Premium est recontrôlée avant envoi. Le cron protégé existant prépare les échéances. La planification doit être activée et observée avant toute ouverture de production ; les previews ne prouvent pas une exécution planifiée.
+- IA : gpt-5.4-mini par défaut pour ce nouveau service, configurable par OPENAI_PREMIUM_MODEL côté serveur. Ce modèle est distinct du gpt-4o-mini de l’ancien parcours. 1 200 tokens maximum de réponse, dix échanges précédents, douze demandes/minute et une demande simultanée par compte, sans quota mensuel. Identifiant de requête et contexte dédupliqués ; une réponse déjà conservée est rendue sans second appel. Les erreurs et réponses incertaines ne sont pas présentées comme une réponse réussie.
+- L’IA reçoit les observations d’un dossier et/ou le relevé explicitement choisi, uniquement après vérification de leur propriété. Elle ne reçoit pas les coordonnées client ni les photos. Elle ne garantit pas un diagnostic, n’invente pas de dosage, ne guide pas de manipulation électrique et ne prétend pas identifier une photo absente.
+- Comptage du modèle réellement renvoyé et des tokens entrée/sortie ; tableau administratif agrégé sans exposer les conversations. Estimation séparée de la facture réelle OpenAI, avec les consommations non confirmées signalées.
+- Forum : pseudonymes, messages en attente de modération par défaut, détection de liens/coordonnées/démarchage pour examen humain, aucune publication automatique. Modération administrateur MFA et contrôle d’origine. Les textes sont affichés comme texte et non comme HTML.
+- Notices : deux PDF fabricant (Balboa TP400/TP600, SpaNET SV Mini) et quatre pages constructeur/catalogues (Balboa, Gecko, SpaNET, Joyonway PB563), distingués clairement. Base initiale à enrichir ; Ethink/KL8 et les autres modèles ne sont pas annoncés comme disponibles sans document vérifié. La reconnaissance du clavier par photo n’est pas activée dans ce lot.
+
+Coût IA : révision de l’estimation initiale
+Le premier calcul concernait gpt-4o-mini à 0,15 USD/M entrée et 0,60 USD/M sortie, pour dix à vingt échanges d’un seul dossier d’eau. Il ne constitue pas le coût garanti d’un mois illimité.
+Le nouveau service utilise par défaut gpt-5.4-mini, documenté à 0,75 USD/M entrée et 4,50 USD/M sortie. Exemples sans remise de cache : 100 réponses moyennes de 4 000 tokens d’entrée + 600 de sortie représentent 0,57 USD ; 500 réponses à 8 000 + 1 000 tokens représentent 5,25 USD. Une forte utilisation peut donc affecter la marge à 9,99 EUR : suivre les usages réels avant diffusion large, sans inventer un quota caché incompatible avec l’offre.
+Sources officielles consultées le 18 novembre 2026 :
+https://developers.openai.com/api/docs/models/gpt-4o-mini
+https://developers.openai.com/api/docs/models/gpt-5.4-mini
+
+Validation automatisée et navigateur
+132 tests automatisés passent : fiscalité et montants, attribution, données entre clients, accès gratuit/Premium, forum excluant les partenaires, propriété des spas, déduplication IA et relances versionnées. TypeScript, lint sans erreur (deux avertissements image existants) et compilation contrôlés séparément.
+Tests navigateur locaux avec API simulées sur 390 × 844 : blocage du carnet gratuit, création journal/rappel/relevé, valeurs inconnues conservées, transmission du relevé à l’IA, forum en attente et recherche de notice. Débordement du tableau corrigé ; défilement contenu au tableau. Les appels OpenAI et Stripe de ces tests navigateur sont simulés et ne sont pas présentés comme des paiements connectés.
+Migrations appliquées exclusivement à Supabase recette nkfoboqponvropiggndv :
+20261118005439 intervention_workflow_and_management_350 (fichier local généré CLI 20261118003836)
+20261118011557 customer_premium_care_and_forum (fichier local généré CLI 20261118005644)
+20261118012643 service_role_notifications_and_premium_checkout (fichier local généré CLI 20261118012421)
+Advisors : aucune nouvelle alerte WARN/ERROR ; 23 tables internes avec RLS sans policy publique sont volontairement fermées et leurs privilèges révoqués. L’avertissement préexistant de protection des mots de passe compromis reste présent.
+
+Aucun déploiement, secret, migration ou transaction de production. Synchroteam reste en préparation sans envoi, conformément à la décision du propriétaire. Les publications stores, e-mails de diffusion, occasion et achats groupés restent hors ouverture actuelle.
+
+CORRECTION TROUVÉE EN RECETTE CONNECTÉE
+Le rôle service_role n’a pas SELECT sur auth.users. Les nouvelles RPC sont restées SECURITY INVOKER et ont été corrigées pour ne plus lire cette table privée : files contenant des userId et résolution de l’adresse confirmée courante via Auth Admin côté serveur. Aucun droit sur auth.users n’a été ajouté. La préparation du checkout s’appuie sur la session confirmée contrôlée par requireUser ; la RPC reste exclusivement service_role et la clé étrangère vérifie l’existence de l’identité.
+Tests ajoutés sous SET ROLE service_role sans privilège Auth, puis contrôles transactionnels réels en recette sur préparation 999 centimes, rapport et relances. Test de notification vérifiant que l’adresse courante confirmée prime sur une adresse ancienne ou falsifiée en file.
+
+ARRONDI OBSERVÉ DANS STRIPE TEST
+Le Checkout connecté à 9,99 EUR affiche 8,33 EUR HT et 1,66 EUR de TVA incluse. Pour cette ligne unique à 20 %, le contrôle utilise la base HT arrondie au centime, puis la TVA comme différence du TTC. Le total TTC reste exactement 999 centimes. Le cas 999/833/166 est ajouté aux tests fiscaux ; les abonnements et leads existants conservent leurs totaux validés.
+
+ESSAIS CONNECTÉS TERMINÉS — 18 NOVEMBRE 2026
+Code vérifié en recette : 3dd5a48581b4d1e7e8168b27cf31044f9acb6cb3. Les deux déploiements Vercel de recette/revue sont READY.
+Trois identités fictives distinctes ont servi aux contrôles HTTP authentifiés : client gratuit, client Premium et partenaire. Création de rendez-vous, rapport dédupliqué, refus de clôture sans facture, dépôt PDF privé, téléchargement propriétaire, refus entre comptes, interdiction de suppression d’une facture professionnelle et validation avec trois notes ont été contrôlés sur la vraie base de recette.
+Stripe TEST : Checkout mensuel 9,99 EUR, facture DSLR2KZS-0001 réglée fictivement, 8,33 EUR HT + 1,66 EUR TVA. L’événement invoice.paid a activé les droits ; le portail a permis une résiliation en fin de période sans couper l’accès payé. Un remboursement intégral TEST a ensuite bloqué le Premium (état review), tout en conservant l’accès aux rapports et factures. L’abonnement TEST a enfin été annulé immédiatement pour terminer l’essai. Aucun paiement réel.
+Après activation fictive, les API connectées ont confirmé carnet, rappels, relevé avec valeurs inconnues NULL, six sources de notices et forum en attente, sans coordonnées publiques. Les mêmes services retournent 402 au compte gratuit.
+Un appel réel OpenAI a utilisé le relevé choisi : modèle retourné gpt-5.4-mini-2026-03-17, 560 tokens entrée et 258 sortie, coût estimé 0,001581 USD hors taxes/change/cache. Une seconde demande identique a renvoyé la réponse enregistrée sans second appel. Cela valide le comptage et la déduplication, pas un coût mensuel garanti.
+Clôture : webhook Stripe TEST désactivé avec ses neuf événements conservés ; protection Vercel rétablie (POST anonyme webhook renvoyé vers l’authentification, HTTP 302). Trois comptes fictifs bloqués et sessions révoquées, dossier archivé, publication forum refusée, export Synchroteam en review avec zéro tentative et aucun identifiant distant. Les cinq dossiers précédemment actifs sont conservés. Les fichiers temporaires d’accès sont supprimés ; les preuves locales sans mots de passe restent exclues de Git.
+Production vérifiée inchangée : support.sani-spa.fr pointe toujours sur dpl_DdzPpF645YXWMoUhbd8JYU9aiKBD, main 171c9cf4acd5ea2210134a43b8a358a06d1466f2. PR 13 maintenue en brouillon. Aucune transmission Synchroteam.
+Avant ouverture : activer et observer la planification des e-mails, valider la charte/les conditions commerciales et enrichir les notices. Les essais ne constituent pas l’activation commerciale.

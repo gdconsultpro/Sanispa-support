@@ -1,0 +1,13 @@
+SANISPA — CORRECTION DES PRÉVISUALISATIONS VERCEL, 18 NOVEMBRE 2026
+
+L’alerte de déploiement du commit 2a8f12c sur codex/refonte-parcours-partenaires-20261118 venait du rattachement des variables : les valeurs de recette étaient limitées à codex/espace-client-et-fiabilisation, alors que les autres previews héritaient de paramètres génériques communs avec la production. Le garde-fou a correctement refusé cette compilation : « la base doit être exclusivement celle de recette ».
+
+CORRECTION
+- Retrait de la cible preview des douze entrées génériques qui entraient en concurrence avec les paramètres de recette. Leur cible production, leurs identifiants, types et valeurs sont conservés ; aucun secret n’a été lu, copié ni remplacé.
+- Les quatorze entrées existantes de recette, toujours limitées à la cible preview, s’appliquent désormais aux branches de prévisualisation, y compris la branche de refonte. Supabase reste nkfoboqponvropiggndv, Stripe reste TEST et le taux TVA reste le taux TEST validé.
+- Les dix-huit entrées de configuration ciblant production sont toujours présentes avec leurs noms, types et cible production. Aucun déploiement ni migration de production.
+- Le contrôle de compilation n’est pas désactivé : URL Supabase de recette, clé serveur correspondant au projet, clé Stripe TEST et taux partenaire requis.
+- L’adresse canonique de recette utilisée pour les retours d’authentification et les paiements reste celle déjà configurée, pour conserver les autorisations Supabase et le webhook TEST existants. Les modifications de code restent synchronisées entre les branches de refonte et de recette ; une preview de revue n’est pas une nouvelle base isolée.
+
+VÉRIFICATION
+Le redéploiement du même commit a passé le garde-fou « SANISPA : isolation recette et mode Stripe TEST vérifiés ». La dernière prévisualisation sera vérifiée jusqu’à l’état READY. Le code applicatif et les 114 tests déjà validés ne changent pas dans cette correction de configuration et de documentation.

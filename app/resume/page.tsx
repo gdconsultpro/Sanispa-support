@@ -78,9 +78,9 @@ export default function ResumePage() {
               <div className="flex gap-3">
                 <CreditCard size={22} className="mt-1 text-sanispa-blue" aria-hidden="true"/>
                 <div>
-                  <h2 className="font-bold text-sanispa-navy">Diagnostic Traitement d'Eau IA</h2>
+                  <h2 className="font-bold text-sanispa-navy">SANISPA Premium</h2>
                   <p className="mt-2 text-sm leading-6 text-sanispa-steel">
-                    L'assistant IA SANISPA analyse vos valeurs d'eau et votre description de la situation pour vous guider étape par étape.
+                    L’abonnement mensuel à 9,99 € TTC inclut l’assistant IA, le carnet, les relevés, les rappels, les notices et le forum. Il est renouvelé automatiquement et peut être résilié depuis votre espace.
                   </p>
                   <p className="mt-3 rounded-md bg-sanispa-ice p-3 text-sm font-semibold text-sanispa-navy">
                     Service géré uniquement par SANISPA. Aucun partenaire n'a accès aux dossiers de traitement d'eau.
@@ -90,12 +90,12 @@ export default function ResumePage() {
               <div className="mt-4 grid gap-2">
                 {availableRemotePlans.map((plan) => (<button key={plan.id} type="button" onClick={() => setChoice("remote", plan.id)} className={`focus-ring flex min-h-12 items-center justify-between rounded-md border px-3 py-2 text-left text-sm font-bold ${draft.paymentPlan === plan.id ? "border-sanispa-blue bg-sanispa-ice text-sanispa-navy" : "border-sanispa-line bg-white text-sanispa-steel"}`}>
                     <span>{plan.name}</span>
-                    <span>{plan.price} €</span>
+                    <span>{plan.price.toLocaleString("fr-FR")} € TTC / mois</span>
                   </button>))}
               </div>
             </div>) : null}
 
-          {draft.choice === "intervention" ? <section className="space-y-3 rounded-md border border-sanispa-line bg-white p-4">
+          {draft.choice === "intervention" && draft.problemType !== "demenagement" ? <section className="space-y-3 rounded-md border border-sanispa-line bg-white p-4">
             <h2 className="font-bold">Préparer l’accès au spa</h2>
             <DiagnosticQuestion question={spaAccessQuestion} value={draft.answers.spa_access} onChange={value => {
               const next = updateDiagnosticAnswer(draft, "spa_access", value);

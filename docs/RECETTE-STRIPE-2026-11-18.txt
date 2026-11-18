@@ -1,0 +1,44 @@
+SANISPA — RECETTE STRIPE CONNECTÉE DU 18 NOVEMBRE 2026
+
+PÉRIMÈTRE
+Autorisation du propriétaire : ouverture temporaire de la seule adresse de recette et activation du webhook Stripe TEST. Aucun réglage, secret, déploiement ni migration de production modifié.
+Supabase : nkfoboqponvropiggndv.
+Code testé : 73e1f9ffafa7878b821ab7071e5de921a5c23c24.
+Vercel : dpl_CLZd3CgfmMFxzExg8zS3rVXH7zA2, branche codex/espace-client-et-fiabilisation.
+Les comptes et dossiers utilisés sont entièrement fictifs, marqués RECETTE AUTOMATISEE / NE PAS TRAITER. Les données des cinq demandes initiales n’ont pas servi aux paiements.
+
+RÉSULTATS CONNECTÉS
+1. 11 contrôles API initiaux réussis : authentification réelle Supabase, aperçu sans coordonnées, cloisonnement partenaire, acquisition refusée sans abonnement, Checkout TEST réutilisé sans doublon
+2. 300 EUR/mois : paiement TEST confirmé, abonnement actif et période payée enregistrés
+3. 700 EUR/mois : paiement TEST confirmé, abonnement actif et contact inclus acquis sans Checkout supplémentaire
+4. Contact fuite 25 EUR : refus pour fonds insuffisants, coordonnées toujours masquées ; reprise avec carte TEST valide puis coordonnées débloquées
+5. Rejeu réel depuis Stripe de checkout.session.completed et invoice.paid : 200, un seul achat et une seule notification par dossier
+6. Portail Stripe TEST : facture 700 EUR, moyen de paiement et résiliation à échéance visibles ; résiliation à échéance confirmée
+7. Remboursement TEST de 300 EUR : passage review et refus 402 de toute nouvelle acquisition
+8. Résiliation immédiate TEST : passage canceled et refus 402 de toute nouvelle acquisition
+9. 14 livraisons Stripe observées en 200 OK : paiements, abonnements, rejeux, remboursement et résiliations
+10. 2 notifications partner_accepted marquées sent, chacune en une tentative, aucun doublon
+
+TRACES STRIPE TEST
+Abonnement Gestion : sub_1Ucw67Ct1cluNZsKgmnx1uPh.
+Abonnement Complet : sub_1Ucw74Ct1cluNZsKQyoT3fHZ.
+Remboursement TEST de 300 EUR : re_3Ucw67Ct1cluNZsK17DwCotv.
+Webhook : we_1UE5fGCt1cluNZsKhbZtM7fk, API 2026-08-26.dahlia.
+Les jetons d’accès, mots de passe et URL privées de paiement/portail ne figurent pas dans ce document ni dans GitHub.
+
+ÉTAT À LA FIN
+- Deux abonnements TEST résiliés immédiatement : aucun renouvellement fictif futur.
+- Deux partenaires d’essai désactivés ; utilisateurs d’essai bannis, sessions révoquées ; anciens jetons refusés en 401.
+- Quatre dossiers fictifs archivés et clairement identifiés ; traces financières et historiques TEST conservées pour audit.
+- Deux notifications d’acceptation de recette marquées sent, sans doublon. Ce statut confirme le traitement d’envoi, pas une lecture du courriel.
+- Webhook TEST désactivé, neuf événements conservés pour la prochaine recette.
+- Exception Vercel de l’alias supprimée (protectionBypass vide) ; POST sans connexion redirigé en 302. Aucune protection globale désactivée.
+
+LIMITES ET SUITE
+111 tests automatisés et 21 contrôles SQL transactionnels ont déjà réussi avant cette phase. Les tests Stripe réels ci-dessus utilisent uniquement le mode TEST, aucun argent réel. Aucun litige ni renouvellement mensuel futur n’a été déclenché dans cette phase ; ces cas restent couverts par les tests automatisés. Le contrôle du vrai lien d’inscription sur deux appareils et la reprise planifiée des notifications restent à terminer avant production. Toute activation de production nécessite une nouvelle autorisation explicite.
+
+POINT DE FACTURATION OBSERVÉ PUIS CORRIGÉ EN RECETTE
+Le total de la facture TEST Gestion est bien de 30000 centimes, mais la réponse Stripe observée indique tax=null, total_tax_amounts=[] et total_excluding_tax=30000. Le montant payé est validé ; la ventilation de TVA n’est pas validée. Confirmer le régime et le taux applicables à SANISPA, puis configurer et tester la facture correspondante en recette avant activation commerciale. Aucun taux fiscal n’a été supposé ni paramètre de production modifié.
+
+RÉSOLUTION APRÈS CONFIRMATION DU PROPRIÉTAIRE
+TVA 20 % incluse confirmée puis configurée et testée en recette ; les prix TTC restent inchangés. Les nouvelles factures d’abonnement et de contact présentent la bonne ventilation HT/TVA/TTC. La facture du contact est également visible dans le même portail que l’abonnement. Les deux abonnements de ce second essai sont arrêtés et les comptes fictifs désactivés. Voir docs/TVA-2026-11-18.txt pour les traces et limites avant production. Le taux LIVE reste à configurer après autorisation distincte.

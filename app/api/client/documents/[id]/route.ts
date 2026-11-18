@@ -1,45 +1,93 @@
 import { attachmentDisposition } from "@/lib/documents";
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/client-auth";
-export async function GET(request: Request, { params }: {
+export async function GET(
+  request: Request,
+  {
+    params,
+  }: {
     params: Promise<{
-        id: string;
+      id: string;
     }>;
-}) {
-    const { id } = await params;
-    const { user, supabase } = await getAuthenticatedUser(request);
-    if (!user)
-        return NextResponse.json({ error: "Non connecté" }, { status: 401 });
-    const { data: document, error } = await supabase.from("client_documents").select("*").eq("id", id).eq("user_id", user.id).single();
-    if (error || !document)
-        return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
-    const { data, error: downloadError } = await supabase.storage.from(document.storage_bucket).download(document.storage_path);
-    if (downloadError || !data)
-        return NextResponse.json({ error: "Téléchargement impossible." }, { status: 400 });
-    return new NextResponse(data, {
-        headers: {
-            "Content-Type": document.mime_type,
-            "Content-Disposition": attachmentDisposition(document.file_name)
-        }
-    });
+  },
+) {
+  const { id } = await params;
+  const { user, supabase } = await getAuthenticatedUser(request);
+  if (!user)
+    return NextResponse.json({ error: "Non connecté" }, { status: 401 });
+  const { data: document, error } = await supabase
+    .from("client_documents")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+  if (error || !document)
+    return NextResponse.json(
+      { error: "Document introuvable." },
+      { status: 404 },
+    );
+  const { data, error: downloadError } = await supabase.storage
+    .from(document.storage_bucket)
+    .download(document.storage_path);
+  if (downloadError || !data)
+    return NextResponse.json(
+      { error: "Téléchargement impossible." },
+      { status: 400 },
+    );
+  return new NextResponse(data, {
+    headers: {
+      "Content-Type": document.mime_type,
+      "Content-Disposition": attachmentDisposition(document.file_name),
+    },
+  });
 }
-export async function DELETE(request: Request, { params }: {
+export async function DELETE(
+  request: Request,
+  {
+    params,
+  }: {
     params: Promise<{
-        id: string;
+      id: string;
     }>;
-}) {
-    const { id } = await params;
-    const { user, supabase } = await getAuthenticatedUser(request);
-    if (!user)
-        return NextResponse.json({ error: "Non connecté" }, { status: 401 });
-    const { data: document, error } = await supabase.from("client_documents").select("*").eq("id", id).eq("user_id", user.id).single();
-    if (error || !document)
-        return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
-    const { error: storageError } = await supabase.storage.from(document.storage_bucket).remove([document.storage_path]);
-    if (storageError)
-        return NextResponse.json({ error: "Suppression impossible. Réessayez." }, { status: 503 });
-    const { error: deleteError } = await supabase.from("client_documents").delete().eq("id", id).eq("user_id", user.id);
-    if (deleteError)
-        return NextResponse.json({ error: deleteError.message }, { status: 400 });
-    return NextResponse.json({ ok: true });
+  },
+) {
+  const { id } = await params;
+  const { user, supabase } = await getAuthenticatedUser(request);
+  if (!user)
+    return NextResponse.json({ error: "Non connecté" }, { status: 401 });
+  const { data: document, error } = await supabase
+    .from("client_documents")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+  if (error || !document)
+    return NextResponse.json(
+      { error: "Document introuvable." },
+      { status: 404 },
+    );
+  if (document.issued_by !== "client")
+    return NextResponse.json(
+      {
+        error:
+          "Les factures et documents émis par les professionnels sont conservés dans votre dossier.",
+      },
+      { status: 403 },
+    );
+  const { error: storageError } = await supabase.storage
+    .from(document.storage_bucket)
+    .remove([document.storage_path]);
+  if (storageError)
+    return NextResponse.json(
+      { error: "Suppression impossible. Réessayez." },
+      { status: 503 },
+    );
+  const { error: deleteError } = await supabase
+    .from("client_documents")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (deleteError)
+    return NextResponse.json({ error: deleteError.message }, { status: 400 });
+  return NextResponse.json({ ok: true });
 }

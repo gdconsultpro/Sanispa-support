@@ -1,38 +1,251 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-export async function buildSummaryPdf(lines: string[]) {
-    const pdf = await PDFDocument.create();
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
-    let page = pdf.addPage([595, 842]);
-    let y = 790;
-    const printable = (value: string) => Array.from(value.replace(/[\u202f\u00a0]/g, " ")).map(c => { try {
-        font.encodeText(c);
-        return c;
-    }
-    catch {
-        return "?";
-    } }).join("");
-    for (const raw of lines.flatMap(line => line.split(/\r?\n/))) {
-        let line = "";
-        const chunks: string[] = [];
-        for (const c of printable(raw)) {
-            if (font.widthOfTextAtSize(line + c, 10) > 495) {
-                const space = line.lastIndexOf(" ");
-                chunks.push(space > 0 ? line.slice(0, space) : line);
-                line = space > 0 ? line.slice(space + 1) : "";
-            }
-            line += c;
+import {
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  type PDFPage,
+  type PDFFont,
+} from "pdf-lib";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+// Contact information verified on https://www.sani-spa.fr/contact/ (18 November 2026).
+export const sanispaCompany = {
+  name: "SANISPA",
+  activity: "Réparation, entretien et installation de spas",
+  address: "Zone industrielle - 68500 Berrwiller (France)",
+  phone: "03 62 02 10 55",
+  website: "www.sani-spa.fr",
+  support: "support.sani-spa.fr",
+};
+const sections = new Set([
+  "Votre demande",
+  "Informations client",
+  "Informations spa",
+  "Réponses au questionnaire",
+  "Photos jointes",
+  "Suivi de votre demande",
+]);
+export async function buildSummaryPdf(input: string[]) {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle("Résumé de demande d’assistance SANISPA");
+  pdf.setAuthor(sanispaCompany.name);
+  pdf.setSubject("Déclaration client - pré-diagnostic de spa");
+  const regular = await pdf.embedFont(StandardFonts.Helvetica),
+    bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const logo = await pdf.embedPng(
+    await readFile(path.join(process.cwd(), "public/sanispa-logo.png")),
+  );
+  const navy = rgb(0.04, 0.14, 0.26),
+    teal = rgb(0.035, 0.416, 0.502),
+    muted = rgb(0.35, 0.4, 0.46),
+    line = rgb(0.82, 0.89, 0.9),
+    pale = rgb(0.94, 0.975, 0.975);
+  const printable = (value: string) =>
+    Array.from(
+      value.replace(/[\u202f\u00a0]/g, " ").replace(/[\u2010-\u2015]/g, "-"),
+    )
+      .map((c) => {
+        try {
+          regular.encodeText(c);
+          return c;
+        } catch {
+          return "?";
         }
-        chunks.push(line);
-        for (const text of chunks) {
-            if (y < 55) {
-                page = pdf.addPage([595, 842]);
-                y = 790;
-            }
-            page.drawText(text, { x: 50, y, size: 10, font, color: rgb(.04, .14, .26) });
-            y -= 15;
+      })
+      .join("");
+  const wrap = (value: string, font: PDFFont, size: number, width = 495) => {
+    const out: string[] = [];
+    for (const raw of printable(value).split(/\r?\n/)) {
+      let row = "";
+      for (const character of raw) {
+        if (font.widthOfTextAtSize(row + character, size) > width) {
+          const space = row.lastIndexOf(" ");
+          if (space > 0) {
+            out.push(row.slice(0, space));
+            row = row.slice(space + 1);
+          } else {
+            out.push(row);
+            row = "";
+          }
         }
+        row += character;
+      }
+      out.push(row);
     }
-    const count = pdf.getPageCount();
-    pdf.getPages().forEach((p, i) => p.drawText(`SANISPA · ${i + 1}/${count}`, { x: 50, y: 25, size: 9, font }));
-    return Buffer.from(await pdf.save());
+    return out;
+  };
+  let page!: PDFPage,
+    y = 0,
+    questionnaire = false;
+  const text = (
+    value: string,
+    x: number,
+    at: number,
+    size = 10,
+    font = regular,
+    color = navy,
+  ) => page.drawText(printable(value), { x, y: at, size, font, color });
+  const newPage = () => {
+    page = pdf.addPage([595.28, 841.89]);
+    page.drawRectangle({
+      x: 0,
+      y: 831.89,
+      width: 595.28,
+      height: 10,
+      color: teal,
+    });
+    const scale = Math.min(156 / logo.width, 57 / logo.height);
+    page.drawImage(logo, {
+      x: 48,
+      y: 755,
+      width: logo.width * scale,
+      height: logo.height * scale,
+    });
+    [
+      sanispaCompany.activity,
+      sanispaCompany.address,
+      `Standard : ${sanispaCompany.phone}`,
+      sanispaCompany.website,
+    ].forEach((s, index) =>
+      text(s, 292, 799 - index * 14, 8.2, regular, muted),
+    );
+    page.drawLine({
+      start: { x: 48, y: 738 },
+      end: { x: 547, y: 738 },
+      thickness: 1,
+      color: line,
+    });
+    text("VOTRE DEMANDE D’ASSISTANCE", 48, 714, 10, bold, teal);
+    text("Résumé de votre déclaration", 48, 689, 21, bold);
+    y = 662;
+  };
+  const ensure = (height: number) => {
+    if (y - height < 64) newPage();
+  };
+  newPage();
+  const hasTitle = input[0] === "SANISPA";
+  const lines = hasTitle ? ["Votre demande", ...input.slice(2)] : input;
+  for (const raw of lines) {
+    if (!raw.trim()) {
+      y -= 8;
+      continue;
+    }
+    if (sections.has(raw)) {
+      questionnaire = raw === "Réponses au questionnaire";
+      ensure(72);
+      y -= 8;
+      page.drawRectangle({
+        x: 48,
+        y: y - 8,
+        width: 499,
+        height: 27,
+        color: pale,
+      });
+      text(raw, 58, y + 1, 11, bold, teal);
+      y -= 29;
+      continue;
+    }
+    const split = raw.indexOf(" : ");
+    if (split > 0 && split < 220) {
+      const label = wrap(raw.slice(0, split), bold, 9.3),
+        value = wrap(raw.slice(split + 3) || "Non renseigné", regular, 10);
+      if (
+        !questionnaire &&
+        label.length === 1 &&
+        value.length === 1 &&
+        bold.widthOfTextAtSize(label[0], 9.3) +
+          regular.widthOfTextAtSize(value[0], 10) <
+          470
+      ) {
+        ensure(24);
+        text(label[0] + " :", 48, y, 9.3, bold);
+        text(
+          value[0],
+          58 + bold.widthOfTextAtSize(label[0] + " :", 9.3),
+          y,
+          10,
+          regular,
+          muted,
+        );
+        y -= 23;
+        continue;
+      }
+      ensure(Math.min(70, (label.length + Math.min(value.length, 2)) * 14 + 8));
+      for (const row of label) {
+        ensure(14);
+        text(row, 48, y, 9.3, bold);
+        y -= 14;
+      }
+      for (const row of value) {
+        ensure(14);
+        text(row, 48, y, 10, regular, muted);
+        y -= 14;
+      }
+      y -= 8;
+    } else {
+      for (const row of wrap(raw, regular, 10)) {
+        ensure(14);
+        text(row, 48, y);
+        y -= 14;
+      }
+      y -= 5;
+    }
+  }
+  if (hasTitle) {
+    ensure(92);
+    y -= 6;
+    page.drawRectangle({
+      x: 48,
+      y: y - 65,
+      width: 499,
+      height: 83,
+      color: pale,
+    });
+    text("ET ENSUITE ?", 60, y, 10, bold, teal);
+    text(
+      "SANISPA étudiera les informations transmises pour orienter votre demande.",
+      60,
+      y - 19,
+      9,
+    );
+    text(
+      `Retrouvez votre dossier et vos documents : ${sanispaCompany.support}`,
+      60,
+      y - 36,
+      9,
+    );
+    text(
+      "Aucune intervention ni date de rendez-vous n’est confirmée par ce résumé.",
+      60,
+      y - 53,
+      8.5,
+      regular,
+      muted,
+    );
+  }
+  const reference =
+    input.find((s) => s.startsWith("Numéro de dossier : "))?.split(" : ")[1] ||
+    "";
+  const count = pdf.getPageCount();
+  pdf.getPages().forEach((p, i) => {
+    p.drawLine({
+      start: { x: 48, y: 49 },
+      end: { x: 547, y: 49 },
+      thickness: 0.6,
+      color: line,
+    });
+    p.drawText(
+      printable(
+        `SANISPA | ${reference ? "Dossier " + reference.slice(0, 8).toUpperCase() + " | " : ""}${sanispaCompany.phone}`,
+      ),
+      { x: 48, y: 32, size: 8, font: regular, color: muted },
+    );
+    p.drawText(`${i + 1} / ${count}`, {
+      x: 518,
+      y: 32,
+      size: 8,
+      font: regular,
+      color: muted,
+    });
+  });
+  return Buffer.from(await pdf.save());
 }
