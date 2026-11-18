@@ -9,7 +9,7 @@ Les arrondis au centime sont calculés et facturés par Stripe ; le serveur cont
 
 CONFIGURATION DE RECETTE
 Taux Stripe TEST : txr_1UcwLOCt1cluNZsKNqZ0oAgn, TVA, France, 20 %, inclus, actif.
-Variable STRIPE_PARTNER_TAX_RATE_ID créée uniquement en preview pour codex/espace-client-et-fiabilisation. Aucun taux ni variable de production modifié.
+Variable STRIPE_PARTNER_TAX_RATE_ID créée uniquement en preview, puis étendue aux branches de prévisualisation lors de la correction du déploiement. Aucun taux ni variable de production modifié.
 
 COMPORTEMENT
 Les nouveaux abonnements appliquent le taux aux échéances mensuelles. Chaque nouveau contact payé applique le même taux inclus et génère une facture sur le compte Stripe de l’abonnement ; cette facture rejoint son portail de facturation. Les contacts inclus dans la formule complète ne créent pas de seconde facture.
