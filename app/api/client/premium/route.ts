@@ -1,3 +1,4 @@
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, rateLimit } from "@/lib/client-auth";
@@ -10,7 +11,9 @@ export async function GET(request: Request) {
     const { user, supabase } = await requireUser(request);
     const result = await supabase.from("customer_subscriptions").select("status,paid_until").eq("user_id", user.id).maybeSingle();
     if (result.error) throw result.error;
-    return NextResponse.json({ subscription: result.data, active: premiumActive(result.data) }, { headers: { "Cache-Control": "private, no-store" } });
+    let active = premiumActive(result.data);
+    if (paymentsPaused()) { const trial = await supabase.rpc("grant_customer_trial_access", { p_user: user.id }); if (trial.error) throw trial.error; active = trial.data === true; }
+    return NextResponse.json({ subscription: result.data, active, complimentary: paymentsPaused() }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) { return apiError(e); }
 }
 export async function POST(request: Request) {

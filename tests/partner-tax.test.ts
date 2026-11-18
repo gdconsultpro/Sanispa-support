@@ -1,3 +1,4 @@
+process.env.NEXT_PUBLIC_SANISPA_BILLING_MODE = "live";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getPartnerTaxRate, assertPartnerInvoiceTax } from "../lib/partner-tax";

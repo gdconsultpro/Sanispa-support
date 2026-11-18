@@ -1,3 +1,4 @@
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { acquirePartnerLead } from "./partner-acquisition";
 import { getStripe } from "./stripe";
 import { HttpError } from "./http";
@@ -53,8 +54,8 @@ export async function loadOfferBilling(
       );
       const own = pending.find((p: any) => p.partner_id === partner.id),
         elsewhere = pending.some((p: any) => p.partner_id !== partner.id);
-      const active = activeSubscription(subscription),
-        included = active && subscription.plan === "complete";
+      const active = paymentsPaused() || activeSubscription(subscription),
+        included = paymentsPaused() || (active && subscription?.plan === "complete");
       const valid =
         offer.offer_version === 2 &&
         leadCatalog[offer.lead_category as LeadCategory]?.amount ===
@@ -144,6 +145,7 @@ export async function acquireOffer({
     !purchase.payment_required
   )
     throw new HttpError(409, "Réservation non confirmée.");
+  if (paymentsPaused()) throw new HttpError(409, "Les règlements sont suspendus. Actualisez le dossier ou contactez SANISPA pour vérifier cette réservation.");
   const stripe = stripeClient ?? getStripe();
   if (purchase.stripe_checkout_session_id) {
     const session = await stripe.checkout.sessions.retrieve(

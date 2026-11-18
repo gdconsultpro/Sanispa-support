@@ -10,11 +10,11 @@ const config: Config = {
     extend: {
       colors: {
         sanispa: {
-          navy: "#0A2342",
-          blue: "#096A80",
-          ice: "#F0F8F8",
-          line: "#D1E4E7",
-          steel: "#5B6776",
+          navy: "#193B5B",
+          blue: "#0A6ED0",
+          ice: "#EEF7FD",
+          line: "#D9E7F2",
+          steel: "#575756",
         },
       },
       boxShadow: {

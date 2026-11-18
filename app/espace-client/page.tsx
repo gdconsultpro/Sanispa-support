@@ -412,7 +412,8 @@ export default function EspaceClientPage() {
           <h2 className="text-xl font-bold text-sanispa-navy">
             Mes demandes envoyées
           </h2>
-          <p className="mt-3 text-sm">Vos demandes, rapports et factures restent accessibles gratuitement. <Link className="font-bold underline" href="/premium">Premium : IA, carnet, relevés, rappels, notices et forum →</Link></p>
+          <Link href="/visio" className="mt-4 inline-flex rounded-full border border-sanispa-line bg-white px-4 py-3 text-sm font-bold text-sanispa-blue">Mes rendez-vous en visio →</Link>
+          <p className="mt-3 text-sm">Vos demandes, rapports et factures restent accessibles gratuitement. <Link className="font-bold underline" href="/premium">Services offerts : IA, carnet, relevés, rappels, notices et forum →</Link></p>
           <div className="mt-4 grid gap-3">
             {diagnostics.length ? (
               diagnostics.map((diagnostic) => (

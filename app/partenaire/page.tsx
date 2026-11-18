@@ -1,4 +1,5 @@
 "use client";
+import { paymentsPaused } from "@/lib/commercial-mode";
 
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
@@ -82,8 +83,9 @@ export default function PartnerHomePage() {
           </p>
           <div className="mt-5">
             <ButtonLink href="/partenaire/abonnement">
-              Mon abonnement et mes factures
+              {paymentsPaused() ? "Mon accès et la charte" : "Mon abonnement et mes factures"}
             </ButtonLink>
+            <ButtonLink href="/partenaire/visio">Assistance en visio</ButtonLink>
             <ButtonLink href="/partenaire/leads">Voir les demandes</ButtonLink>
             <ButtonLink href="/partenaire/interventions">Mes interventions et mon planning</ButtonLink>
             <ButtonLink href="/partenaire/mot-de-passe">

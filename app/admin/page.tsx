@@ -59,6 +59,7 @@ export default async function AdminPage({ searchParams }: {
       <AdminSignOut />
       <nav aria-label="Rubriques de l’administration" className="mb-4 flex flex-wrap gap-2">
         <Link href="/demo" className={navClass(false)}>Démo de présentation ↗</Link>
+        <Link href="/admin/visio" className={navClass(false)}>Visios et assistance</Link>
         <Link href="/admin/premium" className={navClass(false)}>Premium et coût IA</Link>
         <Link href="/admin/forum" className={navClass(false)}>Forum Premium</Link>
         <Link href="/admin/interventions" className={navClass(false)}>Interventions et suivi Synchroteam</Link>

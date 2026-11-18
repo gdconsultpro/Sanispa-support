@@ -1,4 +1,5 @@
 "use client";
+import { paymentsPaused } from "@/lib/commercial-mode";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
@@ -69,6 +70,7 @@ export default function SubscriptionPage() {
       setBusy(false);
     }
   }
+  if (paymentsPaused()) return <AppShell><Link href="/partenaire" className="text-sm font-bold underline">← Espace partenaire</Link><h1 className="mt-5 text-3xl font-bold">Votre accès partenaire est offert</h1><p className="mt-4 max-w-3xl leading-7 text-sanispa-steel">Abonnement et contacts sont temporairement gratuits. Aucun paiement ne sera demandé. SANISPA garde le contrôle de chaque attribution et les coordonnées restent masquées jusqu’à votre acceptation du dossier validé.</p><PartnerCharter /><div className="my-6 flex flex-wrap gap-3"><Link className="focus-ring rounded-full bg-sanispa-blue px-5 py-3 font-bold text-white" href="/partenaire/leads">Consulter les contacts proposés</Link><Link className="focus-ring rounded-full border border-sanispa-line bg-white px-5 py-3 font-bold" href="/partenaire/visio">Demander une assistance en visio</Link></div><section className="rounded-3xl border border-sanispa-line bg-white p-6"><h2 className="text-2xl font-bold">Tarifs de référence, encaissements suspendus</h2><p className="mt-3 text-sm leading-7 text-sanispa-steel">La formule habituelle de gestion et communication est à 350 € TTC par mois. La grille ci-dessous est conservée à titre indicatif. Aucune souscription ni commande payante n’est créée pendant la phase d’essai.</p><div className="mt-5 grid gap-3 sm:grid-cols-2">{Object.values(leadCatalog).map(item => <p key={item.label} className="flex flex-wrap justify-between gap-3 rounded-xl bg-sanispa-ice p-4 text-sm"><span>{item.label}</span><span><s className="text-sanispa-steel">{item.amount / 100} € TTC</s> <strong>Offert</strong></span></p>)}</div></section></AppShell>;
   return (
     <AppShell compact>
       <Link href="/partenaire" className="font-bold underline">

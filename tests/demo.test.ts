@@ -1,7 +1,25 @@
 import { test } from "node:test";
+process.env.NEXT_PUBLIC_SANISPA_BILLING_MODE = "live";
 import assert from "node:assert/strict";
 import { createDemoState, demoLead, demoReducer, demoStatus, demoView } from "../lib/demo";
 import { demoDocumentLines } from "../lib/demo-pdf";
+test("the complimentary exploration unlocks all services, preserves manual release and charter, and shares the visio workflow across the three views", () => {
+  process.env.NEXT_PUBLIC_SANISPA_BILLING_MODE = "paused";
+  try {
+    let state = createDemoState();
+    assert.equal(demoReducer(state, { type: "premium", active: false }).premium, true);
+    state = demoReducer(state, { type: "subscription", active: false });
+    assert.equal(demoReducer(state, { type: "acquire" }), state);
+    state = demoReducer(state, { type: "dispatch", decision: "released" });
+    const noCharter = { ...state, charter: false }; assert.equal(demoReducer(noCharter, { type: "acquire" }), noCharter);
+    assert.equal(demoReducer(state, { type: "acquire" }).contactPaid, true);
+    state = demoReducer(state, { type: "videoRequest", audience: "client", details: "Préciser une fuite sur mon spa.", availability: "Mardi matin" });
+    assert.equal(state.videos.length, 1);
+    state = demoReducer(state, { type: "videoSchedule", id: state.videos[0].id }); assert.equal(state.videos[0].status, "scheduled");
+    const complete = demoReducer(state, { type: "scenario", role: "client" });
+    assert.equal(complete.invoice, true); assert.ok(complete.report); assert.equal(complete.videos.length, 2); assert.equal(complete.outcome, null);
+  } finally { process.env.NEXT_PUBLIC_SANISPA_BILLING_MODE = "live"; }
+});
 test("demo views cannot navigate into a real account or turn arbitrary query values into a role", () => {
   assert.deepEqual(demoView("../../admin", "https://evil.invalid"), { role: "client", tab: "accueil" });
   assert.deepEqual(demoView("partenaire", "rapport"), { role: "partenaire", tab: "rapport" });

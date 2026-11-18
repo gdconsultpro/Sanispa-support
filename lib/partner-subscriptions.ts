@@ -1,3 +1,4 @@
+import { paymentsPaused } from "@/lib/commercial-mode";
 import type Stripe from "stripe";
 import { getStripe } from "./stripe";
 import { HttpError } from "./http";
@@ -28,8 +29,10 @@ export async function subscriptionCheckout(
   userId: string,
   plan: SubscriptionPlan,
   origin: string,
-  stripe = getStripe(),
+  stripeClient?: Stripe,
 ) {
+  if (paymentsPaused()) return { url: `${origin}/partenaire`, complimentary: true };
+  const stripe = stripeClient ?? getStripe();
   if (plan !== "management") throw new HttpError(400, "Seule l’offre Gestion et communication à 350 € TTC est proposée.");
   const { data: attempt, error } = await supabase.rpc(
     "prepare_partner_subscription",

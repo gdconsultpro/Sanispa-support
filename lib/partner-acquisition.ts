@@ -1,3 +1,4 @@
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { getStripe } from "@/lib/stripe";
 import { HttpError } from "@/lib/http";
 import { getPartnerLeadPrice, partnerAcquisitionError, type LeadPurchaseTerms, type PartnerLeadPrice } from "@/lib/partner-billing";
@@ -9,6 +10,7 @@ type Dependencies = { loadPrice: () => Promise<PartnerLeadPrice>; stripe: typeof
 export async function acquirePartnerLead({ supabase, partner, userId, diagnosticId, origin }: {
   supabase: any; partner: AuthenticatedPartner; userId: string; diagnosticId: string; origin: string;
 }, dependencies: Dependencies = { loadPrice: getPartnerLeadPrice, stripe: getStripe }): Promise<{ acquired: true } | { url: string }> {
+  if (paymentsPaused()) throw new HttpError(409, "SANISPA doit revalider cette ancienne offre avant une attribution gratuite. Aucun paiement n’est possible.");
   const prepare = (price: PartnerLeadPrice | null) => supabase.rpc("prepare_partner_acquisition", {
     p_diagnostic: diagnosticId, p_partner: partner.id, p_actor: userId,
     p_price_id: price?.id ?? null, p_amount: price?.amount ?? null, p_currency: price?.currency ?? "eur",

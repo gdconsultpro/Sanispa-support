@@ -1,6 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { processNotifications } from "../lib/notifications";
+test("visio notifications use the current verified recipient and cancel a stale schedule before sending", async () => {
+  const savedFetch = globalThis.fetch, savedEnv = { ...process.env };
+  Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: "https://db.fixture.invalid", SUPABASE_SERVICE_ROLE_KEY: "fixture-only", RESEND_API_KEY: "fixture-only", EMAIL_PROVIDER: "resend", NEXT_PUBLIC_APP_URL: "https://app.fixture.invalid" });
+  const owner = "50000000-0000-4000-8000-000000000001";
+  let delivered = 0, state = "pending", version = 2;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input)), body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (url.pathname.endsWith("/rpc/claim_notifications")) return Response.json(state === "pending" ? [{ id: "visio-job", kind: "visio_updated", first_delivery_attempt_at: new Date().toISOString(), payload: { videoSessionId: "video", version, email: "wrong@example.invalid", notificationKey: "visio-update:fixture:2" } }] : []);
+    if (url.pathname.endsWith("/video_assistance_sessions")) return Response.json({ requester_id: owner, requester_email: "old@example.invalid", audience: "customer", status: "scheduled", version: 2, starts_at: "2026-11-25T13:30:00Z", details: "Besoin privé", availability: "Mardi" });
+    if (url.pathname === `/auth/v1/admin/users/${owner}`) return Response.json({ id: owner, email: "confirmed-owner@example.invalid", email_confirmed_at: "2026-11-18" });
+    if (url.origin === "https://api.resend.com") { assert.equal(body.to, "confirmed-owner@example.invalid"); assert.equal(new Headers(init?.headers).get("idempotency-key"), "visio-update:fixture:2"); assert.match(body.html, /14:30/); assert.match(body.html, /https:\/\/app.fixture.invalid\/visio/); assert.doesNotMatch(body.html, /wrong@example|Besoin privé/); delivered++; return Response.json({ id: "delivery" }); }
+    if (url.pathname.endsWith("/notification_jobs")) { state = body.state || state; return new Response(null, { status: 204 }); }
+    throw new Error(`Unexpected network ${url.origin}${url.pathname}`);
+  };
+  try {
+    assert.deepEqual(await processNotifications("visio-update:"), { sent: 1, failed: 0 }); assert.equal(delivered, 1);
+    state = "pending"; version = 1;
+    assert.deepEqual(await processNotifications("visio-update:"), { sent: 0, failed: 0 }); assert.equal(delivered, 1); assert.equal(state, "cancelled");
+  } finally { globalThis.fetch = savedFetch; for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key]; Object.assign(process.env, savedEnv); }
+});
 test("report notification resolves the current confirmed owner through Auth Admin instead of a queued or partner-provided email", async () => {
   const savedFetch = globalThis.fetch, savedEnv = { ...process.env };
   Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: "https://db.fixture.invalid", SUPABASE_SERVICE_ROLE_KEY: "fixture-only", RESEND_API_KEY: "fixture-only", EMAIL_PROVIDER: "resend", NEXT_PUBLIC_APP_URL: "https://app.fixture.invalid" });
