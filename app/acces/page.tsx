@@ -5,7 +5,6 @@ import { MailCheck, ArrowRight } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
-import { clientConfirmationUrl } from "@/lib/client-access";
 import { emptyDraft, readDraft, writeDraft } from "@/lib/storage";
 export default function AccessPage() {
   const [email, setEmail] = useState("");
@@ -54,17 +53,12 @@ export default function AccessPage() {
           ? previous
           : { ...emptyDraft, email: normalized };
       writeDraft(draft);
-      const { error } = await getSupabaseBrowser().auth.signInWithOtp({
-        email: normalized,
-        options: {
-          emailRedirectTo: clientConfirmationUrl(
-            window.location.origin,
-            draft.problemType,
-            new URLSearchParams(window.location.search).get("next") === "premium" ? "premium" : "diagnostic",
-          ),
-        },
+      const response = await fetch("/api/client/access", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalized, problemType: draft.problemType,
+          next: new URLSearchParams(window.location.search).get("next") === "premium" ? "premium" : "diagnostic" }),
       });
-      if (error) throw error;
+      if (!response.ok) throw new Error("Envoi impossible");
       setSent(true);
       setCooldown(60);
     } catch {

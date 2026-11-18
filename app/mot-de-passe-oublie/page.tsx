@@ -5,7 +5,6 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
-import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -18,11 +17,11 @@ export default function ForgotPasswordPage() {
     setMessage("");
 
     try {
-      const supabase = getSupabaseBrowser();
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/nouveau-mot-de-passe`
+      const response = await fetch("/api/client/access", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, next: "recovery" }),
       });
-      if (error) throw error;
+      if (!response.ok) throw new Error("Envoi impossible");
       setMessage("Si un compte correspond à cette adresse, vous recevrez un e-mail pour réinitialiser votre mot de passe. Consultez votre boîte e-mail et vos courriers indésirables, puis ouvrez le lien reçu.");
     } catch {
       setError("La demande n’a pas abouti. Vérifiez votre adresse e-mail et votre connexion, puis réessayez.");

@@ -60,6 +60,17 @@ type TransactionalEmail = {
   html: string;
   replyTo?: string;
 };
+export async function sendClientAccessLink(email: string, url: string, recovery: boolean, key: string) {
+  const origin = new URL(url).origin;
+  const title = recovery ? "Réinitialiser mon mot de passe" : "Confirmer mon accès SANISPA";
+  return sendTransactionalEmail({
+    to: email,
+    subject: recovery ? "SANISPA Support — Réinitialisation de votre mot de passe" : "SANISPA Support — Votre lien de connexion",
+    idempotencyKey: key,
+    replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;color:#0a2342;line-height:1.6"><img src="${escapeHtml(origin)}/sanispa-logo.png" width="120" alt="SANISPA"/><h1>${title}</h1><p>${recovery ? "Vous avez demandé un lien pour choisir un nouveau mot de passe." : "Un seul clic confirme votre adresse et vous ramène directement à votre parcours SANISPA."}</p><p><a href="${escapeHtml(url)}" style="display:inline-block;background:#0a2342;color:white;padding:14px 20px;border-radius:8px;text-decoration:none">${title}</a></p><p>Ce lien est personnel, temporaire et à usage unique. Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.</p><p>SANISPA Support · <a href="https://www.sani-spa.fr">www.sani-spa.fr</a></p></div>`,
+  });
+}
 export async function sendDiagnosticNotification(
   payload: DiagnosticEmailPayload,
 ) {
