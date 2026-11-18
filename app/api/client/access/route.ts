@@ -10,7 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 const schema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
-  next: z.enum(["diagnostic", "premium", "recovery", "admin", "visio"]),
+  next: z.enum(["diagnostic", "premium", "recovery", "admin", "visio", "carnet", "releves", "notices"]),
   problemType: z.string().max(60).optional(),
 }).strict();
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");

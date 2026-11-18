@@ -8,7 +8,7 @@ import { clientRequest } from "@/lib/client-browser-api";
 const features = [
   { title: "Mon assistant IA", text: "Eau, symptômes d’une panne, entretien : posez vos questions et avancez à votre rythme.", href: "/premium/assistant" },
   { title: "Mon carnet et mes rappels", text: "Gardez une trace des entretiens et préparez vos rappels de vidange, filtres et consommables.", href: "/premium/carnet" },
-  { title: "Mes relevés d’eau", text: "Notez vos mesures et transmettez un relevé à l’IA pour comprendre les ajustements.", href: "/premium/carnet#releves" },
+  { title: "Mes relevés d’eau", text: "Notez vos mesures et transmettez un relevé à l’IA pour comprendre les ajustements.", href: "/premium/releves" },
   { title: "Les notices de mon spa", text: "Recherchez les ressources vérifiées par marque et référence de commande.", href: "/premium/notices" },
   { title: "Le forum des particuliers", text: "Échangez entre propriétaires dans un espace modéré par Gilles, sans publication des partenaires.", href: "/premium/forum" },
 ];

@@ -31,6 +31,7 @@ export type DemoReading = { id: string; date: string; ph: number | null; tac: nu
 export type DemoPost = { id: string; title: string; body: string; state: "pending" | "approved" | "rejected"; author: string };
 export type DemoVideo = { id: string; audience: "client" | "partenaire"; details: string; availability: string; status: "requested" | "scheduled" | "completed"; startsAt: string };
 export type DemoState = {
+  partners: {company:string;contact:string;department:string}[];
   premium: boolean; partnerSubscription: boolean; charter: boolean;
   problem: ProblemType; answers: Record<string, AnswerValue>; photos: string[];
   dispatch: "pending" | "kept" | "released"; contactPaid: boolean; appointment: string;
@@ -45,7 +46,7 @@ export type DemoState = {
 };
 export function createDemoState(role: DemoRole = "client"): DemoState {
   return {
-    premium: true, partnerSubscription: true, charter: true, problem: "fuite", videos: [],
+    partners: [], premium: true, partnerSubscription: true, charter: true, problem: "fuite", videos: [],
     answers: { visible_leak: "Oui", spa_access: "Oui sur les 4 côtés", leak_water_outside: "Oui", level_drop_cm: "3", level_drop_duration: "En 24 heures", running_only: "Non", suspected_area: ["Raccord"], started_when: "Depuis deux jours" },
     photos: ["Vue du spa", "Zone du raccord", "Clavier"], dispatch: role === "partenaire" ? "released" : "pending", contactPaid: false,
     appointment: "", report: null, invoice: false, outcome: null, ratings: null,
@@ -72,6 +73,7 @@ export function demoStatus(state: DemoState) {
   return state.dispatch === "kept" ? "Conservé par SANISPA" : state.dispatch === "released" ? "Proposition transmise" : "À valider par SANISPA";
 }
 export type DemoAction =
+  | { type: "partner"; company:string;contact:string;department:string }
   | { type: "reset"; role: DemoRole }
   | { type: "scenario"; role: DemoRole }
   | { type: "videoRequest"; audience: "client" | "partenaire"; details: string; availability: string }
@@ -102,6 +104,7 @@ export type DemoAction =
 const event = (state: DemoState, text: string) => [text, ...state.events].slice(0, 12);
 export function demoReducer(state: DemoState, action: DemoAction): DemoState {
   switch (action.type) {
+    case "partner": return {...state,partners:[...state.partners,{company:action.company,contact:action.contact,department:action.department}].slice(-50)};
     case "reset": return createDemoState(action.role);
     case "scenario": return { ...createDemoState(action.role), dispatch: "released", contactPaid: true,
       appointment: "2026-11-23T10:00", report: { findings: "Raccord humide et joint usé dans cet exemple fictif.", actions: "Remplacement du joint et contrôle d’étanchéité — exemple.", next: "Surveillance du niveau d’eau après intervention." }, invoice: true,

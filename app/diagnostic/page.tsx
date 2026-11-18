@@ -9,7 +9,9 @@ import { BackLink } from "@/components/BackLink";
 import { Field, SelectField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
 import { normalizeDiagnostic } from "@/lib/diagnostic-answers";
-import { problemTypes } from "@/lib/questions";
+import { DiagnosticQuestion } from "@/components/DiagnosticQuestion";
+import { isQuestionVisible, updateDiagnosticAnswer, validateAnswers } from "@/lib/diagnostic-answers";
+import { problemTypes, questionSets } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
 import {
   emptyDraft,
@@ -105,6 +107,7 @@ function DiagnosticContent() {
     }
     prefillFromClientAccount();
   }, [searchParams]);
+  const moving = draft.problemType === "demenagement";
   const requiredFilled = useMemo(() => {
     return Boolean(
       draft.name &&
@@ -155,8 +158,10 @@ function DiagnosticContent() {
     }
     setBusy(true);
     try {
+      if (moving) validateAnswers(draft, false);
       const next = {
         ...draft,
+        ...(moving ? { address: String(draft.answers.moving_departure || ""), choice: "devis" as const, paymentPlan: "" as const } : {}),
         draftId: draft.draftId || crypto.randomUUID(),
         spaId: selectedSpaId || undefined,
       };
@@ -174,8 +179,9 @@ function DiagnosticContent() {
         router.push("/acces?sent=1");
         return;
       }
-      await saveDraft(next, "/questionnaire");
-      router.push("/questionnaire");
+      const destination = moving ? "/upload" : "/questionnaire";
+      await saveDraft(next, destination);
+      router.push(destination);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sauvegarde impossible.");
     } finally {
@@ -186,8 +192,9 @@ function DiagnosticContent() {
     <AppShell compact>
       <StepHeader
         eyebrow="Étape 1"
-        title="Informations client et spa"
-        description="Les champs marqués d’un * sont obligatoires ; les autres sont facultatifs. Vos informations peuvent être préremplies après connexion. Vous pourrez enregistrer votre brouillon dans votre espace client avant d’envoyer la demande."
+        labels={moving ? ["Le transport", "Photos et vidéos", "La validation"] : undefined}
+        title={moving ? "Préparer le déménagement de mon spa" : "Informations client et spa"}
+        description={moving ? "Décrivez le spa, le trajet et les accès aux deux adresses. Vos photos et vidéos permettront à SANISPA d’étudier la faisabilité et de préparer un devis. Aucune réservation ni facturation à cette étape." : "Les champs marqués d’un * sont obligatoires ; les autres sont facultatifs. Vos informations peuvent être préremplies après connexion. Vous pourrez enregistrer votre brouillon dans votre espace client avant d’envoyer la demande."}
       />
       <DraftSave draft={draft} step="/diagnostic" />
       <BackLink href="/espace-client" label="Retour à mon espace client" />
@@ -196,12 +203,12 @@ function DiagnosticContent() {
         onSubmit={submit}
         className="space-y-5 rounded-md border border-sanispa-line bg-white p-4 shadow-soft sm:p-6"
       >
-        <ProblemPicker
+        {moving ? <p className="rounded-xl bg-sanispa-ice p-4 font-bold">Déménagement de spa · Étude de faisabilité et devis</p> : <ProblemPicker
           value={draft.problemType}
           onChange={(value) => update("problemType", value)}
-        />
+        />}
         <h2 className="border-t border-sanispa-line pt-6 text-xl font-bold">
-          Votre spa et vos coordonnées
+          {moving ? "Vos coordonnées et le lieu d’enlèvement" : "Votre spa et vos coordonnées"}
         </h2>
         {spas.length > 0 ? (
           <SelectField
@@ -242,21 +249,21 @@ function DiagnosticContent() {
             required
             type="email"
           />
-          <Field
+          {!moving ? <Field
             label="Adresse"
             name="address"
             value={draft.address}
             onChange={(value) => update("address", value)}
-          />
+          /> : null}
           <Field
-            label="Code postal"
+            label={moving ? "Code postal d’enlèvement" : "Code postal"}
             name="postalCode"
             value={draft.postalCode}
             onChange={(value) => update("postalCode", value)}
             required
           />
           <Field
-            label="Ville"
+            label={moving ? "Ville d’enlèvement" : "Ville"}
             name="city"
             value={draft.city}
             onChange={(value) => update("city", value)}
@@ -298,6 +305,7 @@ function DiagnosticContent() {
           />
         </div>
 
+        {moving ? <div className="space-y-5 border-t border-sanispa-line pt-6">{questionSets.demenagement.filter(q => isQuestionVisible(q, draft.answers, questionSets.demenagement)).map(q => <div key={q.id} className="space-y-3">{q.section ? <h2 className="text-xl font-bold">{q.section}</h2> : null}<DiagnosticQuestion question={q} value={draft.answers[q.id]} onChange={value => { setError(""); setDraft(current => ({ ...updateDiagnosticAnswer(current, q.id, value), ...(q.id === "moving_departure" ? { address: String(value) } : {}) })); }} /></div>)}<p className="rounded-xl bg-sanispa-ice p-4 text-sm leading-6">Ne déplacez pas le spa pour répondre. Le poids, les dimensions et les moyens de levage seront confirmés par le professionnel avant le transport.</p></div> : null}
         {error ? (
           <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">
             {error}
@@ -305,10 +313,10 @@ function DiagnosticContent() {
         ) : null}
         <p className="text-sm text-sanispa-steel">
           Si vous n’êtes pas connecté, un seul lien par e-mail confirmera votre
-          adresse et ouvrira votre questionnaire. Aucun mot de passe à créer.
+          adresse et vous ramènera à la suite de votre demande. Aucun mot de passe à créer.
         </p>
         <Button type="submit" disabled={busy} className="w-full sm:w-auto">
-          {busy ? "Préparation de votre parcours…" : "Continuer ma déclaration"}
+          {busy ? "Préparation de votre parcours…" : moving ? "Ajouter mon dossier photo ou vidéo" : "Continuer ma déclaration"}
         </Button>
       </form>
     </AppShell>

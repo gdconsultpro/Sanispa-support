@@ -23,7 +23,7 @@ export default function QuestionnairePage() {
   useEffect(() => {
     const stored = readDraft();
     setDraft(stored);
-    if (!stored.problemType) router.push("/diagnostic");
+    if (!stored.problemType || stored.problemType === "demenagement") router.replace("/diagnostic");
   }, [router]);
   const questions = draft.problemType ? questionSets[draft.problemType] : [];
   const problemLabel =

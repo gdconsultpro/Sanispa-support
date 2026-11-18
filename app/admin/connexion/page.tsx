@@ -51,7 +51,7 @@ export default function AdminLogin() {
       if (method === "email") {
         const response = await fetch("/api/client/access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, next: "admin" }) });
         if (!response.ok) throw new Error("Le lien n’a pas pu être envoyé. Vérifiez l’adresse et réessayez dans une minute.");
-        setMessage("Si cette adresse correspond à un administrateur autorisé, un lien de connexion vient de lui être envoyé. Ouvrez-le, puis saisissez le code de votre application d’authentification.");
+        setMessage("Si cette adresse correspond à un administrateur autorisé, un lien de connexion vient de lui être envoyé. Ouvrez-le. Si votre téléphone n’est pas encore associé, ajoutez SANISPA avec le code QR proposé ; sinon, saisissez le code de votre application.");
         return;
       }
       const { error } = await getSupabaseBrowser().auth.signInWithPassword({ email, password });
@@ -106,10 +106,10 @@ export default function AdminLogin() {
         {message && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm leading-6">{message}</p>}
         {method === "password" && <Link href="/mot-de-passe-oublie" className="block text-sm font-bold underline">Créer ou réinitialiser mon mot de passe</Link>}
       </form>}
-      {mode === "enroll" && <div className="space-y-4"><p>Compte autorisé : <strong>{email}</strong></p><p>Associez une application d’authentification sur votre téléphone. Elle générera un code à chaque connexion.</p><Button onClick={enroll} disabled={busy}>Associer mon application</Button></div>}
+      {mode === "enroll" && <div className="space-y-4"><p>Compte autorisé : <strong>{email}</strong></p><p>Ajoutez une nouvelle entrée « SANISPA Administration » dans votre application d’authentification (Google Authenticator, Microsoft Authenticator ou équivalent). Le bouton ci-dessous affiche le code QR à scanner avec cette application sur votre téléphone.</p><Button onClick={enroll} disabled={busy}>Afficher le QR pour associer mon téléphone</Button></div>}
       {mode === "verify" && <form onSubmit={verify} className="space-y-4">
         <p>Compte autorisé : <strong>{email}</strong></p>
-        {qr && <div><p>Scannez ce code avec votre application d’authentification, puis saisissez le code à six chiffres qu’elle affiche.</p>{/* The QR remains in memory and is never logged or saved. */}<Image unoptimized width={240} height={240} src={qr} alt="Code QR pour associer votre application d’authentification" className="mx-auto my-4 h-60 w-60 max-w-full" /></div>}
+        {qr && <div><p>Dans votre application d’authentification, choisissez « Ajouter un compte » puis « Scanner un code QR ». Scannez ce QR et saisissez ici les six chiffres de la nouvelle entrée « SANISPA Administration ». Les codes GitHub et Vercel ne fonctionnent pas pour cette connexion.</p>{/* The QR remains in memory and is never logged or saved. */}<Image unoptimized width={240} height={240} src={qr} alt="Code QR pour associer votre application d’authentification" className="mx-auto my-4 h-60 w-60 max-w-full" /></div>}
         {factors.length > 1 && <label className="block">Application<select className="mt-2 w-full rounded-md border p-3" value={factorId} onChange={e => setFactorId(e.target.value)}>{factors.map(f => <option value={f.id} key={f.id}>{f.friendly_name || "Application d’authentification"}</option>)}</select></label>}
         <label className="block font-bold">Code à six chiffres<input className="focus-ring mt-2 block w-full rounded-md border p-3 text-lg" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ""))} /></label>
         <Button type="submit" disabled={busy}>{busy ? "Vérification…" : "Ouvrir l’administration"}</Button>
