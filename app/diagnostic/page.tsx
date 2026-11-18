@@ -2,7 +2,6 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProblemPicker } from "@/components/ProblemPicker";
-import { clientConfirmationUrl } from "@/lib/client-access";
 import { DraftSave } from "@/components/DraftSave";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
@@ -164,17 +163,11 @@ function DiagnosticContent() {
       writeDraft(next);
       const { data } = await getSupabaseBrowser().auth.getSession();
       if (!data.session?.user.email_confirmed_at) {
-        const { error: linkError } =
-          await getSupabaseBrowser().auth.signInWithOtp({
-            email: next.email.trim().toLowerCase(),
-            options: {
-              emailRedirectTo: clientConfirmationUrl(
-                window.location.origin,
-                next.problemType,
-              ),
-            },
-          });
-        if (linkError)
+        const response = await fetch("/api/client/access", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: next.email.trim().toLowerCase(), next: "diagnostic", problemType: next.problemType }),
+        });
+        if (!response.ok)
           throw new Error(
             "L’envoi du lien n’a pas abouti. Votre saisie est conservée. Réessayez dans un instant.",
           );
