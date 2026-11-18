@@ -9,6 +9,13 @@ import {
 } from "./email";
 export async function processNotifications(prefix?: string) {
   const supabase = getSupabaseAdmin();
+  async function confirmedRecipient(userId: string) {
+    const { data, error } = await supabase.auth.admin.getUserById(userId);
+    if (error && error.status !== 404) throw error;
+    const user = data?.user;
+    if (!user?.email || !user.email_confirmed_at || (user.banned_until && Date.parse(user.banned_until) > Date.now())) return null;
+    return user.email;
+  }
   const { data: jobs, error } = await supabase.rpc("claim_notifications", {
     p_key: prefix || null,
   });
@@ -35,12 +42,18 @@ export async function processNotifications(prefix?: string) {
           if (review.error) throw review.error;
           continue;
         }
-        result = await sendPremiumCareReminder(job.payload);
+        const recipient = await confirmedRecipient(job.payload.userId);
+        if (!recipient) {
+          const cancel = await supabase.from("notification_jobs").update({ state: "cancelled", locked_until: null }).eq("id", job.id);
+          if (cancel.error) throw cancel.error;
+          continue;
+        }
+        result = await sendPremiumCareReminder({ ...job.payload, email: recipient });
       } else if (job.kind === "client_report" || job.kind === "client_review_reminder") {
-        const { data: report, error: reportError } = await supabase.from("intervention_reports").select("client_validated_at,diagnostics!inner(archived_at)").eq("id", job.payload.reportId).maybeSingle();
+        const { data: report, error: reportError } = await supabase.from("intervention_reports").select("client_validated_at,diagnostics!inner(user_id,archived_at)").eq("id", job.payload.reportId).maybeSingle();
         if (reportError) throw reportError;
         const dossier = Array.isArray(report?.diagnostics) ? report.diagnostics[0] : report?.diagnostics;
-        if (!report || report.client_validated_at || dossier?.archived_at) {
+        if (!report || report.client_validated_at || !dossier?.user_id || dossier.archived_at) {
           const cancelled = await supabase.from("notification_jobs").update({ state: "cancelled", locked_until: null }).eq("id", job.id);
           if (cancelled.error) throw cancelled.error;
           continue;
@@ -51,7 +64,13 @@ export async function processNotifications(prefix?: string) {
           if (review.error) throw review.error;
           continue;
         }
-        result = await sendClientReportNotification(job.payload, job.kind === "client_review_reminder");
+        const recipient = await confirmedRecipient(dossier.user_id);
+        if (!recipient) {
+          const cancel = await supabase.from("notification_jobs").update({ state: "cancelled", locked_until: null }).eq("id", job.id);
+          if (cancel.error) throw cancel.error;
+          continue;
+        }
+        result = await sendClientReportNotification({ ...job.payload, email: recipient }, job.kind === "client_review_reminder");
       } else if (job.kind === "admin")
         result = await sendDiagnosticNotification(job.payload);
       else if (job.kind === "partner_accepted") {

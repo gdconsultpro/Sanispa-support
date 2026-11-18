@@ -120,3 +120,16 @@ test("customer Checkout and invoice use 9.99 EUR monthly, inclusive 20 percent V
     invoice.total = 900; await assert.rejects(processCustomerSubscriptionEvent(event, supabase, stripe), /TAX_MISMATCH/); assert.equal(recorded, 1);
   } finally { if (previousRate === undefined) delete process.env.STRIPE_PARTNER_TAX_RATE_ID; else process.env.STRIPE_PARTNER_TAX_RATE_ID = previousRate; }
 });
+test("server role prepares customer checkout and care notifications while Auth tables remain inaccessible", async () => {
+  const db = await fixture();
+  try {
+    await db.exec("grant usage on schema public,private to service_role;grant select,insert,update,delete on all tables in schema public to service_role;");
+    assert.equal((await db.query<any>("select has_table_privilege('service_role','auth.users','SELECT') b")).rows[0].b, false);
+    await db.exec("set role service_role");
+    const attempt = (await db.query<any>("select prepare_customer_subscription($1) c", [u])).rows[0].c;
+    assert.equal(attempt.amount, 999);
+    await enable(db);
+    await db.query("insert into care_reminders(user_id,spa_id,kind,title,due_at) values($1,$2,'filtre','Vérifier le filtre',now()-interval '1 hour')", [u, spa]);
+    assert.equal((await db.query<any>("select queue_premium_care_reminders() n")).rows[0].n, 1);
+  } finally { await db.close(); }
+});

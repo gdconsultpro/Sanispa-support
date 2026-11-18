@@ -25,7 +25,7 @@ https://developers.openai.com/api/docs/models/gpt-4o-mini
 https://developers.openai.com/api/docs/models/gpt-5.4-mini
 
 Validation préparée
-129 tests automatisés passent : fiscalité et montants, attribution, données entre clients, accès gratuit/Premium, forum excluant les partenaires, propriété des spas, déduplication IA et relances versionnées. TypeScript, lint sans erreur (deux avertissements image existants) et compilation contrôlés séparément.
+132 tests automatisés passent : fiscalité et montants, attribution, données entre clients, accès gratuit/Premium, forum excluant les partenaires, propriété des spas, déduplication IA et relances versionnées. TypeScript, lint sans erreur (deux avertissements image existants) et compilation contrôlés séparément.
 Tests navigateur locaux avec API simulées sur 390 × 844 : blocage du carnet gratuit, création journal/rappel/relevé, valeurs inconnues conservées, transmission du relevé à l’IA, forum en attente et recherche de notice. Débordement du tableau corrigé ; défilement contenu au tableau. Les appels OpenAI et Stripe de ces tests navigateur sont simulés et ne sont pas présentés comme des paiements connectés.
 Migrations appliquées exclusivement à Supabase recette nkfoboqponvropiggndv :
 20261118005439 intervention_workflow_and_management_350 (fichier local généré CLI 20261118003836)
@@ -33,3 +33,7 @@ Migrations appliquées exclusivement à Supabase recette nkfoboqponvropiggndv :
 Advisors : aucune nouvelle alerte WARN/ERROR ; 23 tables internes avec RLS sans policy publique sont volontairement fermées et leurs privilèges révoqués. L’avertissement préexistant de protection des mots de passe compromis reste présent.
 
 Aucun déploiement, secret, migration ou transaction de production. Synchroteam reste en préparation sans envoi, conformément à la décision du propriétaire. Les publications stores, e-mails de diffusion, occasion et achats groupés restent hors ouverture actuelle.
+
+CORRECTION TROUVÉE EN RECETTE CONNECTÉE
+Le rôle service_role n’a pas SELECT sur auth.users. Les nouvelles RPC sont restées SECURITY INVOKER et ont été corrigées pour ne plus lire cette table privée : files contenant des userId et résolution de l’adresse confirmée courante via Auth Admin côté serveur. Aucun droit sur auth.users n’a été ajouté. La préparation du checkout s’appuie sur la session confirmée contrôlée par requireUser ; la RPC reste exclusivement service_role et la clé étrangère vérifie l’existence de l’identité.
+Tests ajoutés sous SET ROLE service_role sans privilège Auth, puis contrôles transactionnels réels en recette sur préparation 999 centimes, rapport et relances. Test de notification vérifiant que l’adresse courante confirmée prime sur une adresse ancienne ou falsifiée en file.

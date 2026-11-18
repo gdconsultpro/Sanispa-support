@@ -105,3 +105,16 @@ test("moving questions only concern transport and access; API rejects missing ra
   assert.equal(reviewSchema.safeParse({ reportId: report, outcome: "repaired", responsiveness: 5, professionalism: 5 }).success, false);
   assert.equal(interventionActionSchema.safeParse({ action: "report", id: report, performedAt: new Date().toISOString(), findings: "Constats complets de la panne.", actions: "Travaux effectués sur place.", nextSteps: "Terminé.", onSite: true, userId: stranger }).success, false);
 });
+test("actual server role can submit reports and queue reminders without SELECT on private auth.users", async () => {
+  const db = await fixture();
+  try {
+    await db.exec("grant usage on schema public,private to service_role;grant select,insert,update,delete on all tables in schema public to service_role;");
+    assert.equal((await db.query<any>("select has_table_privilege('service_role','auth.users','SELECT') b")).rows[0].b, false);
+    await db.exec("set role service_role");
+    await db.query(reportSql, reportArgs(new Date().toISOString()));
+    await db.exec("update intervention_reports set submitted_at=now()-interval '4 days'");
+    assert.equal((await db.query<any>("select queue_client_review_reminders() n")).rows[0].n, 1);
+    const payload = (await db.query<any>("select payload from notification_jobs where kind='client_report'")).rows[0].payload;
+    assert.equal(payload.userId, client); assert.equal(payload.email, undefined);
+  } finally { await db.close(); }
+});
