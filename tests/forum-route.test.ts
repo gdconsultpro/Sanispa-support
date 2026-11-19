@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { POST } from "../app/api/client/forum/route";
 
-test("forum submission accepts the reported payload, keeps moderation, and explains invalid input", async () => {
+test("forum submission publishes ordinary posts, holds flagged posts, and explains invalid input", async () => {
   const previousFetch = globalThis.fetch;
   const keys = ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SANISPA_BILLING_MODE"];
   const previous = keys.map(key => process.env[key]);
@@ -30,10 +30,11 @@ test("forum submission accepts the reported payload, keeps moderation, and expla
     const payload = { title: "Test", body: "Test du forum pour voir si ça fonctionne en public", parentId: null };
     let response = await send(payload);
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { submitted: true });
+    assert.deepEqual(await response.json(), { submitted: true, state: "approved" });
     assert.equal(inserted[0].title, "Test");
     assert.equal(inserted[0].user_id, uid);
-    assert.equal(inserted[0].state, "pending");
+    assert.equal(inserted[0].state, "approved");
+    assert.ok(inserted[0].moderated_at);
     response = await send({ ...payload, title: "  " });
     assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), { error: "Le titre doit contenir au moins 3 caractères." });
@@ -42,6 +43,15 @@ test("forum submission accepts the reported payload, keeps moderation, and expla
     response = await send({ ...payload, body: "é".repeat(3000) });
     assert.equal(response.status, 200);
     assert.equal(inserted.length, 2);
+    response = await send({ ...payload, body: "Contactez-moi au 06 12 34 56 78 pour un devis gratuit." });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { submitted: true, state: "pending" });
+    assert.equal(inserted[2].state, "pending");
+    assert.equal(inserted[2].solicitation_flag, true);
+    assert.equal(inserted[2].moderated_at, null);
+    response = await send({ ...payload, state: "approved" });
+    assert.equal(response.status, 400);
+    assert.equal(inserted.length, 3);
   } finally {
     globalThis.fetch = previousFetch;
     keys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i]; });
