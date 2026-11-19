@@ -21,6 +21,7 @@ export type PartnerLeadRecipient = {
   email: string;
 };
 export type DiagnosticEmailPayload = {
+  dossierReference?: string;
   diagnosticId: string;
   customer: {
     name: string;
@@ -384,7 +385,7 @@ function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.5;">
       <h1>Nouvelle demande de pré-diagnostic SANISPA Support</h1>
-      <p><strong>Dossier :</strong> ${escapeHtml(payload.diagnosticId)}</p>
+      <p><strong>Dossier :</strong> ${escapeHtml(payload.dossierReference || "Référence en cours")}</p>
       <p>Vous recevez cette notification car une nouvelle demande client a été enregistrée dans SANISPA Support.</p>
       <h2>Client</h2>
       <p>
@@ -432,7 +433,7 @@ function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
       <p>Vous recevez ce message car votre demande d'assistance a été enregistrée dans SANISPA Support.</p>
       <p>
         <strong>Numéro de dossier :</strong><br />
-        ${escapeHtml(payload.diagnosticId)}
+        ${escapeHtml(payload.dossierReference || "Référence en cours")}
       </p>
       <p>
         <strong>Type de demande :</strong> ${escapeHtml(problemLabel(payload.problemType))}<br />
@@ -555,6 +556,7 @@ function escapeHtml(value: string | number | null | undefined) {
 }
 
 export async function sendPartnerAcceptance(payload: {
+  dossierReference?: string;
   diagnosticId: string;
   partnerName: string;
   notificationKey: string;
@@ -564,7 +566,7 @@ export async function sendPartnerAcceptance(payload: {
     to: process.env.ADMIN_NOTIFICATION_EMAIL || "",
     subject: "SANISPA — Un partenaire a accepté un dossier",
     idempotencyKey: payload.notificationKey,
-    html: `<h2>Dossier accepté</h2><p>${escapeHtml(payload.partnerName)} a accepté le dossier ${escapeHtml(payload.diagnosticId)}.</p><p>L’accès a été confirmé après règlement du contact ou au titre de son abonnement complet.</p><p><a href="${escapeHtml(url)}">Consulter l’administration</a></p>`,
+    html: `<h2>Dossier accepté</h2><p>${escapeHtml(payload.partnerName)} a accepté le dossier ${escapeHtml(payload.dossierReference || "Référence en cours")}.</p><p>L’accès a été confirmé après règlement du contact ou au titre de son abonnement complet.</p><p><a href="${escapeHtml(url)}">Consulter l’administration</a></p>`,
   });
 }
 

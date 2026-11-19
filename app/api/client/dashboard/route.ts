@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase
     .from("diagnostics")
     .select(
-      "id, created_at, status, problem_type, choice, payment_status, intervened_at, intervened_company_name, assigned_partner:partners!diagnostics_assigned_partner_id_fkey(company_name)",
+      "id, public_reference, created_at, status, problem_type, choice, payment_status, intervened_at, intervened_company_name, assigned_partner:partners!diagnostics_assigned_partner_id_fkey(company_name)",
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });

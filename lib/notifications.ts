@@ -25,6 +25,11 @@ export async function processNotifications(prefix?: string) {
   for (const job of jobs || []) {
     try {
       let result;
+      if (["admin", "customer", "partner_accepted"].includes(job.kind) && job.payload.diagnosticId) {
+        const reference = await supabase.from("diagnostics").select("public_reference").eq("id", job.payload.diagnosticId).maybeSingle();
+        if (reference.error) throw reference.error;
+        job.payload = { ...job.payload, dossierReference: reference.data?.public_reference || "Référence en cours" };
+      }
       if (job.kind === "visio_requested" || job.kind === "visio_updated") {
         const { data: session, error } = await supabase.from("video_assistance_sessions").select("*").eq("id", job.payload.videoSessionId).maybeSingle();
         if (error) throw error;

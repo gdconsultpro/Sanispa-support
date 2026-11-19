@@ -27,6 +27,7 @@ type Profile = {
   spa_year: string;
 };
 type Diagnostic = {
+  public_reference?: string;
   id: string;
   created_at: string;
   status: string;
@@ -405,7 +406,7 @@ export default function EspaceClientPage() {
                   className="rounded-md bg-sanispa-ice p-4"
                 >
                   <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">
-                    Dossier n°{diagnostic.id.slice(0, 8).toUpperCase()}
+                    Dossier n°{diagnostic.public_reference || "Référence en cours"}
                   </p>
                   <p className="mt-2 font-bold text-sanispa-navy">
                     {problemLabel(diagnostic.problem_type)} ·{" "}
@@ -440,7 +441,7 @@ export default function EspaceClientPage() {
                         downloadDocument({
                           id: diagnostic.id,
                           kind: "summary",
-                          name: `Résumé de demande n°${diagnostic.id.slice(0, 8).toUpperCase()}`,
+                          name: `Résumé de demande n°${diagnostic.public_reference || "Référence en cours"}`,
                           date: diagnostic.created_at,
                           type: "Résumé",
                           problemType: diagnostic.problem_type,
@@ -587,7 +588,7 @@ export default function EspaceClientPage() {
                 }
                 options={diagnostics.map((diagnostic) => ({
                   value: diagnostic.id,
-                  label: `Dossier ${diagnostic.id.slice(0, 8).toUpperCase()} - ${problemLabel(diagnostic.problem_type)}`,
+                  label: `Dossier ${diagnostic.public_reference || "Référence en cours"} - ${problemLabel(diagnostic.problem_type)}`,
                 }))}
               />
             </div>

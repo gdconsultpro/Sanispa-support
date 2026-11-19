@@ -74,6 +74,7 @@ export type Question = {
   max?: number;
 };
 export type AdminDiagnostic = {
+  public_reference?: string;
   internal_notes?: string;
   user_id: string | null;
   next_action_text: string | null;

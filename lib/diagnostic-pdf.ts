@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "./supabase";
-import { buildSummaryPdf } from "./pdf";
+import { buildSummaryPdf, summaryPdfMode } from "./pdf";
 import { HttpError } from "./http";
 import {
   choiceLabel,
@@ -28,7 +28,7 @@ export async function diagnosticPdf(id: string, userId?: string) {
     "SANISPA",
     "Résumé de demande d'assistance SANISPA",
     "",
-    `Numéro de dossier : ${data.id}`,
+    `Numéro de dossier : ${data.public_reference || "Référence en cours"}`,
     `Date : ${new Date(data.created_at).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}`,
     `Statut : ${statusLabel(data.status)}`,
     `Type de problème : ${problemLabel(data.problem_type)}`,
@@ -61,5 +61,5 @@ export async function diagnosticPdf(id: string, userId?: string) {
     "",
     "Ce document constitue un résumé de demande d'assistance et ne constitue pas une facture.",
   ];
-  return buildSummaryPdf(lines);
+  return buildSummaryPdf(lines, { mode: summaryPdfMode(data.choice) });
 }

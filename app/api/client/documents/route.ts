@@ -11,6 +11,7 @@ export async function GET(request: Request) {
       .select(
         `
         id,
+        public_reference,
         created_at,
         status,
         problem_type,
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
         return {
           id: diagnostic.id,
           kind: "summary",
-          name: `Résumé de demande n°${diagnostic.id.slice(0, 8).toUpperCase()}`,
+          name: `Résumé de demande n°${diagnostic.public_reference || "Référence en cours"}`,
           date: diagnostic.created_at,
           type: "Résumé de demande",
           problemType: diagnostic.problem_type,

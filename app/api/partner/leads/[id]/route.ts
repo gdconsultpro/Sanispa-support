@@ -42,7 +42,7 @@ export async function GET(
       .from("diagnostics")
       .select(
         `
-        id, offer_version, lead_category, lead_amount, preview_description, preview_photo_paths,
+        id, public_reference, offer_version, lead_category, lead_amount, preview_description, preview_photo_paths,
         created_at,
         choice,
         partner_released_at, partner_kept_at,

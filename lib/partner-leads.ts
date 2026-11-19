@@ -69,6 +69,7 @@ export type PartnerLeadFull = Omit<
   "access" | "canUnlock"
 > & {
   access: "full";
+  dossierReference?: string;
   canUnlock: false;
   status: string;
   customer: {
@@ -111,6 +112,7 @@ export function sanitizeUnlockedPartnerLead(
   return {
     ...preview,
     access: "full",
+    dossierReference: row.public_reference,
     canUnlock: false,
     status: row.status,
     customer: {

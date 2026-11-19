@@ -7,7 +7,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   try {
     const { supabase } = await administrator(request.headers);
     const id = z.string().uuid().parse((await params).id);
-    const { data, error } = await supabase.from("diagnostics").select("id,user_id,customer_id,problem_type,request_type,customers(name,email,phone,address),diagnostic_answers(question_label,answer)").eq("id", id).maybeSingle();
+    const { data, error } = await supabase.from("diagnostics").select("id,public_reference,user_id,customer_id,problem_type,request_type,customers(name,email,phone,address),diagnostic_answers(question_label,answer)").eq("id", id).maybeSingle();
     if (error) throw error;
     if (!data) throw new HttpError(404, "Dossier introuvable.");
     return new NextResponse(JSON.stringify(prepareSynchroteamDraft(data), null, 2), { headers: { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="preparation-synchroteam-${id}.json"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });

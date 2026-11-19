@@ -7,7 +7,7 @@ import { processNotifications } from "@/lib/notifications";
 export async function GET(request: Request) {
   try {
     const { supabase } = await administrator(request.headers);
-    const { data, error } = await supabase.from("video_assistance_sessions").select("*").order("created_at", { ascending: false }).limit(200);
+    const { data, error } = await supabase.from("video_assistance_sessions").select("*,diagnostics(public_reference)").order("created_at", { ascending: false }).limit(200);
     if (error) throw error;
     return NextResponse.json({ sessions: (data || []).map(row => videoSession(row, true)) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return apiError(error); }

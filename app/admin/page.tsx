@@ -103,7 +103,7 @@ export default async function AdminPage({ searchParams }: {
         </section>
         {!error ? <AdminRequests key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}:${dispatchFilter}`} items={diagnostics.map(diagnostic => ({
           id: diagnostic.id,
-          shortId: diagnostic.id.slice(0, 8).toUpperCase(),
+          shortId: diagnostic.public_reference || "Référence en cours",
           clientName: diagnostic.customers?.name || "Client non renseigné",
           subject: adminRequestSubject(diagnostic),
           createdAt: diagnostic.created_at,
@@ -130,6 +130,7 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
             .from("diagnostics")
             .select(`
         id,
+        public_reference,
         created_at,
         status,
         request_type,
@@ -192,7 +193,7 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
             assigned_partner: item.assigned_partner_id ? partners.get(item.assigned_partner_id) ?? item.assigned_partner_id : null,
             lead_purchase: leadPurchases.get(item.id) ?? null
         })) as unknown as AdminDiagnostic[];
-        const filtered = diagnostics.filter(d => (!dispatchFilter || partnerDispatchDecision(d) === dispatchFilter) && (!dueOnly || hasOverdueAction(d)) && (!status || d.status === status) && (!q || [d.id, d.customers?.name, d.customers?.email, d.customers?.phone].join(" ").toLowerCase().includes(q.toLowerCase())));
+        const filtered = diagnostics.filter(d => (!dispatchFilter || partnerDispatchDecision(d) === dispatchFilter) && (!dueOnly || hasOverdueAction(d)) && (!status || d.status === status) && (!q || [d.id, d.public_reference, d.customers?.name, d.customers?.email, d.customers?.phone].join(" ").toLowerCase().includes(q.toLowerCase())));
         for (const diagnostic of filtered)
             diagnostic.diagnostic_photos = await protectedPhotos(supabase, diagnostic.diagnostic_photos);
         return { diagnostics: filtered, error: null };

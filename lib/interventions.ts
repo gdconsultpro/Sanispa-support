@@ -14,7 +14,7 @@ export const reviewSchema = z.object({ reportId: z.string().uuid(), outcome: z.e
 
 export async function interventionCase(supabase: any, id: string, actor: { partnerId: string } | { userId: string }) {
   z.string().uuid().parse(id);
-  const { data, error } = await supabase.from("diagnostics").select("id,user_id,spa_id,status,assigned_partner_id,archived_at")
+  const { data, error } = await supabase.from("diagnostics").select("id,public_reference,user_id,spa_id,status,assigned_partner_id,archived_at")
     .eq("id", id).eq("partnerId" in actor ? "assigned_partner_id" : "user_id", "partnerId" in actor ? actor.partnerId : actor.userId).maybeSingle();
   if (error) throw error;
   if (!data || data.archived_at) throw new HttpError(404, "Dossier introuvable.");

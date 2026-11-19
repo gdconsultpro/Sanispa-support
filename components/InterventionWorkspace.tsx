@@ -6,7 +6,7 @@ import { PrivateFile } from "./PrivateFile";
 import { Button } from "./Button";
 type Report = { id: string; performed_at: string; findings: string; actions: string; next_steps: string; client_validated_at: string | null;
   client_outcome: "repaired" | "quote_pending" | "abandoned" | null; responsiveness: number | null; professionalism: number | null; pricing: number | null };
-type Workspace = { appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[] };
+type Workspace = { dossierReference?: string; appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[] };
 const outcomes = { repaired: "Spa réparé", quote_pending: "Devis en cours", abandoned: "Projet abandonné" } as const;
 const criteria = [{ key: "responsiveness", label: "Réactivité" }, { key: "professionalism", label: "Professionnalisme" }, { key: "pricing", label: "Tarif" }] as const;
 const inputClass = "mt-2 w-full rounded-xl border border-sanispa-line bg-white p-3 text-sanispa-navy";
@@ -58,6 +58,7 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
   const last = data?.reports[0];
   const closed = Boolean(last?.client_validated_at && last.client_outcome !== "quote_pending");
   return <div className="mt-6 grid gap-6">
+    {data?.dossierReference ? <p className="font-bold">Dossier n°{data.dossierReference}</p> : null}
     {error ? <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error} <button className="underline" onClick={() => { setError(""); void load().catch(e => setError(e.message)); }}>Actualiser</button></p> : null}
     {message ? <p role="status" className="rounded-xl bg-emerald-50 p-4 text-emerald-900">{message}</p> : null}
     {!data ? <p role="status">Chargement du suivi…</p> : <>

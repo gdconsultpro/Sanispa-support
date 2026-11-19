@@ -24,10 +24,14 @@ const sections = new Set([
   "Photos jointes",
   "Suivi de votre demande",
 ]);
-export async function buildSummaryPdf(input: string[]) {
+export function summaryPdfMode(choice?: string | null) {
+  return choice === "intervention" ? "matchmaking" as const : "company" as const;
+}
+export async function buildSummaryPdf(input: string[], options: { mode?: "matchmaking" | "company" } = {}) {
+  const matchmaking = options.mode === "matchmaking";
   const pdf = await PDFDocument.create();
   pdf.setTitle("Résumé de demande d’assistance SANISPA");
-  pdf.setAuthor(sanispaCompany.name);
+  pdf.setAuthor(matchmaking ? "Application SANISPA" : sanispaCompany.name);
   pdf.setSubject("Déclaration client - pré-diagnostic de spa");
   const regular = await pdf.embedFont(StandardFonts.Helvetica),
     bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -100,12 +104,12 @@ export async function buildSummaryPdf(input: string[]) {
       width: logo.width * scale,
       height: logo.height * scale,
     });
-    [
+    (matchmaking ? ["APPLICATION SANISPA", "Mise en relation avec un technicien", sanispaCompany.support] : [
       sanispaCompany.activity,
       sanispaCompany.address,
       `Standard : ${sanispaCompany.phone}`,
       sanispaCompany.website,
-    ].forEach((s, index) =>
+    ]).forEach((s, index) =>
       text(s, 292, 799 - index * 14, 8.2, regular, muted),
     );
     page.drawLine({
@@ -114,8 +118,8 @@ export async function buildSummaryPdf(input: string[]) {
       thickness: 1,
       color: line,
     });
-    text("VOTRE DEMANDE D’ASSISTANCE", 48, 714, 10, bold, teal);
-    text("Résumé de votre déclaration", 48, 689, 21, bold);
+    text(matchmaking ? "CONFIRMATION DE VOTRE DEMANDE" : "VOTRE DEMANDE D’ASSISTANCE", 48, 714, 10, bold, teal);
+    text(matchmaking ? "Rapport de mise en relation" : "Résumé de votre déclaration", 48, 689, 21, bold);
     y = 662;
   };
   const ensure = (height: number) => {
@@ -202,7 +206,7 @@ export async function buildSummaryPdf(input: string[]) {
     });
     text("ET ENSUITE ?", 60, y, 10, bold, teal);
     text(
-      "SANISPA étudiera les informations transmises pour orienter votre demande.",
+      matchmaking ? "Votre demande de mise en relation est enregistrée dans l’application SANISPA." : "SANISPA étudiera les informations transmises pour orienter votre demande.",
       60,
       y - 19,
       9,
@@ -235,7 +239,7 @@ export async function buildSummaryPdf(input: string[]) {
     });
     p.drawText(
       printable(
-        `SANISPA | ${reference ? "Dossier " + reference.slice(0, 8).toUpperCase() + " | " : ""}${sanispaCompany.phone}`,
+        `${matchmaking ? "Application SANISPA" : "SANISPA"} | ${reference ? "Dossier " + reference + " | " : ""}${matchmaking ? sanispaCompany.support : sanispaCompany.phone}`,
       ),
       { x: 48, y: 32, size: 8, font: regular, color: muted },
     );

@@ -10,8 +10,8 @@ export async function GET(request: Request, context: Context) {
     const { partner, supabase } = await getAuthenticatedPartner(request);
     if (!partner) throw new HttpError(401, "Connexion partenaire requise.");
     const { id } = await context.params;
-    await interventionCase(supabase, id, { partnerId: partner.id });
-    return NextResponse.json(await loadIntervention(supabase, id), { headers: { "Cache-Control": "private, no-store" } });
+    const dossier = await interventionCase(supabase, id, { partnerId: partner.id });
+    return NextResponse.json({ ...await loadIntervention(supabase, id), dossierReference: dossier.public_reference }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) { return apiError(e); }
 }
 export async function POST(request: Request, context: Context) {

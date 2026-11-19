@@ -22,7 +22,7 @@ export function VideoSessionCard({ session }: { session: VideoSession }) {
 }
 
 export function VideoAssistance({ audience, diagnosticId }: { audience: "customer" | "partner"; diagnosticId?: string }) {
-  const [sessions, setSessions] = useState<VideoSession[]>([]), [diagnostics, setDiagnostics] = useState<{ id: string; problem_type: string }[]>([]);
+  const [sessions, setSessions] = useState<VideoSession[]>([]), [diagnostics, setDiagnostics] = useState<{ id: string; public_reference?: string; problem_type: string }[]>([]);
   const [selected, setSelected] = useState(diagnosticId || ""), [details, setDetails] = useState(audience === "customer" ? "Je souhaite être guidé en visio à partir des réponses et photos de mon prédiagnostic." : ""), [availability, setAvailability] = useState("");
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
   const path = audience === "partner" ? "/partenaire/visio" : "/visio";
@@ -63,7 +63,7 @@ export function VideoAssistance({ audience, diagnosticId }: { audience: "custome
       {paymentsPaused() ? <p className="mb-5 rounded-xl bg-emerald-50 p-4 text-sm font-bold text-emerald-900">La visio est actuellement gratuite. Aucune carte bancaire ni somme à régler.</p> : <p className="mb-5">La réservation payante sera proposée après confirmation de SANISPA.</p>}
       <p className="mb-5 text-sm leading-6 text-sanispa-steel">La visio apporte une aide, sans garantie de réparation. Ne démontez aucun équipement électrique et ne réalisez aucune manipulation dangereuse pour préparer l’appel.</p>
       <form onSubmit={event => void submit(event)} className="space-y-4">
-        {audience === "customer" ? <label className="block text-sm font-bold">Mon prédiagnostic<select required value={selected} onChange={event => setSelected(event.target.value)} className={input}><option value="">Choisir ma demande</option>{diagnostics.map(item => <option key={item.id} value={item.id}>Dossier {item.id.slice(0, 8).toUpperCase()} · {item.problem_type}</option>)}</select></label> : null}
+        {audience === "customer" ? <label className="block text-sm font-bold">Mon prédiagnostic<select required value={selected} onChange={event => setSelected(event.target.value)} className={input}><option value="">Choisir ma demande</option>{diagnostics.map(item => <option key={item.id} value={item.id}>Dossier {item.public_reference || "Référence en cours"} · {item.problem_type}</option>)}</select></label> : null}
         <label className="block text-sm font-bold">Sur quoi souhaitez-vous être aidé ?<textarea required minLength={10} maxLength={1500} rows={4} value={details} onChange={event => setDetails(event.target.value)} className={input} /></label>
         <label className="block text-sm font-bold">Vos disponibilités<textarea required minLength={3} maxLength={500} rows={2} value={availability} onChange={event => setAvailability(event.target.value)} placeholder="Exemple : mardi ou jeudi, entre 14 h et 17 h" className={input} /></label>
         <Button type="submit" disabled={loading || busy || !paymentsPaused() || (audience === "customer" && !selected)}>{busy ? "Enregistrement…" : "Demander ma visio"}</Button>

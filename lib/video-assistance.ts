@@ -1,3 +1,4 @@
+import { dossierReference } from "./dossier-reference";
 import { z } from "zod";
 import { getAuthenticatedPartner } from "./partner-auth";
 import { requireUser, rateLimit } from "./client-auth";
@@ -31,7 +32,7 @@ export type VideoSession = {
   details: string; availability: string; status: "requested" | "scheduled" | "completed" | "canceled";
   durationMinutes: number; quotedAmount: number | null; collectedAmount: number;
   complimentary: boolean; startsAt: string | null; meetingUrl: string | null; version: number;
-  createdAt: string; requesterEmail?: string;
+  createdAt: string; requesterEmail?: string; dossierReference?: string;
 };
 
 export function videoSession(row: any, admin = false): VideoSession {
@@ -39,7 +40,7 @@ export function videoSession(row: any, admin = false): VideoSession {
     details: row.details, availability: row.availability, status: row.status, durationMinutes: row.duration_minutes,
     quotedAmount: row.quoted_amount, collectedAmount: row.collected_amount, complimentary: row.billing_mode === "complimentary",
     startsAt: row.starts_at, meetingUrl: row.status === "scheduled" && safeMeetingUrl(row.meeting_url || "") ? row.meeting_url : null,
-    version: row.version, createdAt: row.created_at, ...(admin ? { requesterEmail: row.requester_email } : {}) };
+    version: row.version, createdAt: row.created_at, ...(admin ? { requesterEmail: row.requester_email, dossierReference: row.diagnostic_id ? dossierReference(row.diagnostics) : undefined } : {}) };
 }
 
 export function videoError(error: any): never {

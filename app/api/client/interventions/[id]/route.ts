@@ -8,8 +8,8 @@ export async function GET(request: Request, context: Context) {
     const { user, supabase } = await getAuthenticatedUser(request);
     if (!user) throw new HttpError(401, "Connexion requise.");
     const { id } = await context.params;
-    await interventionCase(supabase, id, { userId: user.id });
-    return NextResponse.json(await loadIntervention(supabase, id), { headers: { "Cache-Control": "private, no-store" } });
+    const dossier = await interventionCase(supabase, id, { userId: user.id });
+    return NextResponse.json({ ...await loadIntervention(supabase, id), dossierReference: dossier.public_reference }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) { return apiError(e); }
 }
 export async function POST(request: Request, context: Context) {
