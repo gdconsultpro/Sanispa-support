@@ -4,18 +4,40 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "./Button";
 import { ShopLinks } from "./ShopLinks";
 import { clientRequest, localDateTime } from "@/lib/client-browser-api";
+type Reminder = {
+  id: string;
+  spa_id: string;
+  title: string;
+  due_at: string;
+  repeat_days: number | null;
+  repeat_months: number | null;
+  repeat_years: number | null;
+  version: number;
+};
 type Care = {
   spas: { id: string; brand: string; model: string }[];
   journal: { id: string; spa_id: string; kind: string; performed_at: string; note: string }[];
-  reminders: { id: string; spa_id: string; title: string; due_at: string; repeat_days: number | null; version: number }[];
+  reminders: Reminder[];
   readings: { id: string; spa_id: string; measured_at: string; volume_litres: number | null; ph: number | null; tac: number | null; temperature: number | null; disinfectant: string; disinfectant_value: number | null; product: string; note: string }[];
 };
 const input = "mt-2 w-full min-w-0 rounded-xl border border-sanispa-line bg-white p-3";
 const careKinds = { vidange: "Vidange", filtre: "Filtre", consommables: "Consommables", observation: "Observation" };
+const reminderLimits = { days: 3650, months: 120, years: 10 };
+function reminderFrequency(reminder: Reminder) {
+  if (reminder.repeat_days)
+    return reminder.repeat_days === 1 ? "Chaque jour" : `Tous les ${reminder.repeat_days} jours`;
+  if (reminder.repeat_months)
+    return reminder.repeat_months === 1 ? "Chaque mois" : `Tous les ${reminder.repeat_months} mois`;
+  if (reminder.repeat_years)
+    return reminder.repeat_years === 1 ? "Chaque année" : `Tous les ${reminder.repeat_years} ans`;
+  return "Une fois";
+}
 export function CareDashboard({ view = "carnet" }: { view?: "carnet" | "releves" }) {
   const [data, setData] = useState<Care | null>(null), [spaId, setSpaId] = useState(""), [error, setError] = useState(""), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
   const [date, setDate] = useState(""), [kind, setKind] = useState("observation"), [note, setNote] = useState("");
-  const [reminderDate, setReminderDate] = useState(""), [reminderKind, setReminderKind] = useState("filtre"), [title, setTitle] = useState(""), [repeatDays, setRepeatDays] = useState("");
+  const [reminderDate, setReminderDate] = useState(""), [reminderKind, setReminderKind] = useState("filtre"), [title, setTitle] = useState("");
+  const [repeatUnit, setRepeatUnit] = useState<"once" | keyof typeof reminderLimits>("once");
+  const [repeatCount, setRepeatCount] = useState("1");
   const [readingDate, setReadingDate] = useState(""), [water, setWater] = useState({ volume: "", temperature: "", ph: "", tac: "", disinfectant: "inconnu", disinfectantValue: "", product: "", note: "" });
   const [brand, setBrand] = useState(""), [model, setModel] = useState("");
   const load = useCallback(async (signal?: AbortSignal) => { const r: Care = await clientRequest("/api/client/care", { signal }); if (!signal?.aborted) { setData(r); setSpaId(current => current || r.spas[0]?.id || ""); } }, []);
@@ -35,6 +57,20 @@ export function CareDashboard({ view = "carnet" }: { view?: "carnet" | "releves"
     finally { setBusy(false); }
   }
   const reminders = data?.reminders.filter(r => r.spa_id === spaId) || [];
+  function addReminder(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const count = Number(repeatCount);
+    void save({
+      action: "reminder",
+      spaId,
+      kind: reminderKind,
+      title,
+      date: new Date(reminderDate).toISOString(),
+      repeatDays: repeatUnit === "days" ? count : null,
+      repeatMonths: repeatUnit === "months" ? count : null,
+      repeatYears: repeatUnit === "years" ? count : null,
+    });
+  }
   const number = (s: string) => s.trim() ? Number(s.replace(",", ".")) : null;
   return <div className="mt-6 grid min-w-0 grid-cols-1 gap-5">
     <nav aria-label="Suivi de mon spa" className="flex flex-wrap gap-3">{[["carnet", "Mon carnet et mes rappels"], ["releves", "Mes relevés d’eau"]].map(([key,label]) => <Link key={key} href={`/premium/${key}`} aria-current={view === key ? "page" : undefined} className={`focus-ring rounded-full border px-5 py-3 font-bold ${view === key ? "bg-sanispa-blue text-white" : "bg-white"}`}>{label}</Link>)}</nav>
@@ -47,12 +83,30 @@ export function CareDashboard({ view = "carnet" }: { view?: "carnet" | "releves"
       {!spaId ? <p className="rounded-xl bg-sanispa-ice p-4 text-sm">Vos tableaux sont prêts. Ajoutez votre spa ci-dessus pour saisir votre première information.</p> : null}
       {view === "carnet" ? <>
       <section className="min-w-0 rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Mes prochains rappels</h2><p className="mt-2 text-sm leading-6">Choisissez les dates et les fréquences adaptées à votre notice et à votre utilisation. Les rappels apparaissent ici et peuvent être envoyés par e-mail.</p>
-        <div className="mt-4 max-w-full overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><caption className="mb-3 text-left font-bold">Tableau de mes rappels</caption><thead><tr>{["À prévoir", "Date", "Répétition", "Actions"].map(c => <th key={c} className="p-3">{c}</th>)}</tr></thead><tbody>{reminders.map(r => <tr key={r.id} className={`border-t border-sanispa-line ${Date.parse(r.due_at) <= Date.now() ? "bg-amber-50" : ""}`}><td className="p-3 font-bold">{r.title}</td><td className="p-3">{new Date(r.due_at).toLocaleString("fr-FR")}</td><td className="p-3">{r.repeat_days ? `Tous les ${r.repeat_days} jours après réalisation` : "Une fois"}</td><td className="p-3"><Button disabled={busy} onClick={() => void save({ action: "complete", id: r.id, version: r.version })}>C’est fait</Button><button type="button" disabled={busy} className="mt-2 block underline" onClick={() => void save({ action: "delete", type: "reminder", id: r.id })}>Supprimer ce rappel</button></td></tr>)}</tbody></table>{!reminders.length ? <p className="py-4 text-sm">Aucun rappel enregistré. Ajoutez le premier ci-dessous.</p> : null}</div>
-        <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={e => { e.preventDefault(); void save({ action: "reminder", spaId, kind: reminderKind, title, date: new Date(reminderDate).toISOString(), repeatDays: repeatDays ? Number(repeatDays) : null }); }}>
+        <div className="mt-4 max-w-full overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><caption className="mb-3 text-left font-bold">Tableau de mes rappels</caption><thead><tr>{["À prévoir", "Date", "Répétition", "Actions"].map(c => <th key={c} className="p-3">{c}</th>)}</tr></thead><tbody>{reminders.map(r => <tr key={r.id} className={`border-t border-sanispa-line ${Date.parse(r.due_at) <= Date.now() ? "bg-amber-50" : ""}`}><td className="p-3 font-bold">{r.title}</td><td className="p-3">{new Date(r.due_at).toLocaleString("fr-FR")}</td><td className="p-3">{reminderFrequency(r)}</td><td className="p-3"><Button disabled={busy} onClick={() => void save({ action: "complete", id: r.id, version: r.version })}>C’est fait</Button><button type="button" disabled={busy} className="mt-2 block underline" onClick={() => void save({ action: "delete", type: "reminder", id: r.id })}>Supprimer ce rappel</button></td></tr>)}</tbody></table>{!reminders.length ? <p className="py-4 text-sm">Aucun rappel enregistré. Ajoutez le premier ci-dessous.</p> : null}</div>
+        <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={addReminder}>
           <label>Type de rappel<select className={input} value={reminderKind} onChange={e => setReminderKind(e.target.value)}>{Object.entries(careKinds).filter(([k]) => k !== "observation").map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></label>
           <label>À prévoir<input className={input} required minLength={3} maxLength={200} value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex. nettoyer les filtres" /></label>
           <label>Date du rappel<input className={input} type="datetime-local" required value={reminderDate} onChange={e => setReminderDate(e.target.value)} /></label>
-          <label>Répéter après réalisation (jours, facultatif)<input className={input} type="number" min={1} max={3650} value={repeatDays} onChange={e => setRepeatDays(e.target.value)} /></label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label>Répéter après réalisation
+              <select className={input} value={repeatUnit} onChange={event => {
+                setRepeatUnit(event.target.value as typeof repeatUnit);
+                setRepeatCount("1");
+              }}>
+                <option value="once">Une seule fois</option>
+                <option value="days">En jours</option>
+                <option value="months">En mois</option>
+                <option value="years">En années</option>
+              </select>
+            </label>
+            {repeatUnit !== "once" ? (
+              <label>Nombre {repeatUnit === "days" ? "de jours" : repeatUnit === "months" ? "de mois" : "d’années"}
+                <input className={input} type="number" required min={1} max={reminderLimits[repeatUnit]}
+                  value={repeatCount} onChange={event => setRepeatCount(event.target.value)} />
+              </label>
+            ) : null}
+          </div>
           <Button disabled={busy} type="submit">Ajouter mon rappel</Button>
         </form><div className="mt-5"><ShopLinks problemType="traitement-eau" /></div>
       </section>
