@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireForumClient, forumPostSchema, detectsSolicitation } from "@/lib/premium-forum";
 import { rateLimit } from "@/lib/client-auth";
-import { apiError, readJson } from "@/lib/http";
+import { apiError, HttpError, readJson } from "@/lib/http";
 export async function GET(request: Request) {
   try {
     const { user, supabase } = await requireForumClient(request);
@@ -13,8 +13,10 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { user, supabase } = await requireForumClient(request);
+    const parsed = forumPostSchema.safeParse(await readJson(request, 20000));
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message || "Vérifiez le titre et le message.");
+    const p = parsed.data;
     await rateLimit(supabase, `forum:${user.id}`, 10, 3600);
-    const p = forumPostSchema.parse(await readJson(request, 5000));
     const result = await supabase.from("forum_posts").insert({ user_id: user.id, parent_id: p.parentId, title: p.parentId ? "" : p.title, body: p.body, state: "pending", solicitation_flag: detectsSolicitation(`${p.title}\n${p.body}`) });
     if (result.error) throw result.error;
     return NextResponse.json({ submitted: true });
