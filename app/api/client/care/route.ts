@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     const [spas, journal, reminders, readings] = await Promise.all([
       supabase.from("customer_spas").select("id,brand,model").eq("user_id", user.id).order("created_at"),
       supabase.from("care_journal").select("id,spa_id,kind,performed_at,note").eq("user_id", user.id).order("performed_at", { ascending: false }).limit(200),
-      supabase.from("care_reminders").select("id,spa_id,kind,title,due_at,repeat_days,completed_at,version").eq("user_id", user.id).is("completed_at", null).order("due_at").limit(200),
+      supabase.from("care_reminders").select("id,spa_id,kind,title,due_at,repeat_days,repeat_months,repeat_years,completed_at,version").eq("user_id", user.id).is("completed_at", null).order("due_at").limit(200),
       supabase.from("water_readings").select("id,spa_id,measured_at,volume_litres,temperature,ph,tac,disinfectant,disinfectant_value,product,note").eq("user_id", user.id).order("measured_at", { ascending: false }).limit(200),
     ]);
     for (const r of [spas, journal, reminders, readings]) if (r.error) throw r.error;
@@ -35,7 +35,10 @@ export async function POST(request: Request) {
       if (!spa.data) throw new HttpError(404, "Spa introuvable pour ce compte.");
       const table = p.action === "journal" ? "care_journal" : p.action === "reminder" ? "care_reminders" : "water_readings";
       const details = p.action === "journal" ? { kind: p.kind, performed_at: p.date, note: p.note }
-        : p.action === "reminder" ? { kind: p.kind, title: p.title, due_at: p.date, repeat_days: p.repeatDays }
+        : p.action === "reminder" ? {
+          kind: p.kind, title: p.title, due_at: p.date,
+          repeat_days: p.repeatDays, repeat_months: p.repeatMonths, repeat_years: p.repeatYears,
+        }
         : { measured_at: p.date, volume_litres: p.volume, temperature: p.temperature, ph: p.ph, tac: p.tac, disinfectant: p.disinfectant, disinfectant_value: p.disinfectantValue, product: p.product, note: p.note };
       const r = await supabase.from(table).insert({ user_id: user.id, spa_id: p.spaId, ...details }).select("id").single();
       if (r.error) throw r.error;

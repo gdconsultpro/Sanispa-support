@@ -6,6 +6,7 @@ import { premiumActive, premiumCheckout, processCustomerSubscriptionEvent, premi
 import { detectsSolicitation } from "../lib/premium-forum";
 import { readingContext, premiumAiInstructions } from "../lib/premium-ai";
 import { clientConfirmationUrl } from "../lib/client-access";
+import { careActionSchema } from "../lib/care";
 const u = "30000000-0000-4000-8000-000000000001", other = "30000000-0000-4000-8000-000000000002", partnerUser = "30000000-0000-4000-8000-000000000003", spa = "30000000-0000-4000-8000-000000000010", foreignSpa = "30000000-0000-4000-8000-000000000011", p = "30000000-0000-4000-8000-000000000020";
 async function fixture() {
   const db = await fullDatabase();
@@ -64,6 +65,35 @@ test("care and water tables reject free access and another client's spa; reminde
       assert.equal((await db.query<any>("select has_table_privilege('authenticated',$1,'SELECT') b", [table])).rows[0].b, false);
   } finally { await db.close(); }
 });
+test("calendar reminders are rescheduled after completion, while one-time reminders close", async () => {
+  const db = await fixture();
+  try {
+    await enable(db);
+    const payload = { action: "reminder", spaId: spa, kind: "filtre", title: "Test rappel", date: new Date().toISOString(), repeatDays: null };
+    assert.equal(careActionSchema.safeParse({ ...payload, repeatMonths: 3 }).success, true);
+    assert.equal(careActionSchema.safeParse({ ...payload, repeatYears: 1 }).success, true);
+    assert.equal(careActionSchema.safeParse({ ...payload, repeatMonths: 3, repeatYears: 1 }).success, false);
+    assert.equal(careActionSchema.safeParse({ ...payload, repeatYears: 1.5 }).success, false);
+    await db.exec("begin");
+    const insert = "insert into care_reminders(user_id,spa_id,kind,title,due_at,repeat_months,repeat_years) values($1,$2,'filtre','Test rappel',now()-interval '1 day',$3,$4) returning id";
+    await assert.rejects(db.query(insert, [u, spa, 1, 1]), /care_reminders_one_repeat_unit/);
+    await db.exec("rollback");
+    await db.exec("begin");
+    for (const [months, years] of [[3, null], [null, 1], [null, null]]) {
+      const { id } = (await db.query<{id: string}>(insert, [u, spa, months, years])).rows[0];
+      await db.query("select complete_care_reminder($1,$2,1)", [id, u]);
+      const expected = months ? "3 months" : years ? "1 year" : "-1 day";
+      const result = await db.query<{correct: boolean; closed: boolean; version: number}>(`
+        select due_at = case when $3::boolean then now() - interval '1 day'
+          else ((now() at time zone 'Europe/Paris') + $2::interval) at time zone 'Europe/Paris' end as correct,
+          completed_at is not null as closed, version from care_reminders where id=$1
+      `, [id, expected, !months && !years]);
+      assert.deepEqual(result.rows[0], { correct: true, closed: !months && !years, version: 2 });
+    }
+    await db.exec("commit");
+  } finally { await db.close(); }
+});
+
 test("AI requests verify thread ownership, deduplicate retries including context, and prevent simultaneous calls without a monthly message quota", async () => {
   const db = await fixture();
   const thread = "30000000-0000-4000-8000-000000000030", requestId = "30000000-0000-4000-8000-000000000040", second = "30000000-0000-4000-8000-000000000041";
