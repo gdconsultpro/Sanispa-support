@@ -11,6 +11,26 @@ import { emptyDraft } from "../lib/storage";
 const fixture = (problemType: DiagnosticDraft["problemType"], answers: DiagnosticDraft["answers"] = {}): DiagnosticDraft => ({ ...emptyDraft, name: "TEST Questionnaire", email: "questionnaire@example.invalid", phone: "0000000000", postalCode: "67000", city: "TEST", installationType: "exterieur", problemType, choice: "intervention", answers, photos: {} });
 const visible = (draft: DiagnosticDraft) => questionsFor(draft).filter(q => isQuestionVisible(q, draft.answers, questionsFor(draft))).map(q => q.id);
 
+test("typing free text preserves spaces and line breaks until the answer is saved", () => {
+  let draft = fixture("demenagement");
+  const address = "12 rue du Spa";
+  for (const character of address) {
+    const next = answerText(draft.answers.moving_departure) + character;
+    draft = updateDiagnosticAnswer(draft, "moving_departure", next);
+  }
+  assert.equal(draft.answers.moving_departure, address);
+
+  const details = "Portail étroit\nDeux marches";
+  draft = updateDiagnosticAnswer(draft, "moving_details", details + "\n ");
+  draft = updateDiagnosticAnswer(draft, "moving_departure", address);
+  assert.equal(draft.answers.moving_details, details + "\n ");
+  assert.equal(normalizeDiagnostic(draft).answers.moving_details, details);
+  assert.equal(
+    normalizeDiagnostic(updateDiagnosticAnswer(draft, "moving_details", "  ")).answers.moving_details,
+    undefined,
+  );
+});
+
 test("electrical trip and nested delay only appear for an observed trip; hidden answers removed on both client and server", () => {
   let draft = fixture("electrique", { trip: "Oui", trip_moment: "Quand une pompe démarre", breaker: "Général", trip_delay_type: "Après un délai", trip_delay: "5 min", keyboard_photo_unavailable: "Clavier inaccessible sans démontage" });
   assert.ok(visible(draft).includes("trip_delay"));
