@@ -137,18 +137,16 @@ export default function PartnerLeadsPage() {
                 <span
                   className={`rounded-full px-3 py-1 font-bold ${lead.billing.paymentRequired ? "bg-sanispa-ice text-sanispa-navy" : "bg-green-50 text-green-800"}`}
                 >
-                  {lead.billing.paymentRequired
-                    ? "Payant"
-                    : paymentsPaused() ? "Offert pendant l’essai" : "Inclus dans l’abonnement"}
+                  {paymentsPaused() ? "Accès gratuit" : lead.billing.paymentRequired ? "Payant" : "Inclus dans l’abonnement"}
                 </span>
-                {lead.billing.paymentRequired ? (
+                {!paymentsPaused() && lead.billing.paymentRequired ? (
                   <span className="font-bold text-sanispa-navy">
                     {formatAmount(lead.billing.amount, lead.billing.currency)
                       ? `${formatAmount(lead.billing.amount, lead.billing.currency)} TTC`
                       : "Tarif indisponible"}
                   </span>
                 ) : null}
-                {lead.billing.reserved ? (
+                {!paymentsPaused() && lead.billing.reserved ? (
                   <span className="text-sanispa-steel">
                     Paiement en cours · conditions réservées
                   </span>

@@ -22,13 +22,13 @@ export default function HomePage() {
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <ButtonLink href="/diagnostic?new=1">Déclarer ma panne gratuitement</ButtonLink>
-            <ButtonLink href="/premium" variant="secondary">{paymentsPaused() ? "Profiter des services offerts" : "Découvrir Premium — 9,99 € / mois"}</ButtonLink>
+            <ButtonLink href="/premium" variant="secondary">{paymentsPaused() ? "Découvrir les services gratuits" : "Découvrir Premium — 9,99 € / mois"}</ButtonLink>
             <ButtonLink href="/diagnostic?new=1&problemType=demenagement" variant="secondary">Déménager mon spa</ButtonLink>
             <ButtonLink href="/espace-client" variant="secondary">
               Mon compte
             </ButtonLink>
             <ButtonLink href="/partenaire/connexion" variant="secondary">
-              Partenaires
+              Espace professionnel
             </ButtonLink>
           </div>
         </div>

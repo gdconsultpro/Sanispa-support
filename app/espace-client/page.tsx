@@ -317,13 +317,13 @@ export default function EspaceClientPage() {
         />
         <div className="flex flex-wrap gap-3">
           <Link
-            href="/acces"
+            href="/acces?next=compte"
             className="rounded-md bg-sanispa-navy px-5 py-3 font-bold text-white focus-ring"
           >
             Se connecter
           </Link>
           <Link
-            href="/acces"
+            href="/acces?next=compte"
             className="rounded-md border border-sanispa-line bg-white px-5 py-3 font-bold text-sanispa-navy focus-ring"
           >
             Créer un compte
@@ -683,12 +683,10 @@ export default function EspaceClientPage() {
 
         <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">
-            Justificatifs de paiement
+            Factures et documents d’intervention
           </h2>
           <p className="mt-2 text-sanispa-steel">
-            Pour obtenir une facture, contactez SANISPA en précisant le numéro
-            de votre dossier. Les documents transmis sont disponibles dans « Mes
-            documents ».
+            Les services de l’application sont actuellement gratuits. Les factures, devis et rapports transmis par SANISPA ou votre technicien restent accessibles dans « Mes factures et documents ».
           </p>
         </section>
 

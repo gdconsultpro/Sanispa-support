@@ -64,6 +64,7 @@ export default function PartnerHomePage() {
             <ButtonLink href="/partenaire/connexion">
               Connexion partenaire
             </ButtonLink>
+            <ButtonLink href="/partenaire/inscription" variant="secondary">Créer ou activer mon accès gratuit</ButtonLink>
           </div>
         </PartnerCard>
       ) : null}
@@ -77,9 +78,9 @@ export default function PartnerHomePage() {
             Leads techniques disponibles
           </h2>
           <p className="mt-2 text-sanispa-steel">
-            Les dossiers affichés sont limités aux informations de
+            Avant votre acceptation, les dossiers affichés sont limités aux informations de
             préqualification. Les coordonnées complètes du client restent
-            masquées.
+            masquées. Votre accès et l’acceptation des demandes proposées sont actuellement gratuits.
           </p>
           <div className="mt-5">
             <ButtonLink href="/partenaire/abonnement">

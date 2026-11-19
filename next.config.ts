@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   outputFileTracingIncludes: { "/*": ["./public/sanispa-logo.png"] },
+  async redirects() {
+    return [{ source: "/demo", destination: "/", permanent: true }];
+  },
   async headers() {
     return [
       {

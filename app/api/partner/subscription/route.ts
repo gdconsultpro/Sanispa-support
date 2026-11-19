@@ -44,6 +44,7 @@ export async function POST(request: Request) {
       .parse(await readJson(request, 1000));
     const origin = process.env.NEXT_PUBLIC_APP_URL;
     if (!origin) throw new HttpError(503, "URL de retour non configurée.");
+    if (paymentsPaused()) return NextResponse.json({url:`${origin}/partenaire/abonnement`,complimentary:true});
     if (payload.action === "portal") {
       const { data, error } = await supabase
         .from("partner_subscriptions")

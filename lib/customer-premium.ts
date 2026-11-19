@@ -13,7 +13,7 @@ export async function requirePremium(request: Request) {
   const context = await requireUser(request);
   const { data, error } = await context.supabase.rpc(paymentsPaused() ? "grant_customer_trial_access" : "customer_has_premium", { p_user: context.user.id });
   if (error) throw error;
-  if (!data) throw new HttpError(402, "Ce service est inclus dans SANISPA Premium à 9,99 € TTC par mois.");
+  if (!data) throw new HttpError(paymentsPaused() ? 503 : 402, paymentsPaused() ? "Votre accès gratuit n’a pas pu être confirmé. Réessayez dans un instant." : "Ce service est inclus dans SANISPA Premium à 9,99 € TTC par mois.");
   return context;
 }
 export async function premiumCheckout(supabase: any, user: { id: string; email?: string }, origin: string, stripeClient?: Stripe) {

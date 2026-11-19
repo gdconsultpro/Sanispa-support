@@ -22,6 +22,7 @@ export async function POST(request: Request) {
     await rateLimit(supabase, `premium-checkout:${user.id}`, 6);
     const payload = z.object({ action: z.enum(["subscribe", "portal"]) }).strict().parse(await readJson(request, 1000));
     const origin = process.env.NEXT_PUBLIC_APP_URL; if (!origin) throw new HttpError(503, "URL de retour non configurée.");
+    if (paymentsPaused()) return NextResponse.json({url:`${origin}/premium`,complimentary:true});
     if (payload.action === "subscribe") return NextResponse.json(await premiumCheckout(supabase, user, origin));
     const result = await supabase.from("customer_subscriptions").select("stripe_customer_id").eq("user_id", user.id).single();
     if (result.error || !result.data) throw new HttpError(404, "Aucun abonnement trouvé.");

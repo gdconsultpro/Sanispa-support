@@ -67,7 +67,7 @@ export async function sendVideoNotification(input: { email: string; requesterEma
   const title = input.admin ? "Nouvelle demande de visio" : input.status === "scheduled" ? "Votre visio SANISPA est confirmée" : input.status === "canceled" ? "Votre demande de visio a été annulée" : "Votre visio SANISPA est terminée";
   const date = input.startsAt ? new Date(input.startsAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "long", timeStyle: "short" }) + " (heure de Paris)" : "Créneau à confirmer";
   return sendTransactionalEmail({ to: input.email, subject: `SANISPA — ${title}`, idempotencyKey: input.key,
-    html: `<div style="font-family:Arial,sans-serif;max-width:600px;color:#193b5b;line-height:1.7"><img src="${escapeHtml(origin)}/sanispa-logo.png" width="120" alt="SANISPA"/><h1>${escapeHtml(title)}</h1><p>${input.admin ? `Demande ${input.audience === "partner" ? "partenaire" : "particulier"} de ${escapeHtml(input.requesterEmail)}.` : "Retrouvez votre rendez-vous et son lien dans votre espace SANISPA."}</p><p>${escapeHtml(input.admin ? input.details : date)}</p>${input.admin ? `<p>Disponibilités : ${escapeHtml(input.availability)}</p>` : ""}<p>Durée : 30 minutes. Offert pendant la phase d’essai, aucun règlement.</p><p><a href="${escapeHtml(url)}" style="background:#0a6ed0;color:white;border-radius:24px;padding:14px 22px;display:inline-block">Ouvrir ma demande de visio</a></p></div>` });
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;color:#193b5b;line-height:1.7"><img src="${escapeHtml(origin)}/sanispa-logo.png" width="120" alt="SANISPA"/><h1>${escapeHtml(title)}</h1><p>${input.admin ? `Demande ${input.audience === "partner" ? "partenaire" : "particulier"} de ${escapeHtml(input.requesterEmail)}.` : "Retrouvez votre rendez-vous et son lien dans votre espace SANISPA."}</p><p>${escapeHtml(input.admin ? input.details : date)}</p>${input.admin ? `<p>Disponibilités : ${escapeHtml(input.availability)}</p>` : ""}<p>Durée : 30 minutes. Service actuellement gratuit, aucun règlement.</p><p><a href="${escapeHtml(url)}" style="background:#0a6ed0;color:white;border-radius:24px;padding:14px 22px;display:inline-block">Ouvrir ma demande de visio</a></p></div>` });
 }
 export async function sendClientAccessLink(email: string, url: string, recovery: boolean, key: string) {
   const origin = new URL(url).origin;
@@ -443,7 +443,7 @@ function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
       <p>Connectez-vous à votre espace client pour consulter votre dossier, suivre son avancement et télécharger son résumé PDF.</p>
       ${
         isWaterAnalysis
-          ? paymentsPaused() ? `<p>L’assistance pour le traitement de l’eau est offerte pendant la phase d’essai. Retrouvez votre assistant dans votre espace, sans abonnement ni règlement.</p>` : `<p>L'accès à l'assistance pour le traitement de l'eau s'active après confirmation du paiement. Vous pouvez consulter son état depuis votre dossier.</p>`
+          ? paymentsPaused() ? `<p>L’assistance pour le traitement de l’eau est actuellement gratuite. Retrouvez votre assistant dans votre espace, sans abonnement ni règlement.</p>` : `<p>L'accès à l'assistance pour le traitement de l'eau s'active après confirmation du paiement. Vous pouvez consulter son état depuis votre dossier.</p>`
           : ""
       }
       <p>

@@ -274,11 +274,11 @@ export default function PartnerLeadDetailPage() {
               <span
                 className={`rounded-full px-3 py-1 font-bold ${lead.billing.paymentRequired ? "bg-sanispa-ice text-sanispa-navy" : "bg-green-50 text-green-800"}`}
               >
-                {lead.billing.paymentRequired
+                {paymentsPaused() ? "Accès gratuit" : lead.billing.paymentRequired
                   ? "Payant"
                   : "Inclus dans votre abonnement"}
               </span>
-              {lead.billing.paymentRequired ? (
+              {!paymentsPaused() && lead.billing.paymentRequired ? (
                 <span className="font-bold text-sanispa-navy">
                   {amountLabel ? `${amountLabel} TTC` : "Tarif indisponible"}
                 </span>
@@ -328,7 +328,7 @@ export default function PartnerLeadDetailPage() {
           ) : null}
           {lead.access === "preview" ? (
             <div className="mt-6">
-              {lead.billing.reserved ? (
+              {!paymentsPaused() && lead.billing.reserved ? (
                 <p className="mb-3 text-sm text-sanispa-steel">
                   Conditions réservées{amountLabel ? ` : ${amountLabel}` : ""}.
                   Reprenez le paiement engagé pour ce dossier.
@@ -339,7 +339,7 @@ export default function PartnerLeadDetailPage() {
                 disabled={
                   !lead.canUnlock ||
                   !lead.billing.available ||
-                  (lead.billing.paymentRequired && !amountLabel) ||
+                  (!paymentsPaused() && lead.billing.paymentRequired && !amountLabel) ||
                   unlocking
                 }
                 onClick={unlockLead}
@@ -347,15 +347,14 @@ export default function PartnerLeadDetailPage() {
               >
                 {unlocking
                   ? "Traitement en cours…"
-                  : !lead.billing.paymentRequired
-                    ? "Accepter ce dossier sans règlement"
+                  : paymentsPaused() || !lead.billing.paymentRequired
+                    ? "Accepter ce dossier gratuitement"
                     : `${lead.billing.reserved ? "Reprendre le paiement" : "Payer pour prendre en charge"}${amountLabel ? ` — ${amountLabel}` : ""}`}
               </button>
               {!lead.billing.available ||
-              (lead.billing.paymentRequired && !amountLabel) ? (
+              (!paymentsPaused() && lead.billing.paymentRequired && !amountLabel) ? (
                 <p className="mt-3 text-sm font-semibold text-sanispa-steel">
-                  Un abonnement actif et une offre validée sont nécessaires.
-                  Consultez Mon abonnement ou contactez SANISPA.
+                  {paymentsPaused() ? "Une offre validée par SANISPA et l’acceptation de la charte sont nécessaires. Consultez Mon accès et la charte." : "Un abonnement actif et une offre validée sont nécessaires. Consultez Mon abonnement ou contactez SANISPA."}
                 </p>
               ) : !lead.canUnlock ? (
                 <p className="mt-3 text-sm font-semibold text-sanispa-steel">

@@ -5,4 +5,4 @@ export function paymentsPaused() {
 
 export const videoAssistanceOffer = { amount: 5900, durationMinutes: 30, currency: "eur" } as const;
 
-export const complimentaryMessage = "Accès offert temporairement · aucun abonnement ni prélèvement";
+export const complimentaryMessage = "Services gratuits actuellement · aucun abonnement ni prélèvement";
