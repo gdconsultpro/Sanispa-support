@@ -31,14 +31,14 @@ export default function PartnerLoginPage() {
     finally { pending.current = false; setLoading(false); }
   }
   return <AppShell compact>
-    <StepHeader eyebrow="Espace partenaire" title="Connexion partenaire" description="Connectez-vous avec l’adresse rattachée à votre entreprise par SANISPA." />
+    <StepHeader eyebrow="Espace partenaire" title="Connexion partenaire" description="Connectez-vous avec votre adresse e-mail et votre mot de passe pour retrouver votre espace professionnel gratuit." />
     <form onSubmit={submit} className="grid gap-4 rounded-md border border-sanispa-line bg-white p-5 shadow-soft" aria-busy={loading}>
       <Field label="Adresse e-mail" type="email" name="email" value={email} onChange={setEmail} required autoComplete="username" />
       <Field label="Mot de passe" type="password" name="password" value={password} onChange={setPassword} required autoComplete="current-password" />
       {error ? <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
-      <Button type="submit" disabled={loading}>{loading ? "Connexion et vérification de votre accès…" : "Se connecter"}</Button>
+      <Button type="submit" disabled={loading}>{loading ? "Connexion…" : "Se connecter"}</Button>
       <Link className="focus-ring text-sm font-bold text-sanispa-blue underline" href="/mot-de-passe-oublie">Mot de passe oublié</Link>
-      <p className="text-sm text-sanispa-steel">Un compte de connexion doit être rattaché à votre entreprise. Si votre mot de passe est accepté mais l’accès refusé, contactez SANISPA.</p>
+      <Link href="/partenaire/inscription" className="focus-ring rounded-xl bg-sanispa-ice p-4 font-bold text-sanispa-blue underline">Nouveau partenaire ? Créer mon espace gratuit →</Link>
     </form>
   </AppShell>;
 }

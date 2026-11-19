@@ -3,13 +3,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase";
 const partnerSchema = z.object({
-    company_name: z.string().min(1),
-    contact_name: z.string().optional().nullable(),
+    company_name: z.string().trim().min(2).max(150),
+    siret: z.string().transform(v=>v.replace(/\s/g,"" )).pipe(z.string().regex(/^\d{14}$/)),
+    contact_name: z.string().trim().min(2).max(150),
     email: z.string().email(),
-    phone: z.string().optional().nullable(),
-    address: z.string().optional().nullable(),
-    postal_code: z.string().optional().nullable(),
-    city: z.string().optional().nullable(),
+    phone: z.string().trim().min(6).max(30),
+    address: z.string().trim().min(3).max(300),
+    postal_code: z.string().regex(/^\d{5}$/),
+    city: z.string().trim().min(1).max(120),
     departments: z.array(z.string()).default([])
 });
 export async function POST(request: Request) {
@@ -29,6 +30,8 @@ export async function POST(request: Request) {
             address: payload.address || null,
             postal_code: payload.postal_code || null,
             city: payload.city || null,
+            siret: payload.siret,
+            verification_status: "pending",
             active: true
         })
             .select("*")
@@ -56,5 +59,5 @@ async function replaceDepartments(supabase: any, partnerId: string, departments:
         throw error;
 }
 function normalizeDepartments(departments: string[]) {
-    return Array.from(new Set(departments.map((department) => department.replace(/\D/g, "")).filter(Boolean)));
+    return Array.from(new Set(departments.map((department) => department.trim().toUpperCase()).filter(v=>/^(?:\d{2,3}|2[AB])$/.test(v))));
 }

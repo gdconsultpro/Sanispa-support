@@ -1,5 +1,6 @@
 "use client";
 
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { useMemo, useState } from "react";
 import { PartnerAdminItem } from "@/lib/types";
 import { PartnerAccessAdmin } from "@/components/PartnerAccessAdmin";
@@ -7,6 +8,7 @@ import { PartnerAccessAdmin } from "@/components/PartnerAccessAdmin";
 const emptyForm = {
   id: "",
   company_name: "",
+  siret: "",
   contact_name: "",
   email: "",
   phone: "",
@@ -32,7 +34,7 @@ export function PartnerAdmin({
     () =>
       [...partners].sort(
         (a, b) =>
-          Number(b.active) - Number(a.active) ||
+          Number(b.verification_status === "pending") - Number(a.verification_status === "pending") || Number(b.active) - Number(a.active) ||
           a.company_name.localeCompare(b.company_name),
       ),
     [partners],
@@ -47,6 +49,7 @@ export function PartnerAdmin({
     setForm({
       id: partner.id,
       company_name: partner.company_name,
+      siret: partner.siret ?? "",
       contact_name: partner.contact_name ?? "",
       email: partner.email,
       phone: partner.phone ?? "",
@@ -64,6 +67,7 @@ export function PartnerAdmin({
 
     const body = {
       company_name: form.company_name,
+      siret: form.siret,
       contact_name: form.contact_name,
       email: form.email,
       phone: form.phone,
@@ -119,6 +123,12 @@ export function PartnerAdmin({
     );
   }
 
+  async function verifyPartner(partner: PartnerAdminItem) {
+    if(saving)return;setSaving(true);setMessage("");
+    try { const response=await fetch(`/api/admin/partners/${partner.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({verify:true})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"Vérification impossible.");setPartners(current=>current.map(p=>p.id===partner.id?payload.partner:p));setMessage("Entreprise vérifiée. Elle peut maintenant recevoir les dossiers que vous validez."); }
+    catch(e){setMessage(e instanceof Error?e.message:"Vérification impossible.");}finally{setSaving(false);}
+  }
+
   return (
     <div className="grid gap-5">
       <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
@@ -136,8 +146,10 @@ export function PartnerAdmin({
             onChange={(value) => updateField("company_name", value)}
             required
           />
+          <PartnerInput label="SIRET (14 chiffres)" value={form.siret} onChange={value=>updateField("siret",value)} required />
           <PartnerInput
             label="Contact"
+            required
             value={form.contact_name}
             onChange={(value) => updateField("contact_name", value)}
           />
@@ -150,21 +162,25 @@ export function PartnerAdmin({
           />
           <PartnerInput
             label="Téléphone"
+            required
             value={form.phone}
             onChange={(value) => updateField("phone", value)}
           />
           <PartnerInput
             label="Adresse"
+            required
             value={form.address}
             onChange={(value) => updateField("address", value)}
           />
           <PartnerInput
             label="Code postal"
+            required
             value={form.postal_code}
             onChange={(value) => updateField("postal_code", value)}
           />
           <PartnerInput
             label="Ville"
+            required
             value={form.city}
             onChange={(value) => updateField("city", value)}
           />
@@ -198,9 +214,7 @@ export function PartnerAdmin({
           </div>
         </form>
         <p className="mt-4 text-sm text-sanispa-steel">
-          Les nouveaux dossiers utilisent l’abonnement mensuel du partenaire
-          (300 € TTC + contacts ou 700 € TTC contacts inclus). Chaque
-          transmission reste à valider dans le dossier.
+          {paymentsPaused() ? "Les accès et les dossiers proposés sont actuellement gratuits. " : "Les tarifs dépendent de l’abonnement actif. "} Vérifiez les coordonnées et le SIRET avant de valider une inscription. Chaque transmission reste ensuite à valider dans le dossier client.
         </p>
         {editingPartner ? (
           <PartnerAccessAdmin
@@ -238,8 +252,10 @@ export function PartnerAdmin({
                   {partner.active ? "Actif" : "Inactif"}
                 </p>
                 <span className="mt-2 inline-flex rounded-md bg-sanispa-ice px-2 py-1 text-xs font-bold text-sanispa-navy">
-                  Tarifs selon abonnement actif
+                  {paymentsPaused() ? "Accès gratuit" : "Tarifs selon abonnement actif"}
                 </span>
+                <p className="mt-2 text-sm font-bold">{partner.verification_status === "pending" ? "À vérifier · Aucun dossier proposé" : partner.verification_status === "verified" ? `Vérifié le ${new Date(partner.verified_at!).toLocaleDateString("fr-FR")}` : "Entreprise déjà enregistrée"}</p>
+                <p className="mt-1 text-sm">SIRET : {partner.siret || "Non renseigné"}</p>
                 <h3 className="mt-1 text-lg font-bold text-sanispa-navy">
                   {partner.company_name}
                 </h3>
@@ -248,10 +264,11 @@ export function PartnerAdmin({
                   {partner.email}
                 </p>
                 <p className="mt-1 text-sm text-sanispa-steel">
-                  {[partner.postal_code, partner.city]
+                  {[partner.address, partner.postal_code, partner.city]
                     .filter(Boolean)
                     .join(" ") || "Ville non renseignée"}
                 </p>
+                <p className="mt-1 text-sm">Téléphone : {partner.phone || "Non renseigné"}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {partner.departments.map((department) => (
                     <span
@@ -264,6 +281,7 @@ export function PartnerAdmin({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                {partner.verification_status !== "verified" ? <button type="button" disabled={saving||!partner.active} onClick={()=>void verifyPartner(partner)} className="focus-ring rounded-md bg-sanispa-blue px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Coordonnées et SIRET vérifiés</button> : null}
                 <button
                   type="button"
                   onClick={() => editPartner(partner)}

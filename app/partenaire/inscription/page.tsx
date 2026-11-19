@@ -1,0 +1,28 @@
+"use client";
+import Link from "next/link";
+import { useEffect,useState } from "react";
+import { AppShell } from "@/components/AppShell";
+import { CreateAccountForm } from "@/components/CreateAccountForm";
+import { Button } from "@/components/Button";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { clientRequest } from "@/lib/client-browser-api";
+import { partnerPasswordPath } from "@/lib/partner-navigation";
+import type { PartnerOnboarding } from "@/lib/partner-registration";
+const input="focus-ring mt-2 w-full min-w-0 rounded-xl border border-sanispa-line bg-white p-3";
+export default function PartnerRegistration(){
+ const [email,setEmail]=useState(""),[signedIn,setSignedIn]=useState(false),[loaded,setLoaded]=useState(false),[status,setStatus]=useState<PartnerOnboarding|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ const [form,setForm]=useState({companyName:"",contactName:"",phone:"",address:"",postalCode:"",city:"",siret:"",departments:""});
+ useEffect(()=>{let active=true;void(async()=>{try{const {data}=await getSupabaseBrowser().auth.getSession();if(!active)return;if(!data.session){setLoaded(true);return;}setSignedIn(true);setEmail(data.session.user.email||"");const r:PartnerOnboarding=await clientRequest("/api/partner/registration");if(!active)return;if(r.registered){window.location.replace(r.passwordChangeRequired?partnerPasswordPath("/partenaire"):"/partenaire");return;}setStatus(r);if(r.candidate){const c=r.candidate;setForm({companyName:c.company_name,contactName:c.contact_name||"",phone:c.phone||"",address:c.address||"",postalCode:c.postal_code||"",city:c.city||"",siret:c.siret||"",departments:(c.departments||[]).join(", ")});}}catch(e){if(active)setError(e instanceof Error?e.message:"Vérification impossible.");}finally{if(active)setLoaded(true);}})();return()=>{active=false;};},[]);
+ async function submit(e:React.FormEvent){e.preventDefault();if(busy)return;setBusy(true);setError("");try{
+  const payload={mode:status?.candidate?"claim":"create",...form,departments:form.departments.split(/[,;\s]+/).filter(Boolean).map(v=>v.toUpperCase())};
+  await clientRequest("/api/partner/registration",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});window.location.replace("/partenaire");
+ }catch(e){setError(e instanceof Error?e.message:"Inscription impossible.");}finally{setBusy(false);}}
+ return <AppShell compact><Link href="/partenaire/connexion" className="font-bold underline">← Connexion partenaire</Link><section className="mx-auto mt-5 max-w-3xl rounded-3xl border border-sanispa-line bg-white p-5 sm:p-8"><p className="text-xs font-bold uppercase tracking-widest text-sanispa-blue">Professionnels du spa</p><h1 className="mt-3 text-3xl font-bold">Créer mon accès partenaire gratuit</h1><p className="my-5 leading-7">Créez votre compte avec votre e-mail et votre mot de passe, confirmez votre adresse puis complétez votre entreprise. Votre espace permet de gérer les demandes proposées par SANISPA, vos rendez-vous, rapports, factures et demandes de visio. Vos coordonnées complètes et votre SIRET permettront à SANISPA de vérifier votre entreprise avant toute proposition de dossier. Aucun abonnement ni règlement n’est demandé.</p>
+ {!loaded?<p role="status">Vérification de votre compte…</p>:!signedIn?<CreateAccountForm intent="partenaire"/>:status?.blocked?<p role="alert" className="rounded-xl bg-amber-50 p-4">{status.message}</p>:<form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+ <p className="break-all rounded-xl bg-sanispa-ice p-3 text-sm sm:col-span-2">Adresse confirmée : <strong>{email}</strong></p>
+ {signedIn&&status?Object.entries({companyName:"Nom de l’entreprise",contactName:"Votre nom et prénom",phone:"Téléphone professionnel",address:"Adresse complète de l’entreprise",postalCode:"Code postal",city:"Ville",siret:"Numéro SIRET (14 chiffres)",departments:"Départements d’intervention"}).map(([key,label])=><label key={key} className={key==="departments"?"sm:col-span-2":""}>{label}<input className={input} required type={key==="phone"?"tel":"text"} inputMode={key==="siret"||key==="postalCode"?"numeric":undefined} pattern={key==="postalCode"?"[0-9]{5}":key==="siret"?"[0-9 ]{14,19}":undefined} maxLength={key==="siret"?19:key==="departments"?500:key==="phone"?30:key==="address"?300:key==="postalCode"?5:120} value={form[key as keyof typeof form]} onChange={e=>setForm(current=>({...current,[key]:e.target.value}))} placeholder={key==="departments"?"Ex. 67, 68, 90":undefined}/></label>):null}
+ {signedIn&&status?.candidate?<div className="rounded-xl bg-sanispa-ice p-4 sm:col-span-2"><h2 className="font-bold">SANISPA a déjà enregistré votre entreprise</h2><p className="mt-2">{status.candidate.company_name}{status.candidate.city?` · ${status.candidate.city}`:""}</p><p className="mt-2 text-sm">Cette fiche correspond exactement à votre adresse e-mail confirmée. Vérifiez les coordonnées ci-dessus et renseignez le SIRET pour soumettre votre entreprise à SANISPA.</p></div>:null}
+ <Button type="submit" disabled={busy||!status} className="justify-self-start sm:col-span-2">{busy?"Préparation de votre accès…":status?.candidate?"Confirmer mon entreprise":"Créer mon espace partenaire gratuit"}</Button>
+ </form>}
+ {error?<p role="alert" className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>:null}<p className="mt-5 text-sm leading-6 text-sanispa-steel">SANISPA décide de chaque attribution. L’inscription ne diffuse aucun dossier client automatiquement ; vous acceptez la charte avant de prendre en charge une demande.</p></section></AppShell>;
+}

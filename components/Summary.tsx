@@ -1,3 +1,4 @@
+import { paymentsPaused } from "@/lib/commercial-mode";
 import { photoExceptionValid, serializeAnswers } from "@/lib/diagnostic-answers";
 import { getPhotoRequirements, isPhotoRequired, problemTypes, remotePlans } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
@@ -61,7 +62,7 @@ export function DiagnosticSummary({ draft }: { draft: DiagnosticDraft }) {
           <p className="text-sm font-semibold text-sanispa-navy">
             {draft.choice === "intervention" ? "Demande d'intervention" : draft.choice === "devis" ? "Demande de devis" : "Diagnostic de traitement d'eau IA"}
           </p>
-          {plan ? <p className="mt-2 text-sm text-sanispa-steel">{plan.name} — {plan.price.toLocaleString("fr-FR")} € TTC{plan.id === "water" ? " / mois" : ""}</p> : null}
+          {plan ? <p className="mt-2 text-sm text-sanispa-steel">{plan.name} — {paymentsPaused() ? "Gratuit" : `${plan.price.toLocaleString("fr-FR")} € TTC${plan.id === "water" ? " / mois" : ""}`}</p> : null}
         </section>
       ) : null}
     </div>

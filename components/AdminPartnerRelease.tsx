@@ -263,7 +263,7 @@ export function AdminPartnerRelease({
                     </select>
                   </label>
                   <label className="grid gap-2 text-sm font-bold">
-                    Descriptif partagé avant paiement
+                    Descriptif partagé avant acceptation
                     <textarea
                       required
                       minLength={20}

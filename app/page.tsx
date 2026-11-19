@@ -1,4 +1,4 @@
-import { paymentsPaused } from "@/lib/commercial-mode";
+import Link from "next/link";
 import { AuthArrival } from "@/components/AuthArrival";
 import { ClipboardCheck, ImagePlus, ShieldCheck, Wrench } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -20,17 +20,12 @@ export default function HomePage() {
             quelques photos. Nous aurons les bons éléments pour orienter votre
             demande. Aucune connaissance technique nécessaire.
           </p>
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <ButtonLink href="/diagnostic?new=1">Déclarer ma panne gratuitement</ButtonLink>
-            <ButtonLink href="/premium" variant="secondary">{paymentsPaused() ? "Profiter des services offerts" : "Découvrir Premium — 9,99 € / mois"}</ButtonLink>
-            <ButtonLink href="/diagnostic?new=1&problemType=demenagement" variant="secondary">Déménager mon spa</ButtonLink>
-            <ButtonLink href="/espace-client" variant="secondary">
-              Mon compte
-            </ButtonLink>
-            <ButtonLink href="/partenaire/connexion" variant="secondary">
-              Partenaires
-            </ButtonLink>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <ButtonLink href="/diagnostic?new=1">Déclarer une panne</ButtonLink>
+            <ButtonLink href="/espace-client" variant="secondary">Mon espace spa</ButtonLink>
           </div>
+          <p className="mt-4 text-sm"><Link href="/diagnostic?new=1&problemType=demenagement" className="focus-ring font-bold underline">Je souhaite déménager mon spa →</Link></p>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-sanispa-steel">Déclaration simple, suivi de votre spa et services Premium gratuits pour le moment.</p>
         </div>
 
         <div className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">

@@ -13,6 +13,7 @@ import {
 import { partnerPasswordPath } from "@/lib/partner-navigation";
 
 type Partner = {
+  verification_status?: string;
   id: string;
   company_name: string;
   contact_name: string | null;
@@ -64,10 +65,12 @@ export default function PartnerHomePage() {
             <ButtonLink href="/partenaire/connexion">
               Connexion partenaire
             </ButtonLink>
+            <ButtonLink href="/partenaire/inscription" variant="secondary">Créer ou activer mon accès gratuit</ButtonLink>
           </div>
         </PartnerCard>
       ) : null}
 
+      {!loading && partner?.verification_status === "pending" ? <p role="status" className="mb-5 rounded-xl bg-amber-50 p-4">Votre inscription est reçue. SANISPA vérifie vos coordonnées et votre SIRET avant de vous proposer des dossiers. Vous pouvez déjà découvrir votre espace et demander une assistance en visio.</p> : null}
       {!loading && partner ? (
         <PartnerCard>
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-sanispa-blue">
@@ -77,9 +80,9 @@ export default function PartnerHomePage() {
             Leads techniques disponibles
           </h2>
           <p className="mt-2 text-sanispa-steel">
-            Les dossiers affichés sont limités aux informations de
+            Avant votre acceptation, les dossiers affichés sont limités aux informations de
             préqualification. Les coordonnées complètes du client restent
-            masquées.
+            masquées. Votre accès et l’acceptation des demandes proposées sont actuellement gratuits.
           </p>
           <div className="mt-5">
             <ButtonLink href="/partenaire/abonnement">

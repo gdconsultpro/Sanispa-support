@@ -45,7 +45,8 @@ export async function loadPartnerDispatch(supabase: any, id: string) {
       .from("partner_departments")
       .select("partners!inner(id,company_name,active,leads_paid)")
       .eq("department", d.department)
-      .eq("partners.active", true),
+      .eq("partners.active", true)
+      .neq("partners.verification_status", "pending"),
     supabase
       .from("lead_purchases")
       .select("status")
@@ -122,7 +123,7 @@ export async function decidePartnerDispatch(
 }
 function decisionError(error: { message?: string }) {
   const code = error.message || "";
-  const reason = code.includes("KEPT_BY_SANISPA")
+  const reason = code.includes("PARTNER_VERIFICATION_REQUIRED") ? "Vérifiez d’abord les coordonnées et le SIRET de ce partenaire dans l’administration." : code.includes("KEPT_BY_SANISPA")
     ? "Ce dossier est conservé chez SANISPA."
     : code.includes("ALREADY_RELEASED")
       ? "Ce dossier a déjà été transmis. Son destinataire est conservé."

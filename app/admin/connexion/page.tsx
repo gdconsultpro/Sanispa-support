@@ -117,7 +117,6 @@ export default function AdminLogin() {
       {error && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {mode !== "checking" && <button type="button" onClick={switchAccount} className="text-sm underline">Utiliser un autre compte</button>}
       <p className="text-xs text-sanispa-steel">Session administrateur limitée à une heure. En cas de perte de votre téléphone, contactez le responsable du compte SANISPA pour rétablir l’accès.</p>
-      <Link href="/demo" className="focus-ring block rounded-xl border border-sanispa-line p-4 text-sm font-bold">Ouvrir la démonstration sans connexion →</Link>
     </div>
   </AppShell>;
 }
