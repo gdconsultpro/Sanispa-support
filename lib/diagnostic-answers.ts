@@ -157,14 +157,25 @@ function upgradeLegacy(
   }
   return next;
 }
-export function normalizeDiagnostic<T extends AnswerDraft>(draft: T): T {
+function normalizeAnswers<T extends AnswerDraft>(
+  draft: T,
+  preserveEditableText: boolean,
+): T {
   const questions = questionsFor(draft);
   const source = upgradeLegacy(draft.answers ?? {}, draft.problemType);
   const answers: Record<string, AnswerValue> = {};
   for (const q of questions) {
-    if (!isQuestionVisible(q, source, questions) || !hasAnswer(source[q.id]))
-      continue;
+    if (!isQuestionVisible(q, source, questions)) continue;
     const value = source[q.id];
+    if (
+      preserveEditableText &&
+      (q.type === "text" || q.type === "textarea") &&
+      typeof value === "string"
+    ) {
+      answers[q.id] = value;
+      continue;
+    }
+    if (!hasAnswer(value)) continue;
     // A legacy single selection remains a valid one-element multiple selection.
     answers[q.id] =
       q.type === "checkbox" && typeof value === "string"
@@ -175,15 +186,20 @@ export function normalizeDiagnostic<T extends AnswerDraft>(draft: T): T {
   }
   return { ...draft, answers };
 }
+export function normalizeDiagnostic<T extends AnswerDraft>(draft: T): T {
+  return normalizeAnswers(draft, false);
+}
 export function updateDiagnosticAnswer<T extends AnswerDraft>(
   draft: T,
   id: string,
   value: AnswerValue,
 ): T {
-  return normalizeDiagnostic({
-    ...draft,
-    answers: { ...draft.answers, [id]: value },
-  });
+  // Keep spaces and line breaks while the user types. Saving and submission
+  // still normalize the text, and hidden answers are pruned immediately.
+  return normalizeAnswers(
+    { ...draft, answers: { ...draft.answers, [id]: value } },
+    true,
+  );
 }
 export function serializeAnswers(draft: AnswerDraft): SavedAnswer[] {
   const normalized = normalizeDiagnostic(draft);
