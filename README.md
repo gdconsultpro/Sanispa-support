@@ -4,7 +4,10 @@ L’application réelle est accessible sur https://support.sani-spa.fr aux parti
 
 - Tous les services et contacts sont gratuits actuellement, sans carte bancaire ni abonnement.
 - `NEXT_PUBLIC_SANISPA_BILLING_MODE=free` (toute valeur autre que `live` désactive les règlements). La configuration privée en base conserve `payments_paused=true` ; le build refuse une divergence.
+- L’inscription particulier et partenaire demande un e-mail et un seul mot de passe, puis un unique lien de confirmation. Les connexions suivantes utilisent le mot de passe ; les liens administrateur et de récupération conservent leur parcours sécurisé.
+- « Déclarer une panne » ouvre le parcours guidé ; « Mon espace spa » rassemble l’historique, le carnet, les rappels, les relevés, les notices, l’IA, le forum et les documents existants. Aucun espace de démonstration n’est publié.
 - Les partenaires confirment leur e-mail puis créent leur entreprise ou activent l’entreprise inutilisée déjà adressée à cet e-mail par SANISPA. Aucun identifiant d’entreprise n’est accepté depuis le navigateur pour ce rattachement.
+- L’inscription partenaire exige les coordonnées complètes et un SIRET de 14 chiffres. Une inscription publique (création ou activation) reste « À vérifier » jusqu’au contrôle manuel dans l’administration ; elle ne peut recevoir de dossier avant cette validation. Le format du SIRET est contrôlé, son existence et l’identité de l’entreprise restent à vérifier par SANISPA.
 - SANISPA valide chaque proposition de dossier. Les coordonnées complètes restent protégées jusqu’à acceptation par le partenaire ciblé et validation de la charte.
 - Une future réactivation payante demande une décision explicite et une nouvelle publication. Les notes Stripe ci-dessous décrivent la configuration historique, inactive pendant cette ouverture gratuite.
 

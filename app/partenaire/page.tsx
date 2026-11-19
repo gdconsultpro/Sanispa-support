@@ -13,6 +13,7 @@ import {
 import { partnerPasswordPath } from "@/lib/partner-navigation";
 
 type Partner = {
+  verification_status?: string;
   id: string;
   company_name: string;
   contact_name: string | null;
@@ -69,6 +70,7 @@ export default function PartnerHomePage() {
         </PartnerCard>
       ) : null}
 
+      {!loading && partner?.verification_status === "pending" ? <p role="status" className="mb-5 rounded-xl bg-amber-50 p-4">Votre inscription est reçue. SANISPA vérifie vos coordonnées et votre SIRET avant de vous proposer des dossiers. Vous pouvez déjà découvrir votre espace et demander une assistance en visio.</p> : null}
       {!loading && partner ? (
         <PartnerCard>
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-sanispa-blue">

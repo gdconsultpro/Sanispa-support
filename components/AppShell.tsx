@@ -24,22 +24,10 @@ export function AppShell({
               className="h-12 w-auto object-contain"
             />
           </Link>
-          <nav className="flex flex-wrap items-center justify-end gap-2 text-sm font-bold">
-            <Link href="/premium" className="rounded-full border border-sanispa-line bg-white px-3 py-2 text-sanispa-navy focus-ring">{paymentsPaused() ? "Services gratuits" : "Premium"}</Link>
-            <Link href="/diagnostic?new=1&problemType=demenagement" className="rounded-md border border-sanispa-line px-3 py-2 text-sanispa-navy focus-ring">Déménagement</Link>
-            <Link
-              href="/espace-client"
-              className="rounded-md border border-sanispa-line px-3 py-2 text-sanispa-navy focus-ring"
-            >
-              Espace client
-            </Link>
-            <Link
-              href="/partenaire/connexion"
-              className="rounded-md border border-sanispa-line px-3 py-2 text-sanispa-navy focus-ring"
-            >
-              Partenaires
-            </Link>
-            <Link href="/visio" className="rounded-full border border-sanispa-line bg-white px-3 py-2 text-sanispa-navy focus-ring">Visio</Link>
+          <nav aria-label="Navigation principale" className="flex flex-wrap items-center justify-end gap-2 text-sm font-bold">
+            <Link href="/diagnostic?new=1" className="focus-ring rounded-full bg-sanispa-blue px-4 py-3 text-white">Déclarer une panne</Link>
+            <Link href="/espace-client" className="focus-ring rounded-full border border-sanispa-line bg-white px-4 py-3">Mon espace spa</Link>
+            <Link href="/partenaire/connexion" className="focus-ring rounded-full border border-sanispa-line bg-white px-4 py-3">Professionnels</Link>
           </nav>
         </div>
       </header>

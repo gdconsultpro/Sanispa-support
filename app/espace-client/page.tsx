@@ -84,6 +84,7 @@ export default function EspaceClientPage() {
       updated_at: string;
     }>
   >([]);
+  const [view, setView] = useState<"overview" | "history" | "documents" | "spas">("overview");
   const [token, setToken] = useState("");
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
@@ -312,12 +313,12 @@ export default function EspaceClientPage() {
       <AppShell compact>
         <StepHeader
           eyebrow="Espace client"
-          title="Connectez-vous"
-          description="Accédez à vos brouillons, vos demandes et vos documents après connexion."
+          title="Mon espace spa"
+          description="Retrouvez l’historique de votre spa, votre carnet, vos rappels, vos relevés, vos factures et vos rapports dans un seul espace. Services gratuits pour le moment."
         />
         <div className="flex flex-wrap gap-3">
           <Link
-            href="/acces?next=compte"
+            href="/connexion?next=compte"
             className="rounded-md bg-sanispa-navy px-5 py-3 font-bold text-white focus-ring"
           >
             Se connecter
@@ -337,8 +338,8 @@ export default function EspaceClientPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <StepHeader
           eyebrow="Espace client"
-          title="Mon espace SANISPA"
-          description="Lancez une demande, suivez vos dossiers et retrouvez vos documents."
+          title="Mon espace spa"
+          description="L’historique et les outils de votre spa, réunis au même endroit."
         />
         <button
           onClick={logout}
@@ -348,13 +349,19 @@ export default function EspaceClientPage() {
         </button>
       </div>
 
+      <nav aria-label="Rubriques de mon espace spa" className="mb-5 flex flex-wrap gap-2">{([["overview","Accueil"],["history","Mon historique"],["documents","Factures et rapports"],["spas","Mes spas et mon profil"]] as const).map(([key,label]) => <button type="button" key={key} onClick={()=>setView(key)} aria-current={view === key ? "page" : undefined} className={`focus-ring rounded-full border px-4 py-3 text-sm font-bold ${view === key ? "bg-sanispa-blue text-white" : "border-sanispa-line bg-white"}`}>{label}</button>)}</nav>
+      {view === "overview" ? <section className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Tous mes services spa">
+        <button type="button" onClick={()=>setView("history")} className="focus-ring rounded-2xl border border-sanispa-line bg-white p-5 text-left"><h2 className="text-xl font-bold">Mon historique →</h2><p className="mt-2 text-sm leading-6">{diagnostics.length} demande(s) · {drafts.length} brouillon(s). Suivi des interventions et nom du technicien.</p></button>
+        <button type="button" onClick={()=>setView("documents")} className="focus-ring rounded-2xl border border-sanispa-line bg-white p-5 text-left"><h2 className="text-xl font-bold">Factures et rapports →</h2><p className="mt-2 text-sm leading-6">Retrouvez et ajoutez les documents de votre spa.</p></button>
+        {[["Mon carnet et mes rappels","Entretiens, filtres et rappels automatiques.","/premium/carnet"],["Mes relevés d’eau","Historique des mesures et aide aux ajustements.","/premium/releves"],["Mon assistant IA","Une aide pour l’eau, les pannes et l’entretien.","/premium/assistant"],["Les notices de mon spa","Documents en français par marque et référence.","/premium/notices"],["Le forum des particuliers","Échanges entre propriétaires, modérés par SANISPA.","/premium/forum"],["Mes rendez-vous en visio","Mes demandes et rendez-vous avec SANISPA.","/visio"]].map(([title,text,href])=><Link key={href} href={href} className="focus-ring rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">{title} →</h2><p className="mt-2 text-sm leading-6">{text}</p></Link>)}
+      </section> : null}
       <div className="grid gap-5">
         {error ? (
           <p className="rounded-md bg-red-50 p-3 text-red-700" role="alert">
             {error}
           </p>
         ) : null}
-        {drafts.length ? (
+        {drafts.length && view === "history" ? (
           <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
             <h2 className="text-xl font-bold">Mes brouillons</h2>
             <p className="mt-2 text-sanispa-steel">
@@ -382,38 +389,14 @@ export default function EspaceClientPage() {
             </div>
           </section>
         ) : null}
-        <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold text-sanispa-navy">
-            Nouvelle demande d'assistance
-          </h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ["Traitement d'eau IA", "traitement-eau"],
-              ["Fuite", "fuite"],
-              ["Panne électrique", "electrique"],
-              ["Filtration", "filtration"],
-              ["Pompe", "pompe"],
-              ["Chauffage", "chauffage"],
-              ["Autre problème", "autre"],
-            ].map(([label, problemType]) => (
-              <Link
-                key={problemType}
-                onClick={() => clearDraft()}
-                href={`/diagnostic?new=1&problemType=${problemType}`}
-                className="rounded-md border border-sanispa-line bg-sanispa-ice px-4 py-3 text-sm font-bold text-sanispa-navy transition hover:border-sanispa-blue hover:bg-white focus-ring"
-              >
-                {label}
-              </Link>
-            ))}
-          </div>
-        </section>
+        {view === "overview" || view === "history" ? <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-sanispa-line bg-white p-5"><div><h2 className="text-xl font-bold">Un nouveau problème ?</h2><p className="mt-2 text-sm">Déclarez ce que vous constatez ; le questionnaire s’adapte au problème choisi.</p></div><Link href="/diagnostic?new=1" className="focus-ring rounded-full bg-sanispa-blue px-5 py-3 font-bold text-white">Déclarer une panne</Link></section> : null}
 
-        <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
+        <section hidden={view !== "history"} className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">
-            Mes demandes envoyées
+            Mes demandes et interventions
           </h2>
           <Link href="/visio" className="mt-4 inline-flex rounded-full border border-sanispa-line bg-white px-4 py-3 text-sm font-bold text-sanispa-blue">Mes rendez-vous en visio →</Link>
-          <p className="mt-3 text-sm">Vos demandes, rapports et factures restent accessibles gratuitement. <Link className="font-bold underline" href="/premium">Services offerts : IA, carnet, relevés, rappels, notices et forum →</Link></p>
+          <p className="mt-3 text-sm">Vos demandes, rapports et factures restent accessibles gratuitement dans cet espace.</p>
           <div className="mt-4 grid gap-3">
             {diagnostics.length ? (
               diagnostics.map((diagnostic) => (
@@ -492,7 +475,7 @@ export default function EspaceClientPage() {
           </div>
         </section>
 
-        <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
+        <section hidden={view !== "spas"} className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">Mes spas</h2>
           <form onSubmit={addSpa} className="mt-4 grid gap-4 sm:grid-cols-4">
             <Field
@@ -555,7 +538,7 @@ export default function EspaceClientPage() {
           </div>
         </section>
 
-        <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
+        <section hidden={view !== "documents"} className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">
             Mes factures et documents
           </h2>
@@ -681,7 +664,7 @@ export default function EspaceClientPage() {
           </div>
         </section>
 
-        <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
+        <section hidden={view !== "documents"} className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">
             Factures et documents d’intervention
           </h2>
@@ -690,7 +673,7 @@ export default function EspaceClientPage() {
           </p>
         </section>
 
-        <section className="rounded-md border border-sanispa-line bg-white shadow-soft">
+        <section hidden={view !== "spas"} className="rounded-md border border-sanispa-line bg-white shadow-soft">
           <button
             type="button"
             onClick={() => setInfoOpen((open) => !open)}

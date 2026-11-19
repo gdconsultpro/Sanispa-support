@@ -168,15 +168,7 @@ function DiagnosticContent() {
       writeDraft(next);
       const { data } = await getSupabaseBrowser().auth.getSession();
       if (!data.session?.user.email_confirmed_at) {
-        const response = await fetch("/api/client/access", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: next.email.trim().toLowerCase(), next: "diagnostic", problemType: next.problemType }),
-        });
-        if (!response.ok)
-          throw new Error(
-            "L’envoi du lien n’a pas abouti. Votre saisie est conservée. Réessayez dans un instant.",
-          );
-        router.push("/acces?sent=1");
+        router.push("/acces?next=diagnostic");
         return;
       }
       const destination = moving ? "/upload" : "/questionnaire";
@@ -312,8 +304,8 @@ function DiagnosticContent() {
           </p>
         ) : null}
         <p className="text-sm text-sanispa-steel">
-          Si vous n’êtes pas connecté, un seul lien par e-mail confirmera votre
-          adresse et vous ramènera à la suite de votre demande. Aucun mot de passe à créer.
+          Si vous n’êtes pas connecté, vous créerez votre compte avec un mot de passe.
+          Un seul e-mail confirmera votre adresse et vous ramènera à votre demande.
         </p>
         <Button type="submit" disabled={busy} className="w-full sm:w-auto">
           {busy ? "Préparation de votre parcours…" : moving ? "Ajouter mon dossier photo ou vidéo" : "Continuer ma déclaration"}

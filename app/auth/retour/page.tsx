@@ -80,8 +80,8 @@ export default function Callback() {
           <p role="alert" className="mt-4">
             {error}
           </p>
-          <Link className="mt-4 block underline" href="/acces">
-            Recevoir un nouveau lien
+          <Link className="mt-4 block underline" href="/connexion?next=compte">
+            Me connecter à mon compte
           </Link>
         </>
       ) : null}

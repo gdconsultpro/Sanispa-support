@@ -7,7 +7,7 @@ import { POST as customerBilling } from "../app/api/client/premium/route";
 import { POST as partnerBilling } from "../app/api/partner/subscription/route";
 import { clientTokenConfirmationUrl } from "../lib/client-access";
 const user="60000000-0000-4000-8000-000000000001",other="60000000-0000-4000-8000-000000000002",third="60000000-0000-4000-8000-000000000003";
-const profile={mode:"create",companyName:"Atelier TEST",contactName:"Technicien TEST",phone:"0600000000",address:"1 rue TEST",postalCode:"67000",city:"Strasbourg",departments:["67","68","67"]};
+const profile={mode:"create",companyName:"Atelier TEST",contactName:"Technicien TEST",phone:"0600000000",siret:"00000000000000",address:"1 rue TEST",postalCode:"67000",city:"Strasbourg",departments:["67","68","67"]};
 test("public partner registration is atomic and idempotent, owns one company and does not release clients or create payments",async()=>{
  const db=await fullDatabase();try{
  await db.query("insert into auth.users(id,email,email_confirmed_at) values($1,'tech@example.invalid',now()),($2,'other@example.invalid',now())",[user,other]);
@@ -32,10 +32,10 @@ test("confirmed email can claim only its unused pre-created company; existing or
  let status=(await db.query<any>("select partner_onboarding_status($1,'tech@example.invalid') state",[user])).rows[0].state;assert.equal(status.candidate.company_name,"Entreprise préinscrite TEST");
  assert.equal((await db.query<any>("select partner_onboarding_status($1,'other@example.invalid') state",[other])).rows[0].state.candidate,null);
  await assert.rejects(db.query("select register_partner_self($1,'tech@example.invalid',$2)",[user,JSON.stringify(profile)]),/EXISTING_COMPANY_CONFIRMATION_REQUIRED/);
- await assert.rejects(db.query("select register_partner_self($1,'other@example.invalid','{\"mode\":\"claim\"}')",[other]),/COMPANY_NOT_FOUND/);
- await db.exec("set role service_role");assert.equal((await db.query<any>("select register_partner_self($1,'tech@example.invalid','{\"mode\":\"claim\"}') id",[user])).rows[0].id,company);await db.exec("reset role");
+ await assert.rejects(db.query("select register_partner_self($1,'other@example.invalid',$2)",[other,JSON.stringify({...profile,mode:"claim"})]),/COMPANY_NOT_FOUND/);
+ await db.exec("set role service_role");assert.equal((await db.query<any>("select register_partner_self($1,'tech@example.invalid',$2) id",[user,JSON.stringify({...profile,mode:"claim"})])).rows[0].id,company);await db.exec("reset role");
  await db.query("update partner_users set active=false where user_id=$1",[user]);
- await assert.rejects(db.query("select register_partner_self($1,'tech@example.invalid','{\"mode\":\"claim\"}')",[third]),/PARTNER_ACCESS_INACTIVE/);
+ await assert.rejects(db.query("select register_partner_self($1,'tech@example.invalid',$2)",[third,JSON.stringify({...profile,mode:"claim"})]),/PARTNER_ACCESS_INACTIVE/);
  status=(await db.query<any>("select partner_onboarding_status($1,'tech@example.invalid') state",[third])).rows[0].state;assert.equal(status.blocked,true);
  }finally{await db.close();}
 });
@@ -65,4 +65,21 @@ test("registration API derives identity and email from the verified session; fre
   assert.equal(new URL(clientTokenConfirmationUrl(app,"a".repeat(64),"partenaire")).searchParams.get("next"),"partenaire");
   assert.equal(partnerRegistrationSchema.safeParse({...profile,active:true}).success,false);
  }finally{globalThis.fetch=original;for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
+});
+test("complete coordinates and SIRET are required, and only administrator review unlocks the first dossier",async()=>{
+ const db=await fullDatabase();try{
+ await db.query("insert into auth.users(id,email,email_confirmed_at) values($1,'tech@example.invalid',now()),($2,'admin@example.invalid',now())",[user,other]);await db.query("insert into admin_users(user_id,active) values($1,true)",[other]);
+ await assert.rejects(db.query("select register_partner_self($1,'tech@example.invalid',$2)",[user,JSON.stringify({...profile,siret:undefined})]),/INVALID_REGISTRATION/);
+ assert.equal((await db.query<any>("select count(*)::int n from partners")).rows[0].n,0);
+ await db.exec("set role service_role");const id=(await db.query<any>("select register_partner_self($1,'tech@example.invalid',$2) id",[user,JSON.stringify(profile)])).rows[0].id;await db.exec("reset role");
+ const p=(await db.query<any>("select siret,address,verification_status,verified_at from partners where id=$1",[id])).rows[0];assert.equal(p.siret,profile.siret);assert.equal(p.address,profile.address);assert.equal(p.verification_status,"pending");assert.equal(p.verified_at,null);
+ const customer=(await db.query<any>("insert into customers(name,phone,email,address,spa_brand,spa_year,installation_type,power_supply) values('TEST','0000000000','client@example.invalid','TEST','TEST','2020','exterieur','230V') returning id")).rows[0].id;
+ const diagnostic=(await db.query<any>("insert into diagnostics(customer_id,problem_type,choice,department,request_type,status) values($1,'fuite','intervention','67','TECHNICAL_REQUEST','NEW') returning id",[customer])).rows[0].id;
+ const publish=()=>db.query("select publish_partner_offer($1,$2,$3,'fuite','Fuite visible au niveau du raccord du spa','{}')",[diagnostic,id,other]);
+ await assert.rejects(publish(),/PARTNER_VERIFICATION_REQUIRED/);assert.equal((await db.query<any>("select count(*)::int n from notification_jobs")).rows[0].n,0);
+ await assert.rejects(db.query("select verify_partner_registration($1,$2)",[id,user]),/ADMIN_REQUIRED/);
+ await db.exec("set role authenticated");await assert.rejects(db.query("select verify_partner_registration($1,$2)",[id,other]),/permission denied/);await db.exec("reset role");
+ await db.exec("set role service_role");await db.query("select verify_partner_registration($1,$2)",[id,other]);await db.exec("reset role");await publish();
+ const approved=(await db.query<any>("select verification_status,verified_by,verified_at from partners where id=$1",[id])).rows[0];assert.equal(approved.verification_status,"verified");assert.equal(approved.verified_by,other);assert.ok(approved.verified_at);assert.equal((await db.query<any>("select count(*)::int n from notification_jobs")).rows[0].n,1);
+ }finally{await db.close();}
 });

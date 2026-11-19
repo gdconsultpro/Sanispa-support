@@ -1,8 +1,9 @@
-import { adminDenied } from "@/lib/admin-auth";
+import { administrator, requireSameOrigin } from "@/lib/admin-auth";
+import { apiError } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSupabaseAdmin } from "@/lib/supabase";
 const partnerSchema = z.object({
+    siret: z.string().transform(v=>v.replace(/\s/g,"" )).pipe(z.string().regex(/^\d{14}$/)).optional(),
     company_name: z.string().min(1).optional(),
     contact_name: z.string().optional().nullable(),
     email: z.string().email().optional(),
@@ -12,22 +13,26 @@ const partnerSchema = z.object({
     city: z.string().optional().nullable(),
     active: z.boolean().optional(),
     departments: z.array(z.string()).optional()
-});
+}).strict();
+const commandSchema=z.union([z.object({verify:z.literal(true)}).strict(),partnerSchema]);
 export async function PATCH(request: Request, { params }: {
     params: Promise<{
         id: string;
     }>;
 }) {
-    const denied = await adminDenied(request);
-    if (denied)
-        return denied;
     try {
-        const { id } = await params;
-        const payload = partnerSchema.parse(await request.json());
-        const supabase = getSupabaseAdmin();
+        const {supabase,user}=await administrator(request.headers);
+        requireSameOrigin(request);
+        const id = z.string().uuid().parse((await params).id);
+        const payload = commandSchema.parse(await request.json());
+        if ("verify" in payload) {
+            const result=await supabase.rpc("verify_partner_registration",{p_partner:id,p_actor:user.id});
+            if(result.error) return NextResponse.json({error:"Vérification impossible. Renseignez le SIRET, le contact et l’adresse complète de l’entreprise active."},{status:409});
+            return NextResponse.json({partner:await loadPartner(supabase,id)});
+        }
         const { departments, ...partnerPayload } = payload;
         if (Object.keys(partnerPayload).length) {
-            const { error } = await supabase.from("partners").update(partnerPayload).eq("id", id);
+            const { error } = await supabase.from("partners").update({...partnerPayload,...(Object.keys(partnerPayload).some(k=>k!=="active")?{verification_status:"pending",verified_at:null,verified_by:null}:{})}).eq("id", id);
             if (error)
                 throw error;
         }
@@ -38,8 +43,7 @@ export async function PATCH(request: Request, { params }: {
         return NextResponse.json({ partner });
     }
     catch (error) {
-        const message = error instanceof Error ? error.message : "Erreur partenaire";
-        return NextResponse.json({ error: message }, { status: 400 });
+        return apiError(error);
     }
 }
 async function loadPartner(supabase: any, id: string) {
@@ -70,5 +74,5 @@ async function replaceDepartments(supabase: any, partnerId: string, departments:
         throw error;
 }
 function normalizeDepartments(departments: string[]) {
-    return Array.from(new Set(departments.map((department) => department.replace(/\D/g, "")).filter(Boolean)));
+    return Array.from(new Set(departments.map((department) => department.trim().toUpperCase()).filter(v=>/^(?:\d{2,3}|2[AB])$/.test(v))));
 }

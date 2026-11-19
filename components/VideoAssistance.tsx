@@ -71,7 +71,7 @@ export function VideoAssistance({ audience, diagnosticId }: { audience: "custome
       </form>
     </section>
     <section className="min-w-0"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-2xl font-bold">Mes demandes de visio</h2><button onClick={() => void load()} className="focus-ring rounded-full px-3 py-2 text-sm font-bold text-sanispa-blue underline">Actualiser</button></div>
-      {error ? <p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error} {audience === "customer" ? <Link href="/acces?next=visio" className="font-bold underline">Me connecter</Link> : null}</p> : null}
+      {error ? <p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error} {audience === "customer" ? <Link href="/connexion?next=visio" className="font-bold underline">Me connecter</Link> : null}</p> : null}
       {message ? <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">{message}</p> : null}
       {loading ? <p role="status">Chargement de vos demandes…</p> : <div className="space-y-4">{sessions.map(session => <VideoSessionCard key={session.id} session={session} />)}{!sessions.length ? <p className="rounded-2xl border border-sanispa-line bg-white p-5 text-sm leading-7">Vos demandes et vos liens de rendez-vous apparaîtront ici.</p> : null}</div>}
     </section>
