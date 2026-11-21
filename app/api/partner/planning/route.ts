@@ -58,7 +58,11 @@ const moveInput = z.object({
   starts_at: timestamp,
   technician_id: technicianId,
 }).strict();
-const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, stockInput, locateClientInput, technicianInput, moveInput]);
+const tourInput = z.object({
+  action: z.literal("bookTourVisit"), source: z.enum(["private", "sanispa"]), id: z.string().uuid(),
+  expected_at: timestamp.nullable(), starts_at: timestamp, ends_at: timestamp, technician_id: z.string().uuid(),
+}).strict();
+const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput]);
 const rangeInput = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
@@ -73,14 +77,18 @@ async function requirePlanner(request: Request) {
 }
 
 type Address = Pick<PrivatePartnerClient, "street" | "postal_code" | "city">;
+type MapLocation = { latitude: number | null; longitude: number | null; approximateLocation?: boolean };
 
-async function locateAddress(address: Address, budget?: AbortSignal) {
+async function locateAddress(address: Address, budget?: AbortSignal, municipality = false) {
   const unknown = { latitude: null, longitude: null };
-  if (!address.street || !address.postal_code || !address.city) return unknown;
+  if (!address.city || (!municipality && (!address.street || !address.postal_code))) return unknown;
   const params = new URLSearchParams({
-    q: partnerClientAddress(address), index: "address", limit: "5", postcode: address.postal_code,
+    q: partnerClientAddress(municipality ? { ...address, street: "" } : address), index: "address", limit: "5",
   });
+  if (address.postal_code) params.set("postcode", address.postal_code);
+  if (municipality) params.set("type", "municipality");
   const compact = (s: string) => s.toLowerCase().replace(/\s/g, "");
+  const normalizeCity = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const number = address.street.match(/^\d+(?:\s*(?:bis|ter|quater)(?=\s|$)|[a-z](?=\s|$))?/i)?.[0];
   try {
     const response = await fetch("https://data.geopf.fr/geocodage/search?" + params, {
@@ -90,14 +98,18 @@ async function locateAddress(address: Address, budget?: AbortSignal) {
     const results = z.object({
       features: z.array(z.object({
         geometry: z.object({ type: z.literal("Point"), coordinates: z.tuple([z.number().min(-180).max(180), z.number().min(-85).max(85)]) }),
-        properties: z.object({ postcode: z.string().optional(), score: z.number(), type: z.string(), housenumber: z.string().optional() }),
+        properties: z.object({ postcode: z.string().optional(), score: z.number(), type: z.string(),
+          housenumber: z.string().optional(), city: z.string().optional(), citycode: z.string().optional() }),
       })),
     }).safeParse(await response.json());
     if (!results.success) return unknown;
-    const match = results.data.features.find(({ properties }) =>
-      properties.postcode === address.postal_code && properties.score >= 0.65 &&
-      (number ? properties.type === "housenumber" && compact(properties.housenumber ?? "") === compact(number) : ["street", "locality"].includes(properties.type)),
-    );
+    const matches = results.data.features.filter(({ properties }) =>
+      (!address.postal_code || properties.postcode === address.postal_code) && properties.score >= 0.65 &&
+      (municipality ? properties.type === "municipality" && normalizeCity(properties.city ?? "") === normalizeCity(address.city)
+        : number ? properties.type === "housenumber" && compact(properties.housenumber ?? "") === compact(number)
+        : ["street", "locality"].includes(properties.type)));
+    if (municipality && new Set(matches.map(match => match.properties.citycode)).size > 1) return unknown;
+    const match = matches[0];
     if (!match) return unknown;
     const [longitude, latitude] = match.geometry.coordinates;
     return { latitude, longitude };
@@ -106,7 +118,7 @@ async function locateAddress(address: Address, budget?: AbortSignal) {
   }
 }
 
-async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: Array<Address | null>) {
+async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: Array<Address | null>, pendingAddresses: Array<Address | null>) {
   function addressKey(address: Address) {
     return partnerClientAddress(address).toLowerCase();
   }
@@ -122,19 +134,48 @@ async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: A
     const key = addressKey(address);
     if (!located.has(key)) lookup.set(key, address);
   }
-  const remaining = [...lookup.entries()];
   const budget = AbortSignal.timeout(8000);
-  for (let offset = 0; offset < remaining.length && !budget.aborted; offset += 20) {
-    const started = Date.now();
-    await Promise.all(remaining.slice(offset, offset + 20).map(async ([key, address]) => {
-      located.set(key, await locateAddress(address, budget));
-    }));
-    // Spread provider lookups across the selected week without delaying small maps.
-    const delay = 600 - (Date.now() - started);
-    if (delay > 0 && offset + 20 < remaining.length && !budget.aborted)
-      await new Promise(resolve => setTimeout(resolve, delay));
+  const municipalities = new Map<string, Awaited<ReturnType<typeof locateAddress>>>();
+  let nextBatch = 0;
+  async function locateBatch(addresses: Map<string, Address>, municipality: boolean) {
+    const remaining = [...addresses.entries()];
+    for (let offset = 0; offset < remaining.length && !budget.aborted; offset += 20) {
+      const delay = nextBatch - Date.now();
+      if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
+      if (budget.aborted) break;
+      nextBatch = Date.now() + 600;
+      await Promise.all(remaining.slice(offset, offset + 20).map(async ([key, address]) => {
+        (municipality ? municipalities : located).set(key, await locateAddress(address, budget, municipality));
+      }));
+    }
   }
-  return (address: Address | null) => address ? located.get(addressKey(address)) : undefined;
+  await locateBatch(lookup, false);
+  const municipalityKey = (address: Address) => addressKey({ ...address, street: "" });
+  const pendingMunicipalities = new Map<string, Address>();
+  for (const address of pendingAddresses) {
+    if (address?.city && located.get(addressKey(address))?.latitude == null) {
+      pendingMunicipalities.set(municipalityKey(address), address);
+    }
+  }
+  await locateBatch(pendingMunicipalities, true);
+  return (address: Address | null, allowApproximate = false): MapLocation | undefined => {
+    if (!address) return undefined;
+    const precise = located.get(addressKey(address));
+    if (precise?.latitude != null || !allowApproximate) return precise;
+    const approximate = municipalities.get(municipalityKey(address));
+    return approximate?.latitude == null ? precise : { ...approximate, approximateLocation: true };
+  };
+}
+
+async function pendingRows<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>) {
+  const size = 250;
+  const rows: T[] = [];
+  for (let offset = 0; ; offset += size) {
+    const { data, error } = await page(offset, offset + size - 1);
+    if (error) throw error;
+    if (data) rows.push(...data);
+    if (!data || data.length < size) return rows;
+  }
 }
 
 export async function GET(request: Request) {
@@ -177,35 +218,39 @@ export async function GET(request: Request) {
         .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id).is("diagnostic.archived_at", null)
         .lt("starts_at", to).gt("ends_at", from).order("starts_at"),
       technicians(),
-      forMap ? privateQuery().is("starts_at", null).order("updated_at", { ascending: false }) : null,
-      forMap ? supabase.from("diagnostics")
+      forMap ? pendingRows((from, to) => privateQuery().is("starts_at", null)
+        .order("updated_at", { ascending: false }).order("id").range(from, to)) : null,
+      forMap ? pendingRows((from, to) => supabase.from("diagnostics")
         .select("id,problem_type,status,customer:customers(name,address),partner_appointments(),intervention_reports()")
         .eq("assigned_partner_id", partner.id).is("archived_at", null).not("status", "in", "(CLOSED,terminé)")
-        .is("partner_appointments", null).is("intervention_reports", null).order("created_at", { ascending: false }) : null,
+        .is("partner_appointments", null).is("intervention_reports", null)
+        .order("created_at", { ascending: false }).order("id").range(from, to)) : null,
     ]);
     if (privateVisits.error) throw privateVisits.error;
     if (sanispaVisits.error) throw sanispaVisits.error;
-    if (waitingPrivate?.error) throw waitingPrivate.error;
-    if (waitingSanispa?.error) throw waitingSanispa.error;
     if (forMap) {
       const visits = privateVisits.data as unknown as PrivatePartnerVisit[];
       const sanispa = sanispaVisits.data as unknown as SanispaPartnerVisit[];
-      const pendingVisits = (waitingPrivate?.data ?? []) as unknown as PendingPrivatePartnerVisit[];
-      const pendingDossiers = (waitingSanispa?.data ?? []) as unknown as PendingPartnerDossier[];
+      const pendingVisits = (waitingPrivate ?? []) as unknown as PendingPrivatePartnerVisit[];
+      const pendingDossiers = (waitingSanispa ?? []) as unknown as PendingPartnerDossier[];
       const dossierAddress = (dossier: PendingPartnerDossier | SanispaPartnerVisit["diagnostic"]) => partnerVisitAddress(dossier.customer?.address);
+      const pendingDossierAddresses = pendingDossiers.map(dossierAddress);
       const location = await mapLocations(
         [...visits, ...pendingVisits].map(visit => visit.client),
-        [...sanispa.map(visit => dossierAddress(visit.diagnostic)), ...pendingDossiers.map(dossierAddress)],
+        [...sanispa.map(visit => dossierAddress(visit.diagnostic)), ...pendingDossierAddresses],
+        [...pendingVisits.map(visit => visit.client), ...pendingDossierAddresses],
       );
       function locateVisit<T extends (PrivatePartnerVisit | PendingPrivatePartnerVisit)>(visit: T) {
-        return visit.client.latitude !== null && visit.client.longitude !== null
-          ? visit : { ...visit, client: { ...visit.client, ...location(visit.client) } };
+        const point = visit.client.latitude === null || visit.client.longitude === null
+          ? location(visit.client, visit.starts_at === null) : undefined;
+        return { ...visit, latitude: point?.latitude ?? visit.client.latitude, longitude: point?.longitude ?? visit.client.longitude,
+          approximateLocation: point?.approximateLocation };
       }
       return NextResponse.json({
         visits: visits.map(locateVisit),
         sanispa: sanispa.map(visit => ({ ...visit, ...location(dossierAddress(visit.diagnostic)) })),
         pendingVisits: pendingVisits.map(locateVisit),
-        pendingDossiers: pendingDossiers.map(dossier => ({ ...dossier, ...location(dossierAddress(dossier)) })),
+        pendingDossiers: pendingDossiers.map((dossier, index) => ({ ...dossier, ...location(pendingDossierAddresses[index], true) })),
         technicians: team,
       });
     }
@@ -235,6 +280,18 @@ export async function POST(request: Request) {
       if (error?.message.includes("TECHNICIAN_NOT_FOUND")) throw new HttpError(404, "Ce technicien est introuvable dans votre planning.");
       if (/APPOINTMENT_CHANGED|partner_private_visits_schedule_pair/.test(error?.message ?? ""))
         throw new HttpError(409, "Ce rendez-vous a été modifié. Le planning a été actualisé.");
+      if (error) throw interventionError(error);
+      return NextResponse.json({ saved: true });
+    }
+    if (command.action === "bookTourVisit") {
+      const { error } = await supabase.rpc("book_partner_tour_visit", {
+        p_partner: partner.id, p_actor: user.id, p_source: command.source, p_id: command.id,
+        p_expected: command.expected_at, p_start: command.starts_at, p_end: command.ends_at, p_technician: command.technician_id,
+      });
+      if (error?.message.includes("TECHNICIAN_SLOT_OCCUPIED")) throw new HttpError(409, "Ce technicien a déjà un rendez-vous sur ce créneau. Choisissez un autre horaire.");
+      if (error?.message.includes("APPOINTMENT_CHANGED")) throw new HttpError(409, "Cette intervention a déjà été modifiée ou planifiée. Actualisez la carte.");
+      if (error?.message.includes("TECHNICIAN_NOT_FOUND")) throw new HttpError(400, "Choisissez un technicien de votre équipe.");
+      if (error?.message.includes("INVALID_APPOINTMENT_DURATION")) throw new HttpError(400, "Choisissez une durée comprise entre 1 minute et 12 heures.");
       if (error) throw interventionError(error);
       return NextResponse.json({ saved: true });
     }

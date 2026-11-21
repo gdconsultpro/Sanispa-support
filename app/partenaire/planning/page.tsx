@@ -15,7 +15,7 @@ import {
   interventionTypes, partnerClientAddress, partnerDirections, partnerClientsPath, partnerMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
   type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention,
   type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
-  type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit,
+  type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
 
 const path = "/partenaire/planning";
@@ -84,6 +84,7 @@ export default function PartnerPlanningPage() {
   const [locating, setLocating] = useState(false);
   const mapTitle = useRef<HTMLHeadingElement>(null);
   const openNewClient = useRef(false);
+  const loadedAgenda = useRef("");
 
   const activePeriod = view === "map" ? mapPeriod : period;
   useEffect(() => {
@@ -104,7 +105,7 @@ export default function PartnerPlanningPage() {
     setLoadError("");
     if (view === "clients") setPage(null);
     else if (view === "stock") setInventory(null);
-    else setAgenda(null);
+    else if (loadedAgenda.current !== query.toString()) setAgenda(null);
     void plannerRequest(endpoint + "?" + query, { signal: controller.signal }).then(result => {
       if (!result || controller.signal.aborted) return;
       if (view === "clients") {
@@ -116,7 +117,10 @@ export default function PartnerPlanningPage() {
         }
       }
       else if (view === "stock") setInventory(result);
-      else setAgenda(result);
+      else {
+        loadedAgenda.current = query.toString();
+        setAgenda(result);
+      }
     }).catch(error => { if (!controller.signal.aborted) setLoadError(partnerAuthError(error)); });
     return () => controller.abort();
   }, [view, day, activePeriod, search, offset, revision]);
@@ -169,6 +173,17 @@ export default function PartnerPlanningPage() {
       setGridError(error instanceof Error ? error.message : "La modification n’a pas pu être enregistrée.");
       if (error instanceof PlannerRequestError && error.status === 409) setRevision(value => value + 1);
       return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveTourVisit(booking: TourBooking) {
+    setSaving(true);
+    try {
+      const result = await plannerRequest(endpoint, { payload: { action: "bookTourVisit", ...booking } });
+      if (!result) throw new Error("Reconnectez-vous pour enregistrer le rendez-vous.");
+      setRevision(current => current + 1);
     } finally {
       setSaving(false);
     }
@@ -304,10 +319,12 @@ export default function PartnerPlanningPage() {
     if (!agenda || view !== "map") return null;
     const own = [...agenda.visits, ...(agenda.pendingVisits ?? [])].map(visit => ({
       id: "private:" + visit.id, title: `${visit.title} · ${visit.client.name}`, startsAt: visit.starts_at, technicianId: visit.technician_id,
-      address: partnerClientAddress(visit.client), latitude: visit.client.latitude, longitude: visit.client.longitude, client: visit.client, visit,
+      endsAt: visit.ends_at ?? undefined, address: partnerClientAddress(visit.client),
+      latitude: visit.latitude ?? visit.client.latitude, longitude: visit.longitude ?? visit.client.longitude,
+      approximateLocation: visit.approximateLocation, client: visit.client, visit,
     }));
     const scheduled = agenda.sanispa.map(visit => ({
-      id: "sanispa:" + visit.diagnostic_id, dossierId: visit.diagnostic_id, startsAt: visit.starts_at, technicianId: visit.technician_id,
+      id: "sanispa:" + visit.diagnostic_id, dossierId: visit.diagnostic_id, startsAt: visit.starts_at, endsAt: visit.ends_at, technicianId: visit.technician_id,
       title: `${problemLabel(visit.diagnostic.problem_type)} · ${visit.diagnostic.customer?.name || "Client"}`,
       address: visit.diagnostic.customer?.address ?? "", latitude: visit.latitude ?? null, longitude: visit.longitude ?? null,
     }));
@@ -315,6 +332,7 @@ export default function PartnerPlanningPage() {
       id: "sanispa:" + dossier.id, dossierId: dossier.id, startsAt: null, technicianId: null,
       title: `${problemLabel(dossier.problem_type)} · ${dossier.customer?.name || "Client"}`,
       address: dossier.customer?.address ?? "", latitude: dossier.latitude ?? null, longitude: dossier.longitude ?? null,
+      approximateLocation: dossier.approximateLocation,
     }));
     return [...own, ...scheduled, ...pending].sort((left, right) =>
       (left.startsAt ? Date.parse(left.startsAt) : Infinity) - (right.startsAt ? Date.parse(right.startsAt) : Infinity));
@@ -464,7 +482,7 @@ export default function PartnerPlanningPage() {
       {view === "map" ? <>
         {mapWeek ? <p className="mb-3 font-bold">Semaine du {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" })
           .formatRange(mapWeek, plannerDay(plannerDate(mapWeek), 6))}</p> : null}
-        <PartnerTourMap items={mapItems} team={team} period={mapPeriod} busy={saving}
+        <PartnerTourMap items={mapItems} team={team} period={mapPeriod} scope={day} busy={saving} onBook={saveTourVisit}
           onVisit={visit => edit({ type: "visit", id: visit.id, client: visit.client, visit })}
           onAddress={client => edit({ type: "client", id: client.id, client, returnToMap: true })} />
       </> : null}

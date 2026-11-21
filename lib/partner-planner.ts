@@ -15,12 +15,13 @@ export type PrivatePartnerClient = {
 
 type Times = { starts_at: string; ends_at: string };
 type ScheduledVisit = Times & { technician_id: string | null; updated_at: string };
+type MapPosition = { latitude?: number | null; longitude?: number | null; approximateLocation?: boolean };
 export type PrivatePartnerVisit = ScheduledVisit & {
   id: string;
   title: string;
   description: string;
   client: PrivatePartnerClient;
-};
+} & MapPosition;
 export type PendingPrivatePartnerVisit = Omit<PrivatePartnerVisit, "starts_at" | "ends_at"> & {
   starts_at: null;
   ends_at: null;
@@ -56,13 +57,11 @@ export type PartnerMapPoint = {
   pending?: boolean;
 };
 
-export type PendingPartnerDossier = {
+export type PendingPartnerDossier = MapPosition & {
   id: string;
   problem_type: string;
   status: string;
   customer: { name: string | null; address: string | null } | null;
-  latitude?: number | null;
-  longitude?: number | null;
 };
 
 export type PlannerMapIntervention = {
@@ -70,13 +69,55 @@ export type PlannerMapIntervention = {
   title: string;
   address: string;
   startsAt: string | null;
+  endsAt?: string;
   technicianId: string | null;
   latitude: number | null;
   longitude: number | null;
+  approximateLocation?: boolean;
   client?: PrivatePartnerClient;
   visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit;
   dossierId?: string;
 };
+
+export type TourBooking = {
+  source: "private" | "sanispa";
+  id: string;
+  expected_at: string | null;
+  starts_at: string;
+  ends_at: string;
+  technician_id: string;
+};
+
+type LocatedIntervention = PlannerMapIntervention & { latitude: number; longitude: number };
+
+function hasMapCoordinates(item: PlannerMapIntervention): item is LocatedIntervention {
+  return item.latitude !== null && item.longitude !== null;
+}
+
+export function nearbyPendingVisits(anchor: PlannerMapIntervention, items: PlannerMapIntervention[], radius: number) {
+  if (!hasMapCoordinates(anchor)) return [];
+  const radians = Math.PI / 180;
+  return items.flatMap(item => {
+    if (item.startsAt || !hasMapCoordinates(item) ||
+        (anchor.technicianId && item.technicianId && item.technicianId !== anchor.technicianId)) return [];
+    const north = Math.sin((item.latitude - anchor.latitude) * radians / 2);
+    const east = Math.sin((item.longitude - anchor.longitude) * radians / 2);
+    const halfChord = north ** 2 + Math.cos(anchor.latitude * radians) * Math.cos(item.latitude * radians) * east ** 2;
+    const distance = 12742 * Math.asin(Math.sqrt(Math.min(1, halfChord)));
+    return distance <= radius ? [{ item, distance }] : [];
+  }).sort((left, right) => left.distance - right.distance || left.item.title.localeCompare(right.item.title, "fr"));
+}
+
+export function suggestedTourStart(endsAt: string, appointments: Array<{ startsAt: string; endsAt: string }> = [], now = new Date()) {
+  const quarter = 15 * 60000;
+  const after = (time: number) => Math.ceil((time + 30 * 60000) / quarter) * quarter;
+  let start = after(Math.max(Date.parse(endsAt), +now));
+  for (const appointment of [...appointments].sort((left, right) => Date.parse(left.startsAt) - Date.parse(right.startsAt))) {
+    const bookedEnd = Date.parse(appointment.endsAt);
+    if (start < bookedEnd && Date.parse(appointment.startsAt) < start + 3600000) start = after(bookedEnd);
+  }
+  return new Date(start);
+}
 
 export function matchesPlannerMapFilters(item: Pick<PlannerMapIntervention, "startsAt" | "technicianId">,
   status: "all" | "scheduled" | "pending", technician: string) {

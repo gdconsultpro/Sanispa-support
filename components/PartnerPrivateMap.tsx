@@ -7,7 +7,9 @@ import { partnerDirections, type PartnerMapPoint } from "@/lib/partner-planner";
 
 const tiles = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png";
 
-export default function PartnerPrivateMap({ points, label = "Carte de l’adresse" }: { points: PartnerMapPoint[]; label?: string }) {
+export default function PartnerPrivateMap({ points, label = "Carte de l’adresse", onAppointment }: {
+  points: PartnerMapPoint[]; label?: string; onAppointment?: (id: string) => void;
+}) {
   const element = useRef<HTMLDivElement>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
@@ -36,7 +38,7 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
       const first = group[0];
       const title = group.length > 1 ? `${group.length} interventions à cette adresse` : first.title;
       const pinColor = group.every(point => point.pending) ? "bg-amber-600" : "bg-sanispa-blue";
-      marker([first.latitude, first.longitude], {
+      const pin = marker([first.latitude, first.longitude], {
         icon: divIcon({
           className: `grid place-items-center rounded-full border-[3px] border-white ${pinColor} text-sm font-bold text-white shadow-lg`,
           html: group.length > 1 ? "+" + group.length : String(points.indexOf(first) + 1),
@@ -46,7 +48,12 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
         }),
         title,
         alt: title,
-      }).bindPopup(() => {
+      }).addTo(instance);
+      if (group.length === 1 && !first.pending && onAppointment) {
+        pin.on("click", () => onAppointment(first.id));
+        continue;
+      }
+      pin.bindPopup(() => {
         const popup = document.createElement("div");
         popup.className = "grid gap-2";
         for (const point of group) {
@@ -67,15 +74,26 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
             address.textContent = point.address + " · Itinéraire";
             item.append(address);
           }
+          if (!point.pending && onAppointment) {
+            const choose = document.createElement("button");
+            choose.type = "button";
+            choose.className = "block min-h-11 text-left font-bold text-sanispa-blue underline";
+            choose.textContent = "Interventions à proximité";
+            choose.addEventListener("click", () => {
+              pin.closePopup();
+              onAppointment(point.id);
+            });
+            item.append(choose);
+          }
           popup.append(item);
         }
         return popup;
-      }).addTo(instance);
+      });
     }
     const observer = new ResizeObserver(() => instance.invalidateSize());
     observer.observe(element.current);
     return () => { observer.disconnect(); instance.remove(); };
-  }, [points]);
+  }, [points, onAppointment]);
 
   return <>
     <div ref={element} role="region" aria-label={label} className="isolate h-72 w-full rounded-xl bg-sanispa-ice sm:h-96" />
