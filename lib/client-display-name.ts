@@ -1,3 +1,5 @@
+export const clientProfileUpdated = "sanispa:client-profile-updated";
+
 export function clientDisplayName(firstName?: string | null, lastName?: string | null) {
   const first = firstName?.trim().split(/\s+/).filter(Boolean) ?? [];
   const last = lastName?.trim() || (first.length > 1 ? first.at(-1) : "");

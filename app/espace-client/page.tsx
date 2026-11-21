@@ -15,6 +15,7 @@ import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { downloadBlob } from "@/lib/download";
 import { CarePreviewCards, ClientCaseCard, DraftCard, type CarePreview } from "@/components/ClientSpaceCards";
 import { clientCaseProgress, type ClientCase } from "@/lib/client-case-progress";
+import { clientProfileUpdated } from "@/lib/client-display-name";
 import type { DraftListItem } from "@/lib/client-drafts";
 type Profile = {
   first_name: string;
@@ -67,15 +68,23 @@ const documentTypes = [
   "Devis",
   "Autre document",
 ];
+const profileFields = [
+  { key: "first_name", label: "Prénom", autoComplete: "given-name" },
+  { key: "last_name", label: "Nom", autoComplete: "family-name" },
+  { key: "phone", label: "Téléphone", autoComplete: "tel", type: "tel" },
+  { key: "address", label: "Adresse", autoComplete: "street-address" },
+  { key: "postal_code", label: "Code postal", autoComplete: "postal-code" },
+  { key: "city", label: "Ville", autoComplete: "address-level2" },
+] as const;
 const views = [
   ["accueil", "Accueil"], ["demandes", "Mes demandes"],
   ["entretien", "Mon entretien"], ["documents", "Mes documents"],
 ] as const;
-type View = (typeof views)[number][0] | "spas";
+type View = (typeof views)[number][0] | "spas" | "coordonnees";
 
 function currentView(): View {
   const requested = new URLSearchParams(window.location.search).get("view");
-  if (requested === "spas" || requested === "demandes" || requested === "entretien" || requested === "documents") return requested;
+  if (requested === "spas" || requested === "coordonnees" || requested === "demandes" || requested === "entretien" || requested === "documents") return requested;
   return "accueil";
 }
 
@@ -89,6 +98,8 @@ export default function EspaceClientPage() {
   const [view, setView] = useState<View>("accueil");
   const [token, setToken] = useState("");
   const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [profileStatus, setProfileStatus] = useState<{ message: string; error?: boolean } | null>(null);
   const [diagnostics, setDiagnostics] = useState<ClientCase[]>([]);
   const [spas, setSpas] = useState<Spa[]>([]);
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
@@ -104,7 +115,6 @@ export default function EspaceClientPage() {
     diagnosticId: "",
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [infoOpen, setInfoOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingDocument, setUploadingDocument] = useState(false);
@@ -123,7 +133,10 @@ export default function EspaceClientPage() {
       }),
     );
     if (signal?.aborted) return;
-    if (profile.status === "fulfilled" && profile.value.profile) setProfile(profile.value.profile);
+    if (profile.status === "fulfilled" && profile.value.profile) {
+      setProfile(profile.value.profile);
+      setProfileLoaded(true);
+    }
     if (cases.status === "fulfilled") setDiagnostics(cases.value.diagnostics ?? []);
     if (spas.status === "fulfilled") setSpas(spas.value.spas ?? []);
     if (documents.status === "fulfilled") setDocuments(documents.value.documents ?? []);
@@ -188,11 +201,12 @@ export default function EspaceClientPage() {
   }
   function updateProfile(key: keyof Profile, value: string) {
     setProfile((current) => ({ ...current, [key]: value }));
+    setProfileStatus(null);
   }
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("");
-    setError("");
+    if (savingProfile || !profileLoaded) return;
+    setProfileStatus(null);
     setSavingProfile(true);
     try {
       const response = await fetch("/api/client/profile", {
@@ -207,13 +221,13 @@ export default function EspaceClientPage() {
       if (!response.ok || !data.profile)
         throw new Error(data.error || "Enregistrement impossible.");
       setProfile(data.profile);
-      setMessage("Informations enregistrées.");
+      setProfileStatus({ message: "Vos coordonnées ont été enregistrées." });
+      window.dispatchEvent(new Event(clientProfileUpdated));
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Enregistrement impossible pour le moment.",
-      );
+      setProfileStatus({
+        message: saveError instanceof Error ? saveError.message : "Enregistrement impossible pour le moment.",
+        error: true,
+      });
     } finally {
       setSavingProfile(false);
     }
@@ -373,12 +387,18 @@ export default function EspaceClientPage() {
     <AppShell compact clientSpace>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-x-3">
         <h1 className="text-2xl font-bold text-sanispa-navy sm:text-3xl">Mon espace spa</h1>
-        <button
-          onClick={logout}
-          className="focus-ring min-h-11 rounded-md px-2 text-sm font-bold text-sanispa-steel underline"
-        >
-          Déconnexion
-        </button>
+        <div className="flex flex-wrap items-center gap-x-3">
+          {view === "coordonnees" ? null : (
+            <button type="button" onClick={() => selectView("coordonnees")}
+              className="focus-ring min-h-11 rounded-md px-2 text-sm font-bold text-sanispa-blue underline">
+              Modifier mes coordonnées
+            </button>
+          )}
+          <button type="button" onClick={logout}
+            className="focus-ring min-h-11 rounded-md px-2 text-sm font-bold text-sanispa-steel underline">
+            Déconnexion
+          </button>
+        </div>
       </div>
 
       {view === "accueil" && availableDrafts[0] ? (
@@ -427,7 +447,7 @@ export default function EspaceClientPage() {
             </section>
             <div className="flex flex-wrap items-center gap-3">
               <ButtonLink href="/diagnostic?new=1" variant="secondary">Déclarer une panne</ButtonLink>
-              <button type="button" className="focus-ring min-h-12 px-2 font-bold underline" onClick={() => selectView("spas")}>Mes spas et mon profil</button>
+              <button type="button" className="focus-ring min-h-12 px-2 font-bold underline" onClick={() => selectView("spas")}>Mes spas</button>
             </div>
           </>
         ) : null}
@@ -471,7 +491,7 @@ export default function EspaceClientPage() {
                 </Link>
               ))}
               <button type="button" onClick={() => selectView("spas")} className="focus-ring rounded-2xl border border-sanispa-line bg-white p-4 text-left">
-                <span className="font-bold">Mes spas et mon profil →</span>
+                <span className="font-bold">Mes spas →</span>
               </button>
             </div>
           </section>
@@ -568,6 +588,7 @@ export default function EspaceClientPage() {
           <h2 className="text-xl font-bold text-sanispa-navy">
             Mes factures et documents
           </h2>
+          {message ? <p role="status" className="mt-3 rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">{message}</p> : null}
 
           <details className="my-4 rounded-xl border border-sanispa-line bg-sanispa-ice p-4">
             <summary className="focus-ring cursor-pointer font-bold">Ajouter un document</summary>
@@ -702,114 +723,52 @@ export default function EspaceClientPage() {
           </p>
         </section>
 
-        <section hidden={view !== "spas"} className="rounded-md border border-sanispa-line bg-white shadow-soft">
-          <button
-            type="button"
-            onClick={() => setInfoOpen((open) => !open)}
-            className="flex w-full items-center justify-between px-5 py-4 text-left focus-ring"
-          >
-            <span>
-              <span className="block text-xl font-bold text-sanispa-navy">
-                Mes informations
-              </span>
-              <span className="mt-1 block text-sm text-sanispa-steel">
-                Modifier mes coordonnées et les informations de mon spa.
-              </span>
-            </span>
-            <span className="text-2xl font-bold text-sanispa-blue">
-              {infoOpen ? "−" : "+"}
-            </span>
-          </button>
-
-          {infoOpen ? (
-            <form
-              onSubmit={saveProfile}
-              className="grid gap-4 border-t border-sanispa-line p-5 sm:grid-cols-2"
-            >
-              <Field
-                label="Prénom"
-                name="first_name"
-                value={profile.first_name ?? ""}
-                onChange={(value) => updateProfile("first_name", value)}
-              />
-              <Field
-                label="Nom"
-                name="last_name"
-                value={profile.last_name ?? ""}
-                onChange={(value) => updateProfile("last_name", value)}
-              />
-              <Field
-                label="Téléphone"
-                name="phone"
-                value={profile.phone ?? ""}
-                onChange={(value) => updateProfile("phone", value)}
-              />
-              <Field
-                label="Adresse e-mail du compte"
-                name="email"
-                value={profile.email ?? ""}
-                onChange={(value) => updateProfile("email", value)}
-              />
-              <Field
-                label="Adresse"
-                name="address"
-                value={profile.address ?? ""}
-                onChange={(value) => updateProfile("address", value)}
-              />
-              <Field
-                label="Code postal"
-                name="postal_code"
-                value={profile.postal_code ?? ""}
-                onChange={(value) => updateProfile("postal_code", value)}
-              />
-              <Field
-                label="Ville"
-                name="city"
-                value={profile.city ?? ""}
-                onChange={(value) => updateProfile("city", value)}
-              />
-              <Field
-                label="Marque du spa"
-                name="spa_brand"
-                value={profile.spa_brand ?? ""}
-                onChange={(value) => updateProfile("spa_brand", value)}
-              />
-              <Field
-                label="Modèle du spa"
-                name="spa_model"
-                value={profile.spa_model ?? ""}
-                onChange={(value) => updateProfile("spa_model", value)}
-              />
-              <Field
-                label="Année approximative"
-                name="spa_year"
-                value={profile.spa_year ?? ""}
-                onChange={(value) => updateProfile("spa_year", value)}
-              />
-              <div className="sm:col-span-2">
-                <p className="mb-3 text-sm text-sanispa-steel">
-                  L’adresse e-mail reste celle de votre compte de connexion. Ce
-                  formulaire ne permet pas de la modifier.
-                </p>
-                {message ? (
-                  <p className="mb-3 rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">
-                    {message}
-                  </p>
-                ) : null}
-                {error ? (
-                  <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">
-                    {error}
-                  </p>
-                ) : null}
-                <Button type="submit" disabled={savingProfile}>
-                  {savingProfile
-                    ? "Enregistrement..."
-                    : "Enregistrer mes informations"}
-                </Button>
-              </div>
-            </form>
-          ) : null}
-        </section>
+        {view === "coordonnees" ? (
+          <section aria-labelledby="contact-title" className="min-w-0 rounded-2xl border border-sanispa-line bg-white p-4 sm:p-6">
+            <h2 id="contact-title" className="text-xl font-bold text-sanispa-navy">Mes coordonnées</h2>
+            <p className="mb-5 mt-2 text-sm text-sanispa-steel">Vos coordonnées seront reprises dans vos nouvelles déclarations.</p>
+            {profileLoaded ? (
+              <form onSubmit={saveProfile}>
+                <fieldset disabled={savingProfile} className="grid min-w-0 gap-4 sm:grid-cols-2">
+                  {profileFields.map((field) => (
+                    <Field
+                      key={field.key}
+                      label={field.label}
+                      name={field.key}
+                      autoComplete={field.autoComplete}
+                      type={"type" in field ? field.type : undefined}
+                      value={profile[field.key] ?? ""}
+                      onChange={(value) => updateProfile(field.key, value)}
+                    />
+                  ))}
+                  <div className="min-w-0 sm:col-span-2">
+                    <p className="text-sm font-bold text-sanispa-navy">Adresse e-mail de connexion</p>
+                    <p className="break-all text-sm text-sanispa-steel">{sessionEmail}</p>
+                  </div>
+                  <details className="rounded-xl border border-sanispa-line p-3 sm:col-span-2">
+                    <summary className="focus-ring cursor-pointer text-sm font-bold">Informations complémentaires sur le spa</summary>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                      <Field label="Marque du spa" name="spa_brand" value={profile.spa_brand ?? ""} onChange={(value) => updateProfile("spa_brand", value)} />
+                      <Field label="Modèle du spa" name="spa_model" value={profile.spa_model ?? ""} onChange={(value) => updateProfile("spa_model", value)} />
+                      <Field label="Année approximative" name="spa_year" value={profile.spa_year ?? ""} onChange={(value) => updateProfile("spa_year", value)} />
+                    </div>
+                  </details>
+                  <div className="sm:col-span-2">
+                    {profileStatus ? (
+                      <p role={profileStatus.error ? "alert" : "status"}
+                        className={`mb-3 rounded-md p-3 text-sm font-bold ${profileStatus.error ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+                        {profileStatus.message}
+                      </p>
+                    ) : null}
+                    <Button type="submit" disabled={savingProfile}>
+                      {savingProfile ? "Enregistrement…" : "Enregistrer mes coordonnées"}
+                    </Button>
+                  </div>
+                </fieldset>
+              </form>
+            ) : <p className="text-sm text-sanispa-steel">Vos coordonnées sont momentanément indisponibles.</p>}
+          </section>
+        ) : null}
       </div>
     </AppShell>
   );

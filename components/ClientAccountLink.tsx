@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { clientDisplayName } from "@/lib/client-display-name";
+import { clientDisplayName, clientProfileUpdated } from "@/lib/client-display-name";
 import { useClientSession } from "./SessionPrivacy";
 
 export function ClientAccountLink({ clientSpace }: { clientSpace: boolean }) {
@@ -13,8 +13,11 @@ export function ClientAccountLink({ clientSpace }: { clientSpace: boolean }) {
 
   useEffect(() => {
     if (!userId || !token) return;
-    const controller = new AbortController();
+    let pending: AbortController | undefined;
     async function loadLabel() {
+      pending?.abort();
+      const controller = new AbortController();
+      pending = controller;
       try {
         const response = await fetch("/api/client/profile", {
           cache: "no-store",
@@ -31,7 +34,11 @@ export function ClientAccountLink({ clientSpace }: { clientSpace: boolean }) {
       }
     }
     void loadLabel();
-    return () => controller.abort();
+    window.addEventListener(clientProfileUpdated, loadLabel);
+    return () => {
+      pending?.abort();
+      window.removeEventListener(clientProfileUpdated, loadLabel);
+    };
   }, [token, userId]);
 
   const name = profileLabel.userId === userId ? profileLabel.name : "";
