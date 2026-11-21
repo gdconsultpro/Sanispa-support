@@ -1,3 +1,5 @@
+import { clientDossierPath } from "./client-case-navigation";
+
 export type ClientCase = {
   id: string;
   public_reference?: string | null;
@@ -18,7 +20,7 @@ export type ClientCase = {
 };
 
 export function clientCaseProgress(dossier: ClientCase, now = Date.now()) {
-  const detail = `/espace-client/interventions/${dossier.id}`;
+  const detail = clientDossierPath(dossier.id);
   const report = dossier.reports?.[0];
   const invoice = dossier.invoices?.[0];
   const video = dossier.visios?.[0];

@@ -1,4 +1,5 @@
 import { adminDossierPath } from "./admin-navigation";
+import { clientDossierPath, clientSummaryPdfPath } from "./client-case-navigation";
 import { createHash } from "node:crypto";
 import { paymentsPaused } from "./commercial-mode";
 import {
@@ -39,8 +40,6 @@ export type DiagnosticEmailPayload = {
   amountPaid?: number | null;
   status?: string | null;
   appUrl?: string;
-  dossierUrl?: string;
-  summaryPdfUrl?: string;
   answers: EmailAnswer[];
   photos: EmailPhoto[];
 };
@@ -417,14 +416,11 @@ function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
   `;
 }
 function buildCustomerConfirmationEmail(payload: DiagnosticEmailPayload) {
-  const baseUrl =
-    payload.appUrl ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "https://sanispa-support.vercel.app";
+  const baseUrl = new URL(process.env.NEXT_PUBLIC_APP_URL || payload.appUrl || "https://support.sani-spa.fr").origin;
   const firstName = payload.customer.name.split(" ")[0] || "Client SANISPA";
   const espaceClientUrl = `${baseUrl}/espace-client`;
-  const dossierUrl = payload.dossierUrl || espaceClientUrl;
-  const summaryPdfUrl = payload.summaryPdfUrl || espaceClientUrl;
+  const dossierUrl = baseUrl + clientDossierPath(payload.diagnosticId);
+  const summaryPdfUrl = baseUrl + clientSummaryPdfPath(payload.diagnosticId);
   const isWaterAnalysis =
     payload.choice === "remote" && payload.paymentPlan === "water";
   const amountLine = customerAmountLine(payload);

@@ -4,6 +4,8 @@ import { GET as drafts } from "../app/api/client/drafts/route";
 import { GET as dashboard } from "../app/api/client/dashboard/route";
 import { GET as care } from "../app/api/client/care/route";
 import { clientCaseProgress, type ClientCase } from "../lib/client-case-progress";
+import { clientCaseLoginPath, clientCaseReturnPath } from "../lib/client-case-navigation";
+import { sendCustomerConfirmation } from "../lib/email";
 
 const owner = "90000000-0000-4000-8000-000000000001";
 const dossierId = "90000000-0000-4000-8000-000000000002";
@@ -13,6 +15,49 @@ const dossier: ClientCase = {
   id: dossierId, public_reference: "SAV-1", status: "NEW",
   problem_type: "fuite", choice: "intervention", payment_status: null, created_at: created,
 };
+
+test("the receipt e-mail has three separate destinations on the current app origin", async () => {
+  const previousFetch = globalThis.fetch;
+  const env = { ...process.env };
+  const app = "https://support.sani-spa.fr";
+  Object.assign(process.env, { NEXT_PUBLIC_APP_URL: app, RESEND_API_KEY: "fixture", EMAIL_PROVIDER: "resend" });
+  let html = "";
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://api.resend.com/emails");
+    html = JSON.parse(String(init?.body)).html;
+    return Response.json({ id: "simulated-receipt" });
+  };
+  try {
+    await sendCustomerConfirmation({
+      diagnosticId: dossierId, dossierReference: "SAV-1", appUrl: "https://legacy.fixture.invalid",
+      customer: { name: "Client Test", phone: "0000000000", email: "client@example.invalid", address: "Rue de test", spaBrand: "Fictif", spaYear: "" },
+      problemType: "fuite", choice: "intervention", answers: [], photos: [],
+    });
+    const links = [...html.matchAll(/<a href="([^"]+)"/g)].map(match => match[1]);
+    assert.deepEqual(links, [
+      app + "/espace-client",
+      app + "/espace-client/interventions/" + dossierId,
+      app + "/espace-client/interventions/" + dossierId + "/resume-pdf",
+    ]);
+  } finally {
+    globalThis.fetch = previousFetch;
+    for (const key of Object.keys(process.env)) if (!(key in env)) delete process.env[key];
+    Object.assign(process.env, env);
+  }
+});
+
+test("client login preserves only known case and summary destinations", () => {
+  const path = "/espace-client/interventions/" + dossierId;
+  for (const destination of [path, path + "#validation", path + "/resume-pdf"]) {
+    const login = new URL(clientCaseLoginPath(destination), "https://support.sani-spa.fr");
+    assert.equal(login.pathname, "/connexion");
+    assert.equal(login.searchParams.get("next"), "compte");
+    assert.equal(clientCaseReturnPath(login.searchParams.get("retour")), destination);
+  }
+  for (const invalid of ["//fixture.invalid", "https://fixture.invalid" + path, path + "/../../", path + "?next=//fixture.invalid", "/espace-client/interventions/invalid/resume-pdf"]) {
+    assert.equal(clientCaseReturnPath(invalid), null);
+  }
+});
 
 test("case actions reflect appointments, unread reports and completed work", () => {
   assert.equal(clientCaseProgress(dossier).label, "Demande reçue");

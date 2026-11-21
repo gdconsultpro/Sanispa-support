@@ -6,6 +6,7 @@ import { PrivateFile } from "./PrivateFile";
 import { Button } from "./Button";
 import { localDateTime } from "@/lib/client-browser-api";
 import { partnerLoginPath } from "@/lib/partner-navigation";
+import { clientCaseLoginPath, clientCaseReturnPath, clientDossierPath } from "@/lib/client-case-navigation";
 import { partnerWorkLabels, partnerWorkState } from "@/lib/partner-work";
 type Report = { id: string; performed_at: string; submitted_at: string; findings: string; actions: string; next_steps: string; client_validated_at: string | null;
   client_outcome: "repaired" | "quote_pending" | "abandoned" | null; responsiveness: number | null; professionalism: number | null; pricing: number | null };
@@ -47,14 +48,21 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
   const [ratings, setRatings] = useState({ responsiveness: 0, professionalism: 0, pricing: 0 });
   const pending = useRef(false);
   const request = useCallback(async (url: string, init?: RequestInit) => {
+    const redirectToLogin = () => {
+      const dossier = clientDossierPath(id);
+      const destination = clientCaseReturnPath(dossier + window.location.hash) || dossier;
+      window.location.replace(role === "partner"
+        ? partnerLoginPath("/partenaire/interventions/" + id)
+        : clientCaseLoginPath(destination));
+    };
     const { data: auth } = await getSupabaseBrowser().auth.getSession();
     if (!auth.session) {
-      if (role === "partner") window.location.replace(partnerLoginPath("/partenaire/interventions/" + id));
+      if (!init?.signal?.aborted) redirectToLogin();
       throw new Error("Reconnectez-vous pour accéder à votre dossier.");
     }
     const response = await fetch(url, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${auth.session.access_token}` }, cache: "no-store" });
     const body = await response.json();
-    if (response.status === 401 && role === "partner") window.location.replace(partnerLoginPath("/partenaire/interventions/" + id));
+    if (response.status === 401 && !init?.signal?.aborted) redirectToLogin();
     if (!response.ok) throw new Error(body.error || "Opération impossible. Réessayez.");
     return { body, userId: auth.session.user.id };
   }, [id, role]);

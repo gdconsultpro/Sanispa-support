@@ -7,6 +7,7 @@ import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
 import { publicClientIntent } from "@/lib/client-access";
+import { clientCaseReturnPath } from "@/lib/client-case-navigation";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 export default function ConnexionPage() {
     const router = useRouter();
@@ -25,8 +26,11 @@ export default function ConnexionPage() {
             const { error } = await supabase.auth.signInWithPassword({ email, password });
             if (error)
                 throw error;
-            const next = publicClientIntent(new URLSearchParams(window.location.search).get("next") || "compte");
-            router.push(`/auth/retour?next=${next}`);
+            const query = new URLSearchParams(window.location.search);
+            const destination = clientCaseReturnPath(query.get("retour"));
+            const next = publicClientIntent(query.get("next") || "compte");
+            if (destination) router.replace(destination);
+            else router.push(`/auth/retour?next=${next}`);
         }
         catch {
             setError("Connexion impossible. Vérifiez votre adresse e-mail et votre mot de passe. Si nécessaire, utilisez le lien « Mot de passe oublié » pour retrouver votre accès.");
