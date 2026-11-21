@@ -1,3 +1,4 @@
+import { adminDossierPath } from "./admin-navigation";
 import { createHash } from "node:crypto";
 import { paymentsPaused } from "./commercial-mode";
 import {
@@ -365,6 +366,7 @@ async function sendTransactionalEmail({
   };
 }
 function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
+  const dossierUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://support.sani-spa.fr") + adminDossierPath(payload.diagnosticId);
   const answers = payload.answers
     .map(
       (answer) => `
@@ -410,7 +412,7 @@ function buildDiagnosticEmail(payload: DiagnosticEmailPayload) {
       <table style="border-collapse:collapse;width:100%;max-width:760px;">${answers}</table>
       <h2>Photos</h2>
       <ul>${photos}</ul>
-      <p style="margin-top:24px;">Connectez-vous à l'espace d'administration pour consulter le dossier et traiter la demande.</p>
+      <p style="margin-top:24px;"><a href="${escapeHtml(dossierUrl)}">Ouvrir cette demande dans l’administration</a></p>
     </div>
   `;
 }
@@ -561,7 +563,7 @@ export async function sendPartnerAcceptance(payload: {
   partnerName: string;
   notificationKey: string;
 }, declined = false) {
-  const url = `${process.env.NEXT_PUBLIC_APP_URL}/admin`;
+  const url = (process.env.NEXT_PUBLIC_APP_URL || "https://support.sani-spa.fr") + adminDossierPath(payload.diagnosticId, "followup");
   const partner = escapeHtml(payload.partnerName);
   const reference = escapeHtml(payload.dossierReference || "Référence en cours");
   return sendTransactionalEmail({

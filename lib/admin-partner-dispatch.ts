@@ -1,7 +1,9 @@
 import { leadCatalog } from "./partner-catalog";
 import { z } from "zod";
+import { parseLocation } from "./partner-leads";
+import { statusLabel } from "./display-labels";
 import { HttpError } from "./http";
-import { partnerDispatchDecision } from "./partner-release";
+import { partnerDispatchDecision, partnerLeadStatuses } from "./partner-release";
 export const dispatchCommand = z.union([
   z.object({ action: z.literal("keep") }).strict(),
   z
@@ -35,18 +37,16 @@ export async function loadPartnerDispatch(supabase: any, id: string) {
   const { data: d, error } = await supabase
     .from("diagnostics")
     .select(
-      "choice,request_type,status,archived_at,department,partner_kept_at,partner_kept_by,partner_released_at,partner_released_by,matched_partner_ids,assigned_partner_id,lead_category,preview_description,preview_photo_paths,diagnostic_photos(storage_path,photo_type)",
+      "choice,request_type,status,archived_at,department,problem_type,partner_kept_at,partner_kept_by,partner_released_at,partner_released_by,matched_partner_ids,assigned_partner_id,lead_category,preview_description,preview_photo_paths,diagnostic_photos(storage_path,photo_type),customers(address,spa_brand,spa_model)",
     )
     .eq("id", id)
     .single();
   if (error) throw error;
-  const [eligible, purchases, notification] = await Promise.all([
+  const [sector, purchases, notification, refusal] = await Promise.all([
     supabase
       .from("partner_departments")
-      .select("partners!inner(id,company_name,active,leads_paid)")
-      .eq("department", d.department)
-      .eq("partners.active", true)
-      .neq("partners.verification_status", "pending"),
+      .select("partners!inner(id,company_name,active,verification_status,leads_paid)")
+      .eq("department", d.department),
     supabase
       .from("lead_purchases")
       .select("status")
@@ -60,15 +60,37 @@ export async function loadPartnerDispatch(supabase: any, id: string) {
           .eq("key", `${id}:manual-partner:${d.matched_partner_ids[0]}`)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    d.partner_released_at || d.partner_kept_at || d.assigned_partner_id
+      ? Promise.resolve({ data: null, error: null })
+      : supabase.from("diagnostic_activity").select("created_at,metadata")
+        .eq("diagnostic_id", id).eq("event_type", "partner_declined").order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
-  if (eligible.error || purchases.error || notification.error)
-    throw eligible.error || purchases.error || notification.error;
+  if (sector.error || purchases.error || notification.error || refusal.error)
+    throw sector.error || purchases.error || notification.error || refusal.error;
+  const coveringPartners = (sector.data ?? []).map((row: any) => Array.isArray(row.partners) ? row.partners[0] : row.partners).filter(Boolean);
+  const partners = coveringPartners.filter((partner: any) => partner.active && partner.verification_status !== "pending");
+  const pendingPartners = coveringPartners.filter((partner: any) => partner.active && partner.verification_status === "pending");
+  const inactivePartners = coveringPartners.filter((partner: any) => !partner.active);
+  const customer = Array.isArray(d.customers) ? d.customers[0] : d.customers;
+  const location = parseLocation(customer?.address, d.department);
   const decision = partnerDispatchDecision({
     ...d,
     lead_purchase: purchases.data?.[0],
   });
+  const statusAllowsRelease = partnerLeadStatuses.includes(d.status);
   return {
     decision,
+    assigned: Boolean(d.assigned_partner_id),
+    declined: refusal.data ? { at: refusal.data.created_at, company: refusal.data.metadata?.company_name || null } : null,
+    blockedReason: d.archived_at ? "Restaurez ce dossier avant de le proposer." : !statusAllowsRelease
+      ? "Le statut « " + statusLabel(d.status) + " » bloque la diffusion. Traitez le dossier ou placez-le en analyse si la demande est toujours ouverte."
+      : !d.department ? "Renseignez le département d’intervention pour sélectionner un partenaire."
+      : !partners.length
+        ? pendingPartners.length ? "Des entreprises couvrent ce département. Leur vérification reste à terminer."
+          : inactivePartners.length ? "Les entreprises qui couvrent ce département sont désactivées."
+          : "Aucun partenaire ne couvre ce département."
+        : null,
+    pendingPartners: pendingPartners.map((partner: any) => partner.company_name),
     decidedAt: d.partner_kept_at || d.partner_released_at || null,
     selectedPartner:
       notification.data?.payload?.partners?.[0]?.companyName || null,
@@ -76,19 +98,20 @@ export async function loadPartnerDispatch(supabase: any, id: string) {
     canRelease:
       decision === "pending" &&
       !d.archived_at &&
-      ["NEW", "AVAILABLE", "nouvelle"].includes(d.status),
+      statusAllowsRelease,
     notification: notification.data
       ? { state: notification.data.state, sentAt: notification.data.sent_at }
       : null,
     preview: {
-      category: d.lead_category || "",
+      category: d.lead_category || (Object.hasOwn(leadCatalog, d.problem_type || "") ? d.problem_type : ""),
+      city: location.city,
+      postalCode: location.postalCode,
+      spa: [customer?.spa_brand, customer?.spa_model].filter(Boolean).join(" "),
       description: d.preview_description || "",
       photos: d.preview_photo_paths || [],
       availablePhotos: d.diagnostic_photos || [],
     },
-    partners: (eligible.data ?? []).map((r: any) =>
-      Array.isArray(r.partners) ? r.partners[0] : r.partners,
-    ),
+    partners,
   };
 }
 

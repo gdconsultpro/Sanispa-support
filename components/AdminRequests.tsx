@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { partnerDispatchLabels, type PartnerDispatchDecision } from "@/lib/partner-release";
+import type { AdminDossierSection } from "@/lib/admin-navigation";
 import { statusLabel } from "@/lib/display-labels";
 
 export type AdminRequestItem = {
@@ -12,6 +13,8 @@ export type AdminRequestItem = {
   createdAt: string;
   status: string;
   dispatchDecision?: PartnerDispatchDecision | null;
+  dispatchProgress?: string | null;
+  nextAction?: string | null;
   dueAt: string | null;
   overdue: boolean;
   panels: { diagnostic: ReactNode; documents: ReactNode; followup: ReactNode; history: ReactNode };
@@ -36,10 +39,15 @@ function dateLabel(value: string, withTime = false) {
   }).format(date);
 }
 
-export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
+export function AdminRequests({ items, pinnedItem, initialDossier, initialSection }: {
+  items: AdminRequestItem[];
+  pinnedItem?: AdminRequestItem;
+  initialDossier?: string | null;
+  initialSection?: AdminDossierSection;
+}) {
   const id = useId();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>("diagnostic");
+  const [selectedId, setSelectedId] = useState<string | null>(initialDossier ?? null);
+  const [activeTab, setActiveTab] = useState<TabKey>(initialSection ?? "diagnostic");
   const [notice, setNotice] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -49,7 +57,7 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const scrollRef = useRef({ x: 0, y: 0 });
   const focusRestoreVersion = useRef(0);
-  const selected = items.find(item => item.id === selectedId);
+  const selected = items.find(item => item.id === selectedId) ?? (pinnedItem?.id === selectedId ? pinnedItem : undefined);
   const selectedPresent = Boolean(selected);
 
   useEffect(() => {
@@ -94,11 +102,31 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
     if (panelScrollRef.current) panelScrollRef.current.scrollTop = 0;
   }, [selectedId, activeTab]);
 
+  function setDossierUrl(dossier: string | null, section: TabKey = "diagnostic") {
+    const url = new URL(window.location.href);
+    if (dossier) url.searchParams.set("dossier", dossier);
+    else url.searchParams.delete("dossier");
+    if (dossier && section !== "diagnostic") url.searchParams.set("section", section);
+    else url.searchParams.delete("section");
+    window.history.replaceState(window.history.state, "", url);
+  }
+
+  function closeDossier() {
+    setDossierUrl(null);
+    setSelectedId(null);
+  }
+
+  function changeTab(tab: TabKey) {
+    setActiveTab(tab);
+    if (selectedId) setDossierUrl(selectedId, tab);
+  }
+
   function openRequest(itemId: string, trigger: HTMLButtonElement) {
     triggerRef.current = trigger;
     scrollRef.current = { x: window.scrollX, y: window.scrollY };
     setNotice("");
     setActiveTab("diagnostic");
+    setDossierUrl(itemId);
     setSelectedId(itemId);
   }
 
@@ -110,7 +138,7 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
     else if (event.key === "End") next = tabs.length - 1;
     else return;
     event.preventDefault();
-    setActiveTab(tabs[next].key);
+    changeTab(tabs[next].key);
     tabRefs.current[next]?.focus({ preventScroll: true });
   }
 
@@ -158,12 +186,12 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
             <span className="col-span-2 row-start-2 min-w-0 lg:col-span-1 lg:row-auto">
               <span className="block break-words text-base font-bold leading-snug text-sanispa-navy">{item.clientName}</span>
               <span className="mt-1 line-clamp-2 break-words leading-snug text-sanispa-steel">{item.subject}</span>
-              {item.dispatchDecision?<span className={`mt-2 inline-block rounded px-2 py-1 text-xs font-bold ${item.dispatchDecision==="pending"?"bg-amber-100 text-amber-900":"bg-sanispa-ice text-sanispa-navy"}`}>Diffusion : {partnerDispatchLabels[item.dispatchDecision]}</span>:null}
+              {item.dispatchDecision?<span className={`mt-2 inline-block rounded px-2 py-1 text-xs font-bold ${item.dispatchDecision==="pending"?"bg-amber-100 text-amber-900":"bg-sanispa-ice text-sanispa-navy"}`}>{item.dispatchProgress || partnerDispatchLabels[item.dispatchDecision]}</span>:null}
             </span>
             <time dateTime={item.createdAt} className="col-start-2 row-start-1 text-right text-xs text-sanispa-steel lg:col-auto lg:row-auto lg:text-left">{dateLabel(item.createdAt)}</time>
             <span className="col-start-1 row-start-3 min-w-0 self-start lg:col-auto lg:row-auto lg:self-auto"><span className="inline-block max-w-full break-words rounded-md bg-sanispa-ice px-2 py-1 text-xs font-bold leading-relaxed text-sanispa-navy group-hover:bg-white">{statusLabel(item.status)}</span></span>
             <span className={`col-span-2 row-start-4 min-w-0 text-left text-xs lg:col-span-1 lg:row-auto ${item.dueAt ? "block" : "hidden lg:block"} ${item.overdue ? "font-bold text-amber-800" : "text-sanispa-steel"}`}>
-              {item.dueAt ? <><span className="block lg:sr-only">Échéance</span><time dateTime={item.dueAt}>{dateLabel(item.dueAt, true)}</time>{item.overdue ? <span className="mt-1 block">À traiter</span> : null}</> : <span className="hidden lg:inline">—</span>}
+              {item.dueAt ? <><span className="block lg:sr-only">Échéance</span><time dateTime={item.dueAt}>{dateLabel(item.dueAt, true)}</time>{item.overdue ? <span className="mt-1 block">À traiter</span> : null}{item.nextAction ? <span className="mt-1 block break-words line-clamp-2">{item.nextAction}</span> : null}</> : <span className="hidden lg:inline">—</span>}
             </span>
             <span aria-hidden="true" className="col-start-2 row-start-3 justify-self-end self-center font-bold text-sanispa-blue lg:col-auto lg:row-auto">Ouvrir <span className="lg:hidden">→</span></span>
           </button>
@@ -173,12 +201,12 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
 
     <dialog ref={dialogRef} aria-labelledby={`${id}-detail-title`} aria-describedby={`${id}-detail-subject`}
       onKeyDown={keepFocusInside}
-      onCancel={event => { event.preventDefault(); setSelectedId(null); }}
-      onClose={event => { if (!event.currentTarget.open) setSelectedId(null); }}
+      onCancel={event => { event.preventDefault(); closeDossier(); }}
+      onClose={event => { if (!event.currentTarget.open && selectedId) closeDossier(); }}
       onClick={event => {
         if (event.target !== event.currentTarget) return;
         const bounds = event.currentTarget.getBoundingClientRect();
-        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) setSelectedId(null);
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeDossier();
       }}
       className="admin-request-dialog m-0 h-[100dvh] max-h-[100dvh] w-full max-w-none overflow-hidden border-0 bg-white p-0 text-sanispa-navy shadow-xl sm:m-auto sm:h-[min(90dvh,900px)] sm:max-h-[90dvh] sm:w-[calc(100vw-3rem)] sm:max-w-5xl sm:rounded-xl">
       {selected ? <div key={selected.id} className="flex h-full min-h-0 flex-col">
@@ -187,8 +215,9 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
           <h2 id={`${id}-detail-title`} ref={titleRef} tabIndex={-1} className="mt-1 break-words text-xl font-bold leading-tight outline-none sm:text-2xl">{selected.clientName}</h2>
           <p id={`${id}-detail-subject`} className="mt-2 line-clamp-3 break-words text-sm leading-snug text-sanispa-steel">{selected.subject}</p>
           <span className="mt-2 inline-block rounded-md bg-sanispa-ice px-2 py-1 text-xs font-bold">{statusLabel(selected.status)}</span>
-          {selected.dispatchDecision?<span className="ml-2 mt-2 inline-block rounded-md bg-amber-50 px-2 py-1 text-xs font-bold">Diffusion : {partnerDispatchLabels[selected.dispatchDecision]}</span>:null}
-          <button type="button" onClick={() => setSelectedId(null)} aria-label="Fermer le dossier"
+          {selected.dispatchDecision?<span className="ml-2 mt-2 inline-block rounded-md bg-amber-50 px-2 py-1 text-xs font-bold">{selected.dispatchProgress || partnerDispatchLabels[selected.dispatchDecision]}</span>:null}
+          {selected.nextAction ? <p className="mt-2 line-clamp-2 break-words text-sm"><strong>À faire</strong> · {selected.nextAction}{selected.dueAt ? " · " + dateLabel(selected.dueAt, true) : ""}</p> : null}
+          <button type="button" onClick={closeDossier} aria-label="Fermer le dossier"
             className="focus-ring absolute right-3 top-3 inline-flex min-h-11 items-center gap-2 rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold hover:bg-sanispa-ice sm:right-5 sm:top-5">
             Fermer <span aria-hidden="true" className="text-xl leading-none">×</span>
           </button>
@@ -198,7 +227,7 @@ export function AdminRequests({ items }: { items: AdminRequestItem[] }) {
             ref={element => { tabRefs.current[index] = element; }}
             id={`${id}-tab-${tab.key}`} aria-selected={activeTab === tab.key} aria-controls={`${id}-panel-${tab.key}`}
             tabIndex={activeTab === tab.key ? 0 : -1}
-            onClick={() => setActiveTab(tab.key)} onKeyDown={event => navigateTabs(event, index)}
+            onClick={() => changeTab(tab.key)} onKeyDown={event => navigateTabs(event, index)}
             className={`focus-ring min-h-11 rounded-md px-2 py-2 text-sm font-bold transition ${activeTab === tab.key ? "bg-sanispa-navy text-white" : "text-sanispa-steel hover:bg-white hover:text-sanispa-navy"}`}>
             {tab.label}
           </button>)}

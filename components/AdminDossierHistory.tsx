@@ -17,7 +17,12 @@ function eventLabel(item: AdminActivity) {
   const labels: Record<string, string> = {
     partner_kept: "Dossier conservé chez SANISPA · aucune diffusion partenaire",
     partner_released: "Diffusion validée par SANISPA vers le partenaire sélectionné",
-    partner_assigned: "Prise en charge gratuite par un partenaire",
+    partner_assigned: "Prise en charge confirmée par le partenaire",
+    partner_declined: typeof item.metadata?.company_name === "string" ? item.metadata.company_name + " a indiqué son indisponibilité" : "Partenaire indisponible · dossier à réattribuer",
+    appointment_scheduled: "Rendez-vous enregistré ou déplacé",
+    appointment_cancelled: "Rendez-vous annulé",
+    intervention_report_submitted: "Compte rendu transmis au client",
+    client_intervention_validated: "Compte rendu validé par le client",
     notes_updated: "Notes internes modifiées",
     action_created: "Action créée",
     action_updated: "Action modifiée",

@@ -1,3 +1,4 @@
+import { AdminInterventionOverview } from "./AdminInterventionOverview";
 import { AdminIntervention } from "./AdminIntervention";
 import Link from "next/link";
 import { AdminPartnerRelease } from "@/components/AdminPartnerRelease";
@@ -192,18 +193,15 @@ export function diagnosticPanels(
         </section>
         <AdminClientDocuments
           diagnosticId={diagnostic.id}
-          documents={details?.documents ?? []}
+          documents={[...(details?.documents ?? [])].sort((a, b) => Number(b.diagnostic_id === diagnostic.id) - Number(a.diagnostic_id === diagnostic.id))}
           error={details?.documentsError}
         />
       </div>
     ),
     followup: (
       <div className="grid min-w-0 gap-5">
-        <AdminIntervention
-          diagnosticId={diagnostic.id}
-          partnerId={diagnostic.assigned_partner_id}
-          partnerName={diagnostic.assigned_partner || undefined}
-        />
+        {diagnostic.assigned_partner_id || diagnostic.partner_kept_at || diagnostic.intervened_at
+          ? <AdminInterventionOverview dossier={diagnostic} partnerName={diagnostic.assigned_partner} /> : null}
         {diagnostic.request_type === "TECHNICAL_REQUEST" ? (
           <AdminPartnerRelease diagnosticId={diagnostic.id} />
         ) : null}
@@ -226,6 +224,10 @@ export function diagnosticPanels(
             initialNotes={diagnostic.internal_notes || ""}
           />
         </section>
+        {!diagnostic.archived_at ? <details className="rounded-md border border-sanispa-line p-4">
+          <summary className="cursor-pointer font-bold">Enregistrer manuellement une intervention</summary>
+          <AdminIntervention diagnosticId={diagnostic.id} partnerId={diagnostic.assigned_partner_id} partnerName={diagnostic.assigned_partner || undefined} />
+        </details> : null}
         <AdminActions
           diagnosticId={diagnostic.id}
           archived={Boolean(diagnostic.archived_at)}

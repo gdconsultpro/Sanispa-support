@@ -27,6 +27,12 @@ export function PartnerAdmin({
   const [form, setForm] = useState(emptyForm);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
+  const [onlyPending, setOnlyPending] = useState(initialPartners.some(partner => partner.verification_status === "pending"));
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  const [checked, setChecked] = useState(false);
+  const [correction, setCorrection] = useState("");
+  const [showEditor, setShowEditor] = useState(false);
   const isEditing = Boolean(form.id);
   const editingPartner = partners.find((partner) => partner.id === form.id);
 
@@ -40,12 +46,25 @@ export function PartnerAdmin({
     [partners],
   );
 
+  const pendingCount = partners.filter(partner => partner.verification_status === "pending").length;
+  const term = query.trim().toLowerCase();
+  const visiblePartners = sortedPartners.filter(partner =>
+    (!onlyPending || partner.verification_status === "pending")
+    && (!term || [partner.company_name, partner.email, partner.contact_name, partner.city, ...partner.departments].join(" ").toLowerCase().includes(term)
+      || partner.siret?.includes(term.replace(/\s/g, ""))));
+
+  function openEditor() {
+    setShowEditor(true);
+    requestAnimationFrame(() => document.getElementById("partner-editor")?.scrollIntoView({ block: "start" }));
+  }
+
   function updateField(field: keyof typeof emptyForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
   function editPartner(partner: PartnerAdminItem) {
     setMessage("");
+    openEditor();
     setForm({
       id: partner.id,
       company_name: partner.company_name,
@@ -104,6 +123,7 @@ export function PartnerAdmin({
       return [payload.partner, ...current];
     });
     setForm(emptyForm);
+    setShowEditor(false);
     setMessage(isEditing ? "Partenaire mis à jour." : "Partenaire ajouté.");
   }
 
@@ -124,14 +144,29 @@ export function PartnerAdmin({
   }
 
   async function verifyPartner(partner: PartnerAdminItem) {
-    if(saving)return;setSaving(true);setMessage("");
-    try { const response=await fetch(`/api/admin/partners/${partner.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({verify:true})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"Vérification impossible.");setPartners(current=>current.map(p=>p.id===partner.id?payload.partner:p));setMessage("Entreprise vérifiée. Elle peut maintenant recevoir les dossiers que vous validez."); }
+    if (saving || !checked) return;
+    setSaving(true);
+    setMessage("");
+    try { const response=await fetch(`/api/admin/partners/${partner.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({verify:true})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"Vérification impossible.");setPartners(current=>current.map(p=>p.id===partner.id?payload.partner:p));setReviewId(null);setChecked(false);setMessage("Entreprise vérifiée. Vous pouvez désormais la sélectionner pour un dossier."); }
     catch(e){setMessage(e instanceof Error?e.message:"Vérification impossible.");}finally{setSaving(false);}
   }
 
   return (
     <div className="grid gap-5">
-      <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
+      <section className="rounded-lg border border-sanispa-line bg-white p-4">
+        <h2 className="font-bold">Vérification des entreprises</h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" aria-pressed={onlyPending} className="focus-ring min-h-11 rounded-md border px-3 py-2 text-sm font-bold aria-pressed:bg-sanispa-navy aria-pressed:text-white" onClick={() => setOnlyPending(true)}>À vérifier ({pendingCount})</button>
+          <button type="button" aria-pressed={!onlyPending} className="focus-ring min-h-11 rounded-md border px-3 py-2 text-sm font-bold aria-pressed:bg-sanispa-navy aria-pressed:text-white" onClick={() => setOnlyPending(false)}>Toutes les entreprises ({partners.length})</button>
+          <button type="button" className="focus-ring min-h-11 rounded-md border px-3 py-2 text-sm font-bold" onClick={() => { setForm(emptyForm); openEditor(); }}>Ajouter un partenaire</button>
+        </div>
+        <label className="mt-4 block text-sm font-bold">Rechercher une entreprise, un SIRET ou un département
+          <input className="focus-ring mt-2 block w-full min-w-0 rounded-md border border-sanispa-line px-3 py-2 font-normal" type="search" value={query} onChange={event => setQuery(event.target.value)} />
+        </label>
+      </section>
+      {message ? <p role="status" className="rounded-md bg-sanispa-ice p-3 text-sm font-semibold">{message}</p> : null}
+      {showEditor ? (
+      <section id="partner-editor" className="scroll-mt-4 rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
         <h2 className="text-xl font-bold text-sanispa-navy">
           {isEditing ? "Modifier un partenaire" : "Ajouter un partenaire"}
         </h2>
@@ -205,7 +240,7 @@ export function PartnerAdmin({
             {isEditing ? (
               <button
                 type="button"
-                onClick={() => setForm(emptyForm)}
+                onClick={() => { setForm(emptyForm); setShowEditor(false); }}
                 className="focus-ring rounded-md border border-sanispa-line bg-white px-5 py-3 text-sm font-bold text-sanispa-navy"
               >
                 Annuler
@@ -227,21 +262,19 @@ export function PartnerAdmin({
             créer le compte de connexion du contact.
           </p>
         )}
-        {message ? (
-          <p className="mt-4 rounded-md bg-sanispa-ice p-3 text-sm font-semibold text-sanispa-navy">
-            {message}
-          </p>
-        ) : null}
+
       </section>
 
+      ) : null}
+
       <section className="grid gap-3">
-        {sortedPartners.length === 0 ? (
+        {visiblePartners.length === 0 ? (
           <div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">
-            Aucun partenaire enregistré pour le moment.
+            {term ? "Aucune entreprise ne correspond à cette recherche." : onlyPending ? "Aucune entreprise en attente de vérification." : "Aucun partenaire enregistré."}
           </div>
         ) : null}
 
-        {sortedPartners.map((partner) => (
+        {visiblePartners.map((partner) => (
           <article
             key={partner.id}
             className="rounded-md border border-sanispa-line bg-white p-4 shadow-soft"
@@ -281,7 +314,12 @@ export function PartnerAdmin({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {partner.verification_status !== "verified" ? <button type="button" disabled={saving||!partner.active} onClick={()=>void verifyPartner(partner)} className="focus-ring rounded-md bg-sanispa-blue px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Coordonnées et SIRET vérifiés</button> : null}
+                {partner.verification_status !== "verified" ? <button type="button" disabled={saving || !partner.active} onClick={() => {
+                  setReviewId(reviewId === partner.id ? null : partner.id);
+                  setChecked(false);
+                  setCorrection("");
+                  setMessage("");
+                }} className="focus-ring rounded-md bg-sanispa-blue px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Examiner les coordonnées et le SIRET</button> : null}
                 <button
                   type="button"
                   onClick={() => editPartner(partner)}
@@ -298,6 +336,34 @@ export function PartnerAdmin({
                 </button>
               </div>
             </div>
+            {reviewId === partner.id ? (
+              <div className="mt-4 grid gap-3 rounded-lg bg-sanispa-ice p-4 text-sm">
+                <h4 className="font-bold">Vérification de {partner.company_name}</h4>
+                <p>Comparez le SIRET, le nom et l’adresse de l’établissement, puis vérifiez les coordonnées et les départements couverts.</p>
+                {partner.siret && /^\d{14}$/.test(partner.siret) ? (
+                  <a href={"https://annuaire-entreprises.data.gouv.fr/etablissement/" + partner.siret} target="_blank" rel="noreferrer" className="w-fit font-bold text-sanispa-blue underline">Ouvrir le SIRET dans l’Annuaire des Entreprises ↗</a>
+                ) : <p className="font-semibold">Renseignez d’abord le SIRET dans « Modifier / Accès ».</p>}
+                <label className="flex items-start gap-2 font-bold">
+                  <input type="checkbox" className="mt-1" checked={checked} onChange={event => setChecked(event.target.checked)} />
+                  J’ai vérifié l’établissement, ses coordonnées et sa zone d’intervention.
+                </label>
+                <button type="button" disabled={!checked || saving || !partner.siret}
+                  className="focus-ring w-fit rounded-md bg-sanispa-blue px-4 py-3 font-bold text-white disabled:opacity-50" onClick={() => void verifyPartner(partner)}>
+                  Confirmer la validation de l’entreprise
+                </button>
+                <details className="rounded-md border border-sanispa-line bg-white p-3">
+                  <summary className="cursor-pointer font-bold">Demander une correction</summary>
+                  <label className="mt-2 block">Information à corriger
+                    <textarea value={correction} maxLength={1000} onChange={event => setCorrection(event.target.value)} className="mt-1 block w-full rounded-md border border-sanispa-line p-2" />
+                  </label>
+                  {correction.trim() ? <a className="mt-2 inline-block font-bold underline"
+                    href={"mailto:" + encodeURIComponent(partner.email).replace("%40", "@") + "?subject=" + encodeURIComponent("SANISPA — Votre inscription partenaire")
+                      + "&body=" + encodeURIComponent("Bonjour,\n\nPour terminer la vérification de votre entreprise, merci de nous préciser :\n" + correction.trim() + "\n\nL’équipe SANISPA")}>
+                    Préparer l’e-mail de correction
+                  </a> : null}
+                </details>
+              </div>
+            ) : null}
           </article>
         ))}
       </section>

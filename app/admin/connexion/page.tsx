@@ -7,6 +7,7 @@ import { StepHeader } from "@/components/StepHeader";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { adminDossierId, adminDossierPath, adminDossierSection } from "@/lib/admin-navigation";
 import { authHeaders } from "@/lib/storage";
 
 type Factor = { id: string; friendly_name?: string };
@@ -26,7 +27,8 @@ export default function AdminLogin() {
   const openAdmin = useCallback(async () => {
     const response = await fetch("/api/admin/session", { method: "POST", headers: await authHeaders() });
     if (!response.ok) throw new Error((await response.json()).error);
-    window.location.replace("/admin");
+    const query = new URLSearchParams(window.location.search);
+    window.location.replace(adminDossierPath(query.get("dossier"), query.get("section")));
   }, []);
   const inspect = useCallback(async () => {
     const supabase = getSupabaseBrowser();
@@ -49,7 +51,9 @@ export default function AdminLogin() {
     event.preventDefault(); setBusy(true); setError("");
     try {
       if (method === "email") {
-        const response = await fetch("/api/client/access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, next: "admin" }) });
+        const query = new URLSearchParams(window.location.search);
+        const dossier = adminDossierId(query.get("dossier"));
+        const response = await fetch("/api/client/access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, next: "admin", ...(dossier ? { dossier, section: adminDossierSection(query.get("section")) } : {}) }) });
         if (!response.ok) throw new Error("Le lien n’a pas pu être envoyé. Vérifiez l’adresse et réessayez dans une minute.");
         setMessage("Si cette adresse correspond à un administrateur autorisé, un lien de connexion vient de lui être envoyé. Ouvrez-le. Si votre téléphone n’est pas encore associé, ajoutez SANISPA avec le code QR proposé ; sinon, saisissez le code de votre application.");
         return;

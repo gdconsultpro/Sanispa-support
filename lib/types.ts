@@ -73,7 +73,7 @@ export type Question = {
   min?: number;
   max?: number;
 };
-export type AdminDiagnostic = {
+export type AdminDiagnostic = import("./admin-intervention-summary").AdminInterventionSummary & {
   public_reference?: string;
   internal_notes?: string;
   user_id: string | null;

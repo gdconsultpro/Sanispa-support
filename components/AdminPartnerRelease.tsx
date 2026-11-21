@@ -1,4 +1,8 @@
 "use client";
+import Image from "next/image";
+import Link from "next/link";
+import { paymentsPaused } from "@/lib/commercial-mode";
+import { photoLabel } from "@/lib/display-labels";
 import { leadCatalog, type LeadCategory } from "@/lib/partner-catalog";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,10 +16,17 @@ type Release = {
   preview: {
     category: string;
     description: string;
+    city?: string;
+    postalCode?: string;
+    spa?: string;
     photos: string[];
     availablePhotos: { storage_path: string; photo_type: string }[];
   };
   decision: PartnerDispatchDecision | null;
+  assigned?: boolean;
+  blockedReason?: string | null;
+  declined?: { at: string; company: string | null } | null;
+  pendingPartners?: string[];
   decidedAt: string | null;
   selectedPartner: string | null;
   canKeep: boolean;
@@ -131,9 +142,9 @@ export function AdminPartnerRelease({
       {data ? (
         <>
           <p className="mt-3 font-bold text-sanispa-navy">
-            {data.decision
-              ? partnerDispatchLabels[data.decision]
-              : "Parcours non concerné"}
+            {data.assigned ? "Prise en charge confirmée" : data.declined ? "Partenaire indisponible · à réattribuer"
+              : data.decision === "released" ? "Proposée · réponse attendue"
+              : data.decision ? partnerDispatchLabels[data.decision] : "Parcours non concerné"}
           </p>
           {data.decidedAt ? (
             <p className="mt-1 text-sm">
@@ -144,6 +155,9 @@ export function AdminPartnerRelease({
               {data.selectedPartner ? ` · ${data.selectedPartner}` : ""}.
             </p>
           ) : null}
+          {data.declined ? <p className="mt-2 text-sm">
+            {data.declined.company || "Le partenaire précédent"} a indiqué son indisponibilité le {new Date(data.declined.at).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}.
+          </p> : null}
           {data.decision === "pending" ? (
             <p className="mt-2 text-sm">
               Aucun partenaire ne peut voir cette intervention ni recevoir sa
@@ -232,10 +246,11 @@ export function AdminPartnerRelease({
                     </select>
                   </label>
                   {!data.partners.length ? (
-                    <p className="text-sm">
-                      Aucun partenaire actif ne couvre ce département. Complétez
-                      sa couverture dans Administration → Partenaires.
-                    </p>
+                    <div className="text-sm">
+                      <p>{data.blockedReason || "Aucun partenaire éligible pour cette proposition."}</p>
+                      {data.pendingPartners?.length ? <p>{data.pendingPartners.join(", ")}</p> : null}
+                      <Link href="/admin?tab=partners" className="font-bold underline">Ouvrir les entreprises partenaires</Link>
+                    </div>
                   ) : (
                     <p className="text-sm">
                       Seul ce destinataire pourra consulter l’offre. La
@@ -244,7 +259,7 @@ export function AdminPartnerRelease({
                     </p>
                   )}
                   <label className="grid gap-2 text-sm font-bold">
-                    Catégorie tarifaire validée
+                    {paymentsPaused() ? "Catégorie de la demande" : "Catégorie tarifaire validée"}
                     <select
                       required
                       value={category}
@@ -253,11 +268,10 @@ export function AdminPartnerRelease({
                       }
                       className="focus-ring min-h-12 rounded-md border p-2"
                     >
-                      <option value="">Choisir une catégorie tarifaire</option>
+                      <option value="">Choisir une catégorie</option>
                       {Object.entries(leadCatalog).map(([key, item]) => (
                         <option key={key} value={key}>
-                          {item.label} — {item.amount / 100} € TTC (hors offre
-                          complète)
+                          {item.label}{paymentsPaused() ? "" : " — " + item.amount / 100 + " € TTC (hors offre complète)"}
                         </option>
                       ))}
                     </select>
@@ -290,6 +304,7 @@ export function AdminPartnerRelease({
                         <input
                           type="checkbox"
                           checked={photos.includes(photo.storage_path)}
+                          disabled={photos.length >= 5 && !photos.includes(photo.storage_path)}
                           onChange={(e) =>
                             setPhotos((current) =>
                               e.target.checked
@@ -300,10 +315,25 @@ export function AdminPartnerRelease({
                             )
                           }
                         />
-                        {photo.photo_type}
+                        <Image unoptimized width={80} height={60} loading="lazy" alt={photoLabel(photo.photo_type)}
+                          src={"/api/files/photo?path=" + encodeURIComponent(photo.storage_path)}
+                          className="h-14 w-20 rounded object-cover" />
+                        {photoLabel(photo.photo_type)}
                       </label>
                     ))}
                   </fieldset>
+                  <section className="rounded-md border border-sanispa-line bg-white p-3 text-sm">
+                    <h4 className="font-bold">Aperçu avant envoi</h4>
+                    {selected ? <p className="mt-2">Destinataire · {data.partners.find(partner => partner.id === selected)?.company_name}</p> : null}
+                    <p className="mt-1">{[data.preview.postalCode, data.preview.city].filter(Boolean).join(" ") || "Ville et code postal non renseignés"}</p>
+                    {data.preview.spa ? <p>{data.preview.spa}</p> : null}
+                    {category ? <p>{leadCatalog[category].label}</p> : null}
+                    {description.trim() ? <p className="mt-2 whitespace-pre-wrap break-words">{description}</p> : null}
+                    {photos.length ? <div className="mt-2 flex flex-wrap gap-2">
+                      {photos.map(path => <Image key={path} unoptimized width={80} height={60}
+                        alt="Photo sélectionnée pour le partenaire" src={"/api/files/photo?path=" + encodeURIComponent(path)} className="h-14 w-20 rounded object-cover" />)}
+                    </div> : null}
+                  </section>
                 </>
               )}
               <div className="flex flex-wrap gap-3">
@@ -337,8 +367,7 @@ export function AdminPartnerRelease({
           ) : null}
           {data.decision === "pending" && !data.canRelease ? (
             <p className="mt-3 text-sm">
-              La transmission n’est pas disponible avec l’archivage ou le statut
-              de traitement actuel.
+              {data.blockedReason || "Ce dossier ne peut pas être transmis dans son état actuel."}
             </p>
           ) : null}
         </>

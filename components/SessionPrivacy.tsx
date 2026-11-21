@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { adminLoginPath } from "@/lib/admin-navigation";
 import { reconcileLocalOwner } from "@/lib/session-privacy";
 
 export function SessionPrivacy({ children }: { children: React.ReactNode }) {
@@ -39,7 +40,8 @@ function ApplicationSessionPrivacy({ children }: { children: React.ReactNode }) 
         const changed = reconcileLocalOwner(window.localStorage, userId, previousUser);
         const path = window.location.pathname;
         if ((path === "/admin" || path.startsWith("/admin/")) && path !== "/admin/connexion" && (!userId || changed || synchronization.adminCleared)) {
-          window.location.replace("/admin/connexion");
+          const query = new URLSearchParams(window.location.search);
+          window.location.replace(adminLoginPath(query.get("dossier"), query.get("section")));
           return;
         }
         // Password recovery owns its fields and must retain its completion message.

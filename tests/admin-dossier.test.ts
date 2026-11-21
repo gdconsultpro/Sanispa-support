@@ -1,3 +1,5 @@
+import { adminDossierPath, adminLoginPath } from "../lib/admin-navigation";
+import { clientTokenConfirmationUrl } from "../lib/client-access";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { documentsForDossier, hasOverdueAction, type AdminClientDocument } from '../lib/admin-dossier';
@@ -24,4 +26,18 @@ test('due actions exclude completed, cancelled, archived and closed dossiers and
   assert.equal(hasOverdueAction({...dossier,archived_at:'2026-09-01T00:00:00Z'},now),false);
   assert.equal(hasOverdueAction({...dossier,next_action_at:null},now),false);
   assert.equal(hasOverdueAction({...dossier,next_action_at:'invalid'},now),false);
+});
+
+test("administrative e-mail retains only an internal dossier and a known section through authentication", () => {
+  const id = "84000000-0000-4000-8000-000000000003";
+  const url = new URL(clientTokenConfirmationUrl("https://app.example.invalid", "x".repeat(64), "admin", undefined,
+    { dossier: id, section: "followup" }));
+  assert.equal(url.searchParams.get("next"), "admin");
+  assert.equal(adminLoginPath(url.searchParams.get("dossier"), url.searchParams.get("section")), "/admin/connexion?dossier=" + id + "&section=followup");
+  assert.equal(adminDossierPath(url.searchParams.get("dossier"), url.searchParams.get("section")), "/admin?dossier=" + id + "&section=followup");
+  assert.equal(adminDossierPath("//invalid.example", "followup"), "/admin");
+  assert.equal(adminDossierPath(id, "//invalid.example"), "/admin?dossier=" + id);
+  const client = new URL(clientTokenConfirmationUrl("https://app.example.invalid", "x".repeat(64), "compte", undefined,
+    { dossier: id, section: "followup" }));
+  assert.equal(client.searchParams.has("dossier"), false);
 });

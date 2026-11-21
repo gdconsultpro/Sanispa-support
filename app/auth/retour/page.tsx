@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { problemTypes } from "@/lib/questions";
+import { adminLoginPath } from "@/lib/admin-navigation";
 import { confirmedClientDestination } from "@/lib/client-access";
 import { emptyDraft, readDraft, readLocalProgress, saveDraft, writeDraft } from "@/lib/storage";
 export default function Callback() {
@@ -38,7 +39,7 @@ export default function Callback() {
         const progress = readLocalProgress();
         const query = new URLSearchParams(window.location.search);
         const next = query.get("next");
-        const destination = next === "partenaire" ? "/partenaire/inscription" : next === "compte" ? "/espace-client" : ["carnet", "releves", "notices", "assistant", "forum"].includes(next || "") ? `/premium/${next}` : query.get("next") === "visio" ? "/visio" : query.get("next") === "admin" ? "/admin/connexion" : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
+        const destination = next === "partenaire" ? "/partenaire/inscription" : next === "compte" ? "/espace-client" : ["carnet", "releves", "notices", "assistant", "forum"].includes(next || "") ? `/premium/${next}` : query.get("next") === "visio" ? "/visio" : query.get("next") === "admin" ? adminLoginPath(query.get("dossier"), query.get("section")) : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
           draft,
           data.session.user.email || "",
           query.get("next") === "diagnostic",

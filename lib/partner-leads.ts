@@ -1,6 +1,6 @@
 import type { PartnerLeadBilling } from "@/lib/partner-billing";
 import { problemTypes } from "@/lib/questions";
-export const partnerLeadStatuses = ["NEW", "AVAILABLE", "nouvelle"];
+export { partnerLeadStatuses } from "./partner-release";
 const descriptionQuestionKeys = [
   "description",
   "pump_details",
@@ -145,7 +145,7 @@ export function sanitizeUnlockedPartnerLead(
 export function isLocked(lockedUntil: string | null | undefined) {
   return Boolean(lockedUntil && new Date(lockedUntil).getTime() > Date.now());
 }
-function parseLocation(
+export function parseLocation(
   address: string | null | undefined,
   department: string | null | undefined,
 ) {

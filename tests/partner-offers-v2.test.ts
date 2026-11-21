@@ -239,3 +239,32 @@ test("declining an exact proposal returns it to manual dispatch and queues only 
     await db.close();
   }
 });
+
+
+test("an analysed request stays private until manually proposed, then supports refusal and acceptance", async () => {
+  const db = await fixture();
+  try {
+    await db.exec("update private.commercial_configuration set payments_paused=true; update diagnostics set status='en analyse'");
+    await assert.rejects(acquire(db), /LEAD_UNAVAILABLE/);
+    const dispatch = "select publish_partner_offer($1,$2,$3,'fuite','Fuite visible au niveau du raccord du spa.','{}')";
+    await assert.rejects(db.query(dispatch, [ids.d, ids.a, ids.user]), /ADMIN_REQUIRED/);
+    await db.query(dispatch, [ids.d, ids.a, ids.admin]);
+    const row = (await db.query<{ status: string; assigned_partner_id: string | null; offered_at: string }>(
+      "select status, assigned_partner_id, partner_released_at::text as offered_at from diagnostics",
+    )).rows[0];
+    assert.equal(row.status, "en analyse");
+    assert.equal(row.assigned_partner_id, null);
+    await assert.rejects(acquire(db), /CHARTER_REQUIRED/);
+    await db.query("select decline_partner_offer($1,$2,$3,$4)", [ids.d, ids.a, ids.user, row.offered_at]);
+    await assert.rejects(acquire(db), /LEAD_UNAVAILABLE/);
+    assert.equal((await db.query<{ n: number }>("select count(*)::int n from notification_jobs where kind='partner' and state='pending'")).rows[0].n, 0);
+    await db.query(dispatch, [ids.d, ids.b, ids.admin]);
+    await assert.rejects(acquire(db), /LEAD_UNAVAILABLE/);
+    await db.query("select accept_partner_charter($1,$2,'essai-gratuit-2026-11-18')", [ids.b, ids.otherUser]);
+    const accepted = await db.query<{ value: { kind: string } }>("select acquire_partner_offer($1,$2,$3) as value", [ids.d, ids.b, ids.otherUser]);
+    assert.equal(accepted.rows[0].value.kind, "assigned");
+    assert.equal((await db.query<{ assigned_partner_id: string }>("select assigned_partner_id from diagnostics")).rows[0].assigned_partner_id, ids.b);
+  } finally {
+    await db.close();
+  }
+});

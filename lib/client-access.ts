@@ -1,3 +1,4 @@
+import { adminDossierId, adminDossierSection } from "./admin-navigation";
 import { problemTypes } from "./questions";
 import type { DiagnosticDraft } from "./types";
 export function publicClientIntent(value: string | null) {
@@ -14,12 +15,17 @@ export function clientConfirmationUrl(origin: string, problemType?: string, inte
 }
 
 /** Token stays in the URL fragment, outside HTTP logs and Referrer headers. */
-export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin" | "visio" | "carnet" | "releves" | "notices" | "assistant" | "forum" | "compte" | "partenaire", problemType?: string) {
+export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin" | "visio" | "carnet" | "releves" | "notices" | "assistant" | "forum" | "compte" | "partenaire", problemType?: string, adminDestination?: { dossier?: string | null; section?: string | null }) {
   const base = new URL(origin);
   if (base.protocol !== "https:" && !(base.protocol === "http:" && base.hostname === "localhost"))
     throw new Error("Invalid confirmation origin");
   const url = new URL(clientConfirmationUrl(base.origin, problemType, intent === "premium" ? "premium" : "diagnostic"));
   if (["recovery", "admin", "visio", "carnet", "releves", "notices", "assistant", "forum", "compte", "partenaire"].includes(intent)) url.searchParams.set("next", intent);
+  const adminId = intent === "admin" ? adminDossierId(adminDestination?.dossier) : null;
+  if (adminId) {
+    url.searchParams.set("dossier", adminId);
+    url.searchParams.set("section", adminDossierSection(adminDestination?.section));
+  }
   url.hash = new URLSearchParams({ token_hash: token, type: intent === "recovery" ? "recovery" : "email" }).toString();
   return url.href;
 }

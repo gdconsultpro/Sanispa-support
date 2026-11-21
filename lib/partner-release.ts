@@ -1,3 +1,5 @@
+export const partnerLeadStatuses = ["NEW", "AVAILABLE", "nouvelle", "en analyse"];
+
 type DispatchDossier = {
   choice?: string | null;
   request_type?: string | null;
@@ -58,7 +60,7 @@ export function canNotifyPartnerOffer(
       dossier.request_type === "TECHNICAL_REQUEST" &&
       !dossier.archived_at &&
       !dossier.assigned_partner_id &&
-      ["NEW", "AVAILABLE", "nouvelle"].includes(dossier.status || "") &&
+      partnerLeadStatuses.includes(dossier.status || "") &&
       job.payload.partners?.length === 1 &&
       dossier.matched_partner_ids?.includes(recipient) &&
       canViewPartnerOffer(dossier, recipient) &&

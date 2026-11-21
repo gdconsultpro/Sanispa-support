@@ -1,3 +1,6 @@
+import { adminDossierId, adminDossierSection, adminLoginPath } from "@/lib/admin-navigation";
+import { adminInboxFlags, adminInboxViews, adminInboxView } from "@/lib/admin-inbox";
+import { interventionSummaryFields } from "@/lib/admin-intervention-summary";
 import { partnerDispatchDecision } from "@/lib/partner-release";
 import { AdminRequests } from "@/components/AdminRequests";
 import { diagnosticPanels } from "@/components/AdminDiagnosticPanels";
@@ -26,18 +29,65 @@ export default async function AdminPage({ searchParams }: {
         status?: string;
         actions?: string;
         diffusion?: string;
+        inbox?: string;
+        dossier?: string;
+        section?: string;
     }>;
 }) {
-    try { await administrator(await headers()); }
-    catch { redirect("/admin/connexion"); }
     const params = await searchParams;
+    const initialDossier = adminDossierId(params?.dossier);
+    const initialSection = adminDossierSection(params?.section);
+    try { await administrator(await headers()); }
+    catch { redirect(adminLoginPath(initialDossier, initialSection)); }
     const tab = params?.tab === "partners" ? "partners" : "diagnostics";
     const dispatchFilter = ["pending","internal","released","legacy"].includes(params?.diffusion || "") ? params!.diffusion! : "";
     const dueOnly = params?.actions === "due";
     const showArchived = !dueOnly && params?.archived === "1";
-    const [{ diagnostics, error }, { partners, error: partnerError }] = await Promise.all([loadDiagnostics(showArchived, params?.q, params?.status, dueOnly, dispatchFilter), loadPartners()]);
-    const details = tab === "diagnostics" && diagnostics.length
-        ? await loadAdminDossierDetails(getSupabaseAdmin(), diagnostics) : new Map();
+    const [{ diagnostics, error }, { partners, error: partnerError }] = await Promise.all([
+        tab === "diagnostics" ? loadDiagnostics(showArchived, params?.q, params?.status, dueOnly, dispatchFilter) : { diagnostics: [], error: null },
+        tab === "partners" ? loadPartners() : { partners: [], error: null },
+    ]);
+    const pinnedResult = tab === "diagnostics" && initialDossier && !diagnostics.some(dossier => dossier.id === initialDossier)
+        ? await loadDiagnostics(false, undefined, undefined, false, "", initialDossier) : null;
+    const pinned = pinnedResult?.diagnostics[0];
+    const requestedDossier = pinned ?? diagnostics.find(dossier => dossier.id === initialDossier);
+    const details = tab === "diagnostics" && (diagnostics.length || pinned)
+        ? await loadAdminDossierDetails(getSupabaseAdmin(), pinned ? [...diagnostics, pinned] : diagnostics) : new Map();
+    const now = Date.now();
+    const inbox = showArchived ? "all" : adminInboxView(params?.inbox);
+    const entries = diagnostics.map(diagnostic => ({
+        diagnostic,
+        flags: adminInboxFlags(diagnostic, details.get(diagnostic.id)?.activity || [], now),
+    }));
+    const visible = entries.filter(entry => entry.flags[inbox]);
+    if (inbox === "due") visible.sort((a, b) => Date.parse(a.diagnostic.next_action_at!) - Date.parse(b.diagnostic.next_action_at!));
+    function inboxUrl(view: string) {
+        const query = new URLSearchParams();
+        if (params?.q) query.set("q", params.q);
+        if (params?.status) query.set("status", params.status);
+        if (dispatchFilter) query.set("diffusion", dispatchFilter);
+        if (view !== "all") query.set("inbox", view);
+        return query.size ? "/admin?" + query.toString() : "/admin";
+    }
+    function toRequestItem(diagnostic: AdminDiagnostic) {
+        const activity = details.get(diagnostic.id);
+        const flags = adminInboxFlags(diagnostic, activity?.activity || [], now);
+        return {
+            id: diagnostic.id,
+            shortId: diagnostic.public_reference || "Référence en cours",
+            clientName: diagnostic.customers?.name || "Client non renseigné",
+            subject: adminRequestSubject(diagnostic),
+            createdAt: diagnostic.created_at,
+            status: diagnostic.status,
+            dispatchDecision: partnerDispatchDecision(diagnostic),
+            dispatchProgress: diagnostic.assigned_partner_id ? "Pris en charge" : flags.declined ? "Partenaire indisponible · à réattribuer"
+                : flags.waiting ? "Proposée · réponse attendue" : null,
+            dueAt: diagnostic.next_action_state === "pending" ? diagnostic.next_action_at : null,
+            nextAction: diagnostic.next_action_state === "pending" ? diagnostic.next_action_text : null,
+            overdue: flags.due,
+            panels: diagnosticPanels(diagnostic, activity),
+        };
+    }
     function viewUrl(archived: boolean) {
         const query = new URLSearchParams();
         if (params?.q) query.set("q", params.q);
@@ -58,12 +108,12 @@ export default async function AdminPage({ searchParams }: {
       </header>
       <AdminSignOut />
       <nav aria-label="Rubriques de l’administration" className="mb-4 flex flex-wrap gap-2">
+        <Link href="/admin" aria-current={tab === "diagnostics" ? "page" : undefined} className={navClass(tab === "diagnostics")}>Demandes</Link>
+        <Link href="/admin?tab=partners" aria-current={tab === "partners" ? "page" : undefined} className={navClass(tab === "partners")}>Partenaires</Link>
+        <Link href="/admin/interventions" className={navClass(false)}>Interventions</Link>
         <Link href="/admin/visio" className={navClass(false)}>Visios et assistance</Link>
         <Link href="/admin/premium" className={navClass(false)}>Premium et coût IA</Link>
         <Link href="/admin/forum" className={navClass(false)}>Forum Premium</Link>
-        <Link href="/admin/interventions" className={navClass(false)}>Interventions et suivi Synchroteam</Link>
-        <Link href="/admin" aria-current={tab === "diagnostics" ? "page" : undefined} className={navClass(tab === "diagnostics")}>Demandes</Link>
-        <Link href="/admin?tab=partners" aria-current={tab === "partners" ? "page" : undefined} className={navClass(tab === "partners")}>Partenaires</Link>
       </nav>
       {tab === "partners" ? <>
         {partnerError ? <div className="mb-5 rounded-md border border-sanispa-line bg-white p-5 text-sm leading-6 text-sanispa-steel">
@@ -74,6 +124,14 @@ export default async function AdminPage({ searchParams }: {
         {error ? <div role="alert" className="mb-4 rounded-md border border-red-200 bg-white p-4 text-sm text-sanispa-steel">
           <p className="font-bold text-sanispa-navy">Le chargement des demandes a échoué.</p><p className="mt-2">{error}</p>
         </div> : null}
+        {!showArchived && !error ? <nav aria-label="Boîte de réception" className="mb-5 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
+          {adminInboxViews.map(([value, label]) => <Link key={value} href={inboxUrl(value)}
+            aria-current={inbox === value && !dueOnly ? "page" : undefined}
+            className={navClass(inbox === value && !dueOnly)}>
+            <span>{label} <strong className="ml-1">{entries.filter(entry => entry.flags[value]).length}</strong></span>
+          </Link>)}
+        </nav> : null}
+        {initialDossier && pinnedResult && !pinned ? <p role="status" className="mb-4 rounded-md bg-amber-50 p-3">{pinnedResult.error ? "Le dossier demandé n’a pas pu être chargé. Réessayez." : "Le dossier demandé est introuvable."}</p> : null}
         <section aria-label="Recherche et filtres des demandes" className="mb-5 rounded-lg border border-sanispa-line bg-sanispa-ice p-3 sm:p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <nav aria-label="Demandes actives ou archivées" className="flex gap-2">
@@ -87,6 +145,7 @@ export default async function AdminPage({ searchParams }: {
           </div>
           <form key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}:${dispatchFilter}`} className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]">
             <input type="hidden" name="archived" value={showArchived ? "1" : "0"}/>
+            {inbox !== "all" ? <input type="hidden" name="inbox" value={inbox} /> : null}
             <input aria-label="Rechercher un client ou un dossier" name="q" defaultValue={params?.q} placeholder="Nom, e-mail, téléphone ou dossier" className="focus-ring min-h-11 min-w-0 w-full rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm"/>
             <select aria-label="Filtrer par statut" name="status" defaultValue={params?.status || ""} className="focus-ring min-h-11 min-w-0 w-full rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm">
               <option value="">Tous les statuts</option>{["AVAILABLE", "ASSIGNED", "WATER_ANALYSIS", "en analyse", "devis envoyé", "RDV demandé", "terminé", "CLOSED"].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
@@ -101,25 +160,18 @@ export default async function AdminPage({ searchParams }: {
           </form>
           {dueOnly ? <p className="mt-3 text-xs text-sanispa-steel">Actions à traiter dont l’échéance est atteinte, sur les dossiers non archivés et non terminés.</p> : null}
         </section>
-        {!error ? <AdminRequests key={`${showArchived}:${params?.q ?? ""}:${params?.status ?? ""}:${dueOnly}:${dispatchFilter}`} items={diagnostics.map(diagnostic => ({
-          id: diagnostic.id,
-          shortId: diagnostic.public_reference || "Référence en cours",
-          clientName: diagnostic.customers?.name || "Client non renseigné",
-          subject: adminRequestSubject(diagnostic),
-          createdAt: diagnostic.created_at,
-          status: diagnostic.status,
-          dispatchDecision: partnerDispatchDecision(diagnostic),
-          dueAt: diagnostic.next_action_state === "pending" ? diagnostic.next_action_at : null,
-          overdue: hasOverdueAction(diagnostic),
-          panels: diagnosticPanels(diagnostic, details.get(diagnostic.id))
-        }))}/> : null}
-        {!diagnostics.length && !error ? <p className="rounded-md border border-sanispa-line bg-white p-5 text-sm text-sanispa-steel">
-          {params?.q || params?.status || dueOnly || dispatchFilter ? "Aucun dossier ne correspond à ces filtres." : showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
+        {!error ? <AdminRequests key={[showArchived, params?.q, params?.status, dueOnly, dispatchFilter, inbox].join(":")}
+          initialDossier={initialDossier} initialSection={initialSection}
+          pinnedItem={requestedDossier && !visible.some(entry => entry.diagnostic.id === requestedDossier.id) ? toRequestItem(requestedDossier) : undefined}
+          items={visible.map(({ diagnostic }) => toRequestItem(diagnostic))}
+        /> : null}
+        {!visible.length && !error ? <p className="rounded-md border border-sanispa-line bg-white p-5 text-sm text-sanispa-steel">
+          {inbox !== "all" ? "Aucun dossier dans cette vue." : params?.q || params?.status || dueOnly || dispatchFilter ? "Aucun dossier ne correspond à ces filtres." : showArchived ? "Aucune demande archivée." : "Aucune demande active enregistrée pour le moment."}
         </p> : null}
       </>}
     </AppShell>;
 }
-async function loadDiagnostics(showArchived: boolean, q?: string, status?: string, dueOnly = false, dispatchFilter = ""): Promise<{
+async function loadDiagnostics(showArchived: boolean, q?: string, status?: string, dueOnly = false, dispatchFilter = "", dossierId?: string): Promise<{
     diagnostics: AdminDiagnostic[];
     error: string | null;
 }> {
@@ -169,13 +221,15 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
           photo_type,
           storage_path,
           public_url
-        )
+        ),
+        ${interventionSummaryFields}
       `)
-            .filter("archived_at", showArchived ? "not.is" : "is", null)
+            .eq("invoices.document_type", "Facture d’intervention")
+            .in("invoices.issued_by", ["partner", "sanispa"])
             .order("created_at", { ascending: false }).order("id", { ascending: false });
         const data = [];
         for (let offset = 0; ; offset += 500) {
-            let query = pageQuery();
+            let query = dossierId ? pageQuery().eq("id", dossierId) : pageQuery().filter("archived_at", showArchived ? "not.is" : "is", null);
             if (status) query = query.eq("status", status);
             if (dueOnly) query = query.eq("next_action_state", "pending").lte("next_action_at", now)
                 .neq("status", "terminé").neq("status", "CLOSED");
@@ -184,8 +238,10 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
             data.push(...(page ?? []));
             if (!page || page.length < 500) break;
         }
-        const partners = await loadPartnerNameMap(supabase);
-        const leadPurchases = await loadLeadPurchaseMap(supabase);
+        const [partners, leadPurchases] = await Promise.all([
+            loadPartnerNameMap(supabase),
+            loadLeadPurchaseMap(supabase),
+        ]);
         const diagnostics = (data ?? []).map((item) => ({
             ...item,
             customers: Array.isArray(item.customers) ? item.customers[0] ?? null : item.customers,
