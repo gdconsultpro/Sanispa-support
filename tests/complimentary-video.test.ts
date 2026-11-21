@@ -46,11 +46,15 @@ test("free partner acquisition preserves manual release, targeted membership and
     const acquire = (actor = operator) => db.query<any>("select acquire_partner_offer($1,$2,$3) r", [diagnostic, partner, actor]);
     await assert.rejects(acquire(), /LEAD_UNAVAILABLE/);
     await db.query("select publish_partner_offer($1,$2,$3,'fuite','Fuite visible au raccord du spa.',array[]::text[])", [diagnostic, partner, admin]);
+    assert.equal((await db.query("select id from partner_private_clients")).rows.length, 0);
     await assert.rejects(acquire(), /CHARTER_REQUIRED/);
     await db.query("select accept_partner_charter($1,$2,'essai-gratuit-2026-11-18')", [partner, operator]);
     await assert.rejects(acquire(other), /PARTNER_REQUIRED/);
     assert.equal((await acquire()).rows[0].r.kind, "assigned");
     await acquire();
+    assert.deepEqual((await db.query("select partner_id,source_diagnostic_id from partner_private_clients")).rows, [
+      { partner_id: partner, source_diagnostic_id: diagnostic },
+    ]);
     const rows = (await db.query<any>("select status,payment_required,amount,stripe_checkout_session_id from lead_purchases")).rows;
     assert.equal(rows.length, 1); assert.deepEqual(rows[0], { status: "granted", payment_required: false, amount: 0, stripe_checkout_session_id: null });
     assert.equal((await db.query<any>("select count(*)::int n from partner_subscriptions")).rows[0].n, 0);

@@ -90,12 +90,14 @@ test("management plan freezes the exact TTC lead price and unlocks only after th
   const db = await fixture();
   try {
     await publish(db);
+    assert.equal((await db.query("select id from partner_private_clients")).rows.length, 0);
     await db.exec(
       `insert into partner_subscriptions values('${ids.a}','management','active','sub_fixture','cus_fixture',now()+interval '1 month',1);`,
     );
     const { purchase } = (await acquire(db)).rows[0].value;
     assert.equal(purchase.amount, 2500);
     assert.equal(purchase.payment_required, true);
+    assert.equal((await db.query("select id from partner_private_clients")).rows.length, 0);
     assert.equal(
       (await db.query<any>("select assigned_partner_id from diagnostics"))
         .rows[0].assigned_partner_id,
@@ -117,6 +119,7 @@ test("management plan freezes the exact TTC lead price and unlocks only after th
       ]),
       /SESSION_MISMATCH/,
     );
+    assert.equal((await db.query("select id from partner_private_clients")).rows.length, 0);
     for (let i = 0; i < 2; i++)
       await db.query("select apply_partner_payment($1,$2,$3,$4,$5,now())", [
         "cs_fixture",
@@ -125,6 +128,9 @@ test("management plan freezes the exact TTC lead price and unlocks only after th
         ids.d,
         "pi_fixture",
       ]);
+    assert.deepEqual((await db.query("select partner_id, source_diagnostic_id, name, street, postal_code, city from partner_private_clients")).rows, [
+      { partner_id: ids.a, source_diagnostic_id: ids.d, name: "PRIVATE NAME", street: "PRIVATE STREET", postal_code: "67000", city: "Strasbourg" },
+    ]);
     assert.equal(
       (
         await db.query<any>(

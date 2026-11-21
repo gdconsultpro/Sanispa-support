@@ -5,7 +5,7 @@ export function partnerReturnPath(value: string | null | undefined) {
     const offer = partnerOfferReturn(new URLSearchParams(value.slice(value.indexOf("?"))).get("retour"));
     if (offer) return partnerCharterPath(offer);
   }
-  return /^\/partenaire(?:\/(?:visio|abonnement|leads(?:\/[a-f0-9-]{36})?|interventions(?:\/[a-f0-9-]{36})?))?$/i.test(value) ? value : "/partenaire/leads";
+  return /^\/partenaire(?:\/(?:planning|visio|abonnement|leads(?:\/[a-f0-9-]{36})?|interventions(?:\/[a-f0-9-]{36})?))?$/i.test(value) ? value : "/partenaire/leads";
 }
 export function partnerOfferReturn(value: string | null) {
   return value && /^\/partenaire\/leads\/[a-f0-9-]{36}$/i.test(value) ? value : null;
