@@ -14,17 +14,26 @@ export type PrivatePartnerClient = {
 };
 
 type Times = { starts_at: string; ends_at: string };
-export type PrivatePartnerVisit = Times & {
+type ScheduledVisit = Times & { technician_id: string | null; updated_at: string };
+export type PrivatePartnerVisit = ScheduledVisit & {
   id: string;
   title: string;
   description: string;
   client: PrivatePartnerClient;
 };
-export type SanispaPartnerVisit = Times & {
+export type SanispaPartnerVisit = ScheduledVisit & {
   diagnostic_id: string;
-  diagnostic: { problem_type: string; customer: { name: string | null; address: string | null } | null };
+  diagnostic: { problem_type: string; status: string; customer: { name: string | null; address: string | null } | null };
   latitude?: number | null;
   longitude?: number | null;
+};
+
+export type PlannerTechnician = { id: string; name: string };
+export type PlannerAppointment = ScheduledVisit & {
+  id: string;
+  title: string;
+  source: "private" | "sanispa";
+  movable: boolean;
 };
 
 export const interventionTypes = ["Intervention SAV", "Mise en service", "Installation", "Entretien / révision"];
@@ -74,6 +83,13 @@ export function plannerRange(date: string, period: PlannerPeriod) {
 
 export function plannerTime(date: string) {
   return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date(date));
+}
+
+export function timelineDropTime(dayStart: number, dayEnd: number, drop: number, duration: number) {
+  const slot = 15 * 60000;
+  const lastStart = dayStart + Math.max(0, Math.floor((dayEnd - dayStart - duration) / slot)) * slot;
+  const start = dayStart + Math.round((drop - dayStart) / slot) * slot;
+  return Math.min(lastStart, Math.max(dayStart, start));
 }
 
 export function partnerClientAddress({ street, postal_code, city }: Pick<PrivatePartnerClient, "street" | "postal_code" | "city">) {

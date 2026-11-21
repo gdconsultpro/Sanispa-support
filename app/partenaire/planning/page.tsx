@@ -6,12 +6,14 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
+import { PartnerScheduleGrid, PlannerTechnicianSelect } from "@/components/PartnerScheduleGrid";
 import { problemLabel } from "@/lib/display-labels";
 import { partnerAuthError, partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
 import { partnerReturnPath } from "@/lib/partner-navigation";
 import {
   interventionTypes, partnerClientAddress, partnerDirections, partnerClientsPath, partnerMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
-  type PartnerMapPoint, type PlannerPeriod, type PrivatePartnerClient, type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit,
+  type PartnerMapPoint, type PlannerAppointment, type PlannerPeriod, type PlannerTechnician, type PrivatePartnerClient,
+  type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit,
 } from "@/lib/partner-planner";
 
 const path = "/partenaire/planning";
@@ -23,14 +25,17 @@ const PartnerPrivateMap = dynamic(() => import("@/components/PartnerPrivateMap")
 const panelClass = "min-w-0 rounded-2xl border border-sanispa-line bg-white p-4 sm:p-5";
 const inputClass = "focus-ring min-h-12 w-full min-w-0 rounded-lg border border-sanispa-line bg-white px-3 py-2 text-base";
 const actionClass = "focus-ring inline-flex min-h-11 items-center text-sm font-bold text-sanispa-blue underline";
-type ClientPage = { clients: PrivatePartnerClient[]; more: boolean };
+type ClientPage = { clients: PrivatePartnerClient[]; more: boolean; technicians: PlannerTechnician[] };
 type StockPage = { stock: PrivatePartnerStock[]; more: boolean };
-type Agenda = { visits: PrivatePartnerVisit[]; sanispa: SanispaPartnerVisit[] };
+type Agenda = { visits: PrivatePartnerVisit[]; sanispa: SanispaPartnerVisit[]; technicians: PlannerTechnician[] };
 type Editor = { type: "client"; id: string; client?: PrivatePartnerClient }
   | { type: "visit"; id: string; client: PrivatePartnerClient; visit?: PrivatePartnerVisit }
   | { type: "stock"; id: string; item?: PrivatePartnerStock };
 const periods = { day: "Jour", week: "Semaine", month: "Mois" } as const;
 const stockLabels = { piece: "Pièce détachée", spa: "Spa" } as const;
+class PlannerRequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
 
 async function plannerRequest(url: string, options: { signal?: AbortSignal; payload?: object } = {}) {
   const next = partnerReturnPath(window.location.pathname + window.location.search);
@@ -45,7 +50,7 @@ async function plannerRequest(url: string, options: { signal?: AbortSignal; payl
   });
   if (redirectPartnerAccess(response, next)) return null;
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "Votre planning est temporairement indisponible.");
+  if (!response.ok) throw new PlannerRequestError(result.error || "Votre planning est temporairement indisponible.", response.status);
   return result;
 }
 
@@ -64,6 +69,7 @@ export default function PartnerPlanningPage() {
   const [revision, setRevision] = useState(0);
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [gridError, setGridError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -129,9 +135,42 @@ export default function PartnerPlanningPage() {
     setSavedClient(null);
     setNotice("");
     setSaveError("");
+    setGridError("");
     setOffset(0);
     setView(next);
     window.history.replaceState(null, "", next === "clients" ? partnerClientsPath : next === "map" ? partnerMapPath : path);
+  }
+
+  async function saveFromGrid(payload: object, success: string, date?: Date) {
+    if (saving) return false;
+    setNotice("");
+    setGridError("");
+    setSaving(true);
+    try {
+      const result = await plannerRequest(endpoint, { payload });
+      if (!result) return false;
+      if (date) setDay(plannerDate(date));
+      setNotice(success);
+      setRevision(value => value + 1);
+      return true;
+    } catch (error) {
+      setGridError(error instanceof Error ? error.message : "La modification n’a pas pu être enregistrée.");
+      if (error instanceof PlannerRequestError && error.status === 409) setRevision(value => value + 1);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function moveFromGrid(appointment: PlannerAppointment, start: Date, technician: string | null) {
+    if (!Number.isFinite(+start)) {
+      setGridError("Choisissez une date et une heure valides.");
+      return Promise.resolve(false);
+    }
+    return saveFromGrid({
+      action: "moveVisit", id: appointment.id, source: appointment.source, expected_at: appointment.updated_at,
+      starts_at: start.toISOString(), technician_id: technician,
+    }, "Rendez-vous déplacé.", start);
   }
 
   function stepAgenda(direction: number) {
@@ -189,7 +228,8 @@ export default function PartnerPlanningPage() {
           throw new Error("L’heure de fin doit être après l’heure de début.");
         const result = await plannerRequest(endpoint, {
           payload: { action: "saveVisit", id: editor.id, client_id: editor.client.id, title: value("intervention_type"), description: value("description"),
-            starts_at: start.toISOString(), ends_at: end.toISOString() },
+            starts_at: start.toISOString(), ends_at: end.toISOString(), technician_id: value("technician_id") || null,
+            expected_at: editor.visit?.updated_at },
         });
         if (!result) return;
         setDay(plannerDate(start));
@@ -211,6 +251,14 @@ export default function PartnerPlanningPage() {
     ...agenda.visits.map(visit => ({ ...visit, source: "private" as const })),
     ...agenda.sanispa.map(visit => ({ ...visit, source: "sanispa" as const })),
   ].sort((left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at)) : null;
+  const team = (view === "clients" ? page?.technicians : agenda?.technicians) ?? [];
+  const appointments: PlannerAppointment[] = (entries ?? []).map(entry => entry.source === "private" ? {
+    ...entry, title: entry.title + " · " + entry.client.name, movable: true,
+  } : {
+    ...entry, id: entry.diagnostic_id,
+    title: problemLabel(entry.diagnostic.problem_type) + " · " + (entry.diagnostic.customer?.name || "Client"),
+    movable: entry.diagnostic.status !== "CLOSED" && entry.diagnostic.status !== "terminé",
+  });
   const month = day && view === "agenda" && period === "month" ? plannerRange(day, "month") : null;
   const monthDays = month ? new Date(month.to.getFullYear(), month.to.getMonth(), 0).getDate() : 0;
   const monthIndent = month ? (month.from.getDay() + 6) % 7 : 0;
@@ -242,6 +290,7 @@ export default function PartnerPlanningPage() {
     </div>
 
     {notice ? <p role="status" className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{notice}</p> : null}
+    {gridError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{gridError}</p> : null}
     {savedClient && view === "clients" ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
       <p role="status" className="break-words font-bold text-emerald-900">Fiche créée pour {savedClient.name}.</p>
       <button type="button" className={actionClass} onClick={() => edit({ type: "visit", id: crypto.randomUUID(), client: savedClient })}>Planifier une première visite</button>
@@ -252,7 +301,7 @@ export default function PartnerPlanningPage() {
     </div> : null}
     {!loadError && (view === "clients" ? !page : view === "stock" ? !inventory : !agenda) ? <p role="status">Chargement…</p> : null}
 
-    {editor ? <PlannerEditor key={editor.type + editor.id} editor={editor} day={day} save={save} error={saveError} saving={saving} close={() => setEditor(null)} /> : null}
+    {editor ? <PlannerEditor key={editor.type + editor.id} editor={editor} day={day} team={team} save={save} error={saveError} saving={saving} close={() => setEditor(null)} /> : null}
 
     {mapped ? <section className={panelClass + " mb-4"} aria-labelledby="map-title">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4">
@@ -347,6 +396,9 @@ export default function PartnerPlanningPage() {
         setMapped(null);
         setDay(plannerDate(new Date()));
       }}>Aujourd’hui</button> : null}
+      {view === "agenda" && period === "day" && entries ? <PartnerScheduleGrid key={day} day={day} appointments={appointments}
+        team={team} busy={saving} onMove={moveFromGrid}
+        onAdd={(id, name) => saveFromGrid({ action: "addTechnician", id, name }, "Technicien ajouté au planning.")} /> : null}
       {view === "map" ? <div className="mb-4">
         <PartnerPrivateMap points={points} label="Carte des interventions du jour" />
         {entries && entries.length > points.length ? <p className="mt-2 text-sm text-sanispa-steel">
@@ -376,7 +428,8 @@ export default function PartnerPlanningPage() {
         {entries.map((entry, index) => <li className="py-3" key={entry.source + (entry.source === "private" ? entry.id : entry.diagnostic_id)}>
           {view === "agenda" && period === "week" ? <p className="mb-1 text-sm font-bold capitalize">{new Date(entry.starts_at).toLocaleDateString("fr-FR", { dateStyle: "full" })}</p> : null}
           <p className="text-sm font-bold">{plannerTime(entry.starts_at)} – {plannerTime(entry.ends_at)}</p>
-          {entries.some((other, i) => index !== i && visitsOverlap(entry, other)) ? <p className="text-sm font-bold text-amber-800">Chevauchement avec un autre rendez-vous</p> : null}
+          {team.find(technician => technician.id === entry.technician_id) ? <p className="text-sm">{team.find(technician => technician.id === entry.technician_id)?.name}</p> : null}
+          {entries.some((other, i) => index !== i && other.technician_id === entry.technician_id && visitsOverlap(entry, other)) ? <p className="text-sm font-bold text-amber-800">Chevauchement avec un autre rendez-vous</p> : null}
           {entry.source === "private" ? <>
             <h3 className="break-words text-lg font-bold">{entry.title} · {entry.client.name}</h3>
             <p className="break-words text-sm">{partnerClientAddress(entry.client) || "Adresse à compléter dans la fiche client"}</p>
@@ -396,8 +449,8 @@ export default function PartnerPlanningPage() {
   </AppShell>;
 }
 
-function PlannerEditor({ editor, day, save, saving, error, close }: {
-  editor: Editor; day: string; save: (event: FormEvent<HTMLFormElement>) => void;
+function PlannerEditor({ editor, day, team, save, saving, error, close }: {
+  editor: Editor; day: string; team: PlannerTechnician[]; save: (event: FormEvent<HTMLFormElement>) => void;
   saving: boolean; error: string; close: () => void;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
@@ -441,6 +494,7 @@ function PlannerEditor({ editor, day, save, saving, error, close }: {
           <PlannerField label="Jour de l’intervention" name="date" type="date" min="1900-01-01" max="2099-12-31" defaultValue={startingDay} required />
           <PlannerField label="Heure de début" name="start" type="time" defaultValue={visit ? plannerTime(visit.starts_at) : "09:00"} required />
           <PlannerField label="Heure de fin" name="end" type="time" defaultValue={visit ? plannerTime(visit.ends_at) : "10:00"} required />
+          <PlannerTechnicianSelect team={team} selected={visit?.technician_id} />
         </>}
         {error ? <p role="alert" className="text-sm font-bold text-red-700 sm:col-span-2">{error}</p> : null}
         <div className="flex flex-wrap gap-2 sm:col-span-2">
