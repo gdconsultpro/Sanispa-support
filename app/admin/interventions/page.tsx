@@ -33,7 +33,14 @@ export default async function AdminInterventionsPage() {
       .is("archived_at", null).or("assigned_partner_id.not.is.null,partner_kept_at.not.is.null,intervened_at.not.is.null")
       .eq("invoices.document_type", "Facture d’intervention").in("invoices.issued_by", ["partner", "sanispa"])
       .order("created_at", { ascending: false }),
-    supabase.from("synchroteam_exports").select("diagnostics(public_reference),diagnostic_id,state,attempts").order("created_at", { ascending: false }).limit(100),
+    supabase.from("synchroteam_exports")
+      .select("diagnostics!inner(public_reference),diagnostic_id,state")
+      .neq("state", "cancelled")
+      .not("diagnostics.partner_kept_at", "is", null)
+      .is("diagnostics.partner_released_at", null)
+      .is("diagnostics.assigned_partner_id", null)
+      .is("diagnostics.archived_at", null)
+      .order("created_at", { ascending: false }).limit(100),
   ]);
   const now = Date.now();
   const items = (interventions.data || []) as unknown as Intervention[];
@@ -75,6 +82,7 @@ export default async function AdminInterventionsPage() {
     </section>) : null}
     <details className="mt-5 rounded-xl border border-sanispa-line bg-white p-4">
       <summary className="cursor-pointer text-lg font-bold">Préparations Synchroteam</summary>
+      <p className="mt-2 text-sm">Seuls les dossiers conservés chez SANISPA sont préparés ici. Aucun envoi automatique.</p>
       {exports.error ? <p role="alert" className="mt-3 text-red-800">Les préparations n’ont pas pu être chargées.</p>
         : exports.data?.length ? <ul className="mt-3 grid gap-2 text-sm">
           {exports.data.map(row => <li key={row.diagnostic_id}>

@@ -16,7 +16,7 @@ Lot prioritaire réalisé dans le code
 
 Synchroteam : préparation sans envoi, décision explicite du propriétaire
 Le connecteur disponible est en lecture seule. Il n’existe pas d’environnement Synchroteam de test distinct. Aucun client, site, utilisateur, rendez-vous ou chantier n’est créé/modifié dans le compte SANISPA.
-Les nouvelles déclarations, y compris analyse d’eau et déménagement, sont inscrites transactionnellement dans synchroteam_exports avec la clé unique sanispa:<uuid du dossier>. Pas de reprise automatique des dossiers existants pour éviter un transfert de tests et un rapprochement hasardeux.
+Le bouton « Conserver chez SANISPA » crée la préparation dans synchroteam_exports, avec la clé unique sanispa:<uuid du dossier>. Les déclarations en attente et les dossiers partenaires sont suivis directement dans SANISPA Support. Les anciennes préparations automatiques hors de ce périmètre sont annulées lorsqu’aucune tentative de transfert n’a eu lieu.
 Une préparation JSON est téléchargeable par un administrateur MFA. Elle ne déclenche aucun réseau, ne marque rien « transmis », ne contient pas de secret ni d’URL publique de photo. Elle propose les corps customer/send et job/send documentés avec myId stable. Un rapprochement validé avec les fiches clients Synchroteam existantes est indispensable avant activation : un e-mail identique n’est pas une preuve de propriété.
 
 Choix d’architecture conseillé

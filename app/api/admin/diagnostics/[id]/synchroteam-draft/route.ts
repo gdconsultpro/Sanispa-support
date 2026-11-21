@@ -7,9 +7,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   try {
     const { supabase } = await administrator(request.headers);
     const id = z.string().uuid().parse((await params).id);
-    const { data, error } = await supabase.from("diagnostics").select("id,public_reference,user_id,customer_id,problem_type,request_type,customers(name,email,phone,address),diagnostic_answers(question_label,answer)").eq("id", id).maybeSingle();
+    const { data, error } = await supabase.from("diagnostics")
+      .select("id,public_reference,user_id,customer_id,problem_type,request_type,customers(name,email,phone,address),diagnostic_answers(question_label,answer),synchroteam_exports!inner(state)")
+      .eq("id", id)
+      .not("partner_kept_at", "is", null)
+      .is("partner_released_at", null)
+      .is("assigned_partner_id", null)
+      .is("archived_at", null)
+      .neq("synchroteam_exports.state", "cancelled")
+      .maybeSingle();
     if (error) throw error;
-    if (!data) throw new HttpError(404, "Dossier introuvable.");
+    if (!data) throw new HttpError(404, "Aucune préparation Synchroteam disponible pour ce dossier.");
     return new NextResponse(JSON.stringify(prepareSynchroteamDraft(data), null, 2), { headers: { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="preparation-synchroteam-${id}.json"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
   } catch (e) { return apiError(e); }
 }

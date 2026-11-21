@@ -111,7 +111,7 @@ export function AdminPartnerRelease({
       setIntent(null);
       setMessage(
         body.decision === "internal"
-          ? "Décision enregistrée : ce dossier reste chez SANISPA."
+          ? "Ce dossier est conservé chez SANISPA. La préparation Synchroteam est disponible dans le suivi des interventions."
           : "Diffusion autorisée pour le partenaire sélectionné. Les coordonnées restent protégées jusqu’à l’attribution exclusive.",
       );
       router.refresh();
@@ -223,8 +223,9 @@ export function AdminPartnerRelease({
             >
               {intent === "keep" ? (
                 <p className="text-sm">
-                  Confirmez le traitement interne de ce dossier. Il ne sera pas
-                  proposé aux partenaires.
+                  Confirmez le traitement interne de ce dossier. La préparation
+                  Synchroteam sera disponible dans le suivi des interventions et
+                  restera dans SANISPA Support.
                 </p>
               ) : (
                 <>

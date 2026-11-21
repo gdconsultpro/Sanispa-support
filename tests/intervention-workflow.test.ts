@@ -67,7 +67,7 @@ test("client validation requires all three ratings, correct ownership and an inv
     await assert.rejects(db.query(reportSql, args), /CASE_CLOSED/);
   } finally { await db.close(); }
 });
-test("review reminder queues once after three days, stops after validation, and the Synchroteam outbox creates one stable key per declaration", async () => {
+test("review reminder queues once after three days and stops after validation", async () => {
   const db = await fixture();
   try {
     await db.query(reportSql, reportArgs(new Date().toISOString()));
@@ -77,11 +77,37 @@ test("review reminder queues once after three days, stops after validation, and 
     assert.equal((await db.query<any>("select queue_client_review_reminders() n")).rows[0].n, 0);
     await db.query("select validate_intervention_report($1,$2,'abandoned',4,4,4)", [report, client]);
     assert.equal((await db.query<any>("select count(*)::int n from notification_jobs where state='pending' and kind in ('client_report','client_review_reminder')")).rows[0].n, 0);
-    assert.deepEqual((await db.query<any>("select diagnostic_id,external_key,state,attempts from synchroteam_exports")).rows, [{ diagnostic_id: diagnostic, external_key: `sanispa:${diagnostic}`, state: "pending", attempts: 0 }]);
     for (const table of ["intervention_reports", "partner_appointments", "synchroteam_exports"])
       assert.equal((await db.query<any>("select has_table_privilege('authenticated',$1,'SELECT') ok", [table])).rows[0].ok, false);
     assert.equal((await db.query<any>("select has_function_privilege('authenticated','submit_intervention_report(uuid,uuid,uuid,uuid,timestamptz,text,text,text,boolean)','EXECUTE') ok")).rows[0].ok, false);
   } finally { await db.close(); }
+});
+test("only the explicit keep decision opens a Synchroteam preparation and retries reuse its key", async () => {
+  const db = await fixture();
+  const pending = "10000000-0000-4000-8000-000000000021";
+  const offered = "10000000-0000-4000-8000-000000000022";
+  const legacy = "10000000-0000-4000-8000-000000000023";
+  const kept = "10000000-0000-4000-8000-000000000024";
+  const keep = "select public.keep_partner_intervention($1,$2)";
+  try {
+    await db.query("insert into public.admin_users(user_id) values($1)", [stranger]);
+    await db.query("insert into public.partner_departments(partner_id,department) values($1,'67')", [partner]);
+    await db.query(`insert into public.diagnostics(id,customer_id,user_id,problem_type,choice,status,department)
+      select id,$1,$2,'fuite','intervention','en analyse','67' from unnest($3::uuid[]) id`,
+    [customer, client, [pending, offered, legacy, kept]]);
+    assert.equal((await db.query("select diagnostic_id from public.synchroteam_exports")).rows.length, 0);
+    await db.query("select public.publish_partner_offer($1,$2,$3,'fuite','Description fictive pour la proposition au partenaire','{}')", [offered, partner, stranger]);
+    assert.equal((await db.query("select diagnostic_id from public.synchroteam_exports")).rows.length, 0);
+    await db.query("insert into public.synchroteam_exports(diagnostic_id,external_key,state) values ($1,$2,'cancelled')", [legacy, `sanispa:${legacy}`]);
+    await assert.rejects(db.query(keep, [pending, actor]), /ADMIN_REQUIRED/);
+    await db.query(keep, [legacy, stranger]);
+    await db.query(keep, [kept, stranger]);
+    await db.query(keep, [kept, stranger]);
+    const rows = (await db.query("select diagnostic_id,external_key,state,attempts from public.synchroteam_exports order by diagnostic_id")).rows;
+    assert.deepEqual(rows, [legacy, kept].map(id => ({ diagnostic_id: id, external_key: `sanispa:${id}`, state: "pending", attempts: 0 })));
+  } finally {
+    await db.close();
+  }
 });
 test("new subscriptions store 350 EUR TTC server-side; complete is unavailable and existing technical prices plus moving at 50 EUR are retained", async () => {
   const db = await fixture();
