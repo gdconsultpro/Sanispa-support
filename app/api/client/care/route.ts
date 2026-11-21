@@ -6,6 +6,16 @@ import { careActionSchema } from "@/lib/care";
 export async function GET(request: Request) {
   try {
     const { user, supabase } = await requirePremium(request);
+    if (new URL(request.url).searchParams.get("overview") === "1") {
+      const [reminder, reading] = await Promise.all([
+        supabase.from("care_reminders").select("spa_id,title,due_at")
+          .eq("user_id", user.id).is("completed_at", null).order("due_at").limit(1).maybeSingle(),
+        supabase.from("water_readings").select("spa_id,measured_at,ph,tac,temperature")
+          .eq("user_id", user.id).order("measured_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      if (reminder.error || reading.error) throw reminder.error || reading.error;
+      return NextResponse.json({ nextReminder: reminder.data, lastReading: reading.data }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     const [spas, journal, reminders, readings] = await Promise.all([
       supabase.from("customer_spas").select("id,brand,model").eq("user_id", user.id).order("created_at"),
       supabase.from("care_journal").select("id,spa_id,kind,performed_at,note").eq("user_id", user.id).order("performed_at", { ascending: false }).limit(200),

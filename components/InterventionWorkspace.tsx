@@ -6,7 +6,7 @@ import { PrivateFile } from "./PrivateFile";
 import { Button } from "./Button";
 type Report = { id: string; performed_at: string; findings: string; actions: string; next_steps: string; client_validated_at: string | null;
   client_outcome: "repaired" | "quote_pending" | "abandoned" | null; responsiveness: number | null; professionalism: number | null; pricing: number | null };
-type Workspace = { dossierReference?: string; appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[] };
+type Workspace = { dossierReference?: string; dossierStatus?: string; assignedPartner?: boolean; appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[] };
 const outcomes = { repaired: "Spa réparé", quote_pending: "Devis en cours", abandoned: "Projet abandonné" } as const;
 const criteria = [{ key: "responsiveness", label: "Réactivité" }, { key: "professionalism", label: "Professionnalisme" }, { key: "pricing", label: "Tarif" }] as const;
 const inputClass = "mt-2 w-full rounded-xl border border-sanispa-line bg-white p-3 text-sanispa-navy";
@@ -35,6 +35,13 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
     void load(controller.signal).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [load]);
+  const dataReady = Boolean(data);
+  useEffect(() => {
+    if (role !== "client" || !dataReady) return;
+    const section = window.location.hash.slice(1);
+    if (["validation", "rendez-vous", "rapport", "factures"].includes(section))
+      document.getElementById(section)?.scrollIntoView({ block: "start" });
+  }, [role, dataReady]);
   async function save(body: unknown, success: string) {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError(""); setMessage("");
@@ -62,18 +69,29 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
     {error ? <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error} <button className="underline" onClick={() => { setError(""); void load().catch(e => setError(e.message)); }}>Actualiser</button></p> : null}
     {message ? <p role="status" className="rounded-xl bg-emerald-50 p-4 text-emerald-900">{message}</p> : null}
     {!data ? <p role="status">Chargement du suivi…</p> : <>
-      <section className="rounded-2xl border border-sanispa-line bg-white p-5">
-        <h2 className="text-xl font-bold">1. Le rendez-vous</h2>
-        <p className="mt-3">{data.appointment ? `${new Date(data.appointment.starts_at).toLocaleString("fr-FR")} → ${new Date(data.appointment.ends_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : "Le partenaire n’a pas encore renseigné le rendez-vous."}</p>
+      {role === "client" ? (
+        <section className="rounded-2xl border border-sanispa-line bg-white p-5">
+          <h2 className="text-xl font-bold">{waiting ? "Votre compte rendu est prêt" : closed || data.dossierStatus === "CLOSED" || data.dossierStatus === "terminé" ? "Votre dossier est terminé" : "Votre demande est enregistrée"}</h2>
+          <p className="mt-2">{waiting ? "Lisez le compte rendu, puis indiquez où en est votre spa." : "Retrouvez ci-dessous les informations communiquées pour votre demande."}</p>
+          {waiting ? <a href="#validation" className="mt-3 inline-block font-bold underline">Valider le rapport</a> : null}
+          <div className="mt-3 text-sm">
+            <p>Résumé de votre déclaration (PDF)</p>
+            <PrivateFile url={`/api/client/documents/${id}/pdf`} name={`Résumé SANISPA ${data.dossierReference || ""}.pdf`} />
+          </div>
+        </section>
+      ) : null}
+      <section id={role === "client" ? "rendez-vous" : undefined} className="scroll-mt-4 rounded-2xl border border-sanispa-line bg-white p-5">
+        <h2 className="text-xl font-bold">{role === "client" ? "Rendez-vous" : "1. Le rendez-vous"}</h2>
+        <p className="mt-3">{data.appointment ? `${new Date(data.appointment.starts_at).toLocaleString("fr-FR")} → ${new Date(data.appointment.ends_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : role === "client" && !data.assignedPartner ? "Aucun rendez-vous n’est prévu pour le moment." : "Le partenaire n’a pas encore renseigné le rendez-vous."}</p>
         {role === "partner" && !closed ? <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={e => { e.preventDefault(); void save({ action: "schedule", start: new Date(start).toISOString(), end: new Date(end).toISOString() }, "Rendez-vous enregistré et visible par le client."); }}>
           <label>Début du rendez-vous<input className={inputClass} type="datetime-local" value={start} required onChange={e => setStart(e.target.value)} /></label>
           <label>Fin du rendez-vous<input className={inputClass} type="datetime-local" value={end} required onChange={e => setEnd(e.target.value)} /></label>
           <Button disabled={busy} type="submit">Enregistrer le rendez-vous</Button>
         </form> : null}
       </section>
-      <section className="rounded-2xl border border-sanispa-line bg-white p-5">
-        <h2 className="text-xl font-bold">2. Le compte rendu sur place</h2>
-        {!data.reports.length ? <p className="mt-3">Le compte rendu sera disponible après l’intervention.</p> : null}
+      <section id={role === "client" ? "rapport" : undefined} className="scroll-mt-4 rounded-2xl border border-sanispa-line bg-white p-5">
+        <h2 className="text-xl font-bold">{role === "client" ? "Comptes rendus" : "2. Le compte rendu sur place"}</h2>
+        {!data.reports.length ? <p className="mt-3">{role === "client" ? "Aucun compte rendu disponible pour cette demande." : "Le compte rendu sera disponible après l’intervention."}</p> : null}
         {data.reports.map(report => <article className="mt-4 rounded-xl bg-sanispa-ice p-4" key={report.id}>
           <h3 className="font-bold">Intervention du {new Date(report.performed_at).toLocaleString("fr-FR")}</h3>
           <dl className="mt-3 grid gap-2"><dt className="font-bold">Constats</dt><dd className="whitespace-pre-wrap break-words">{report.findings}</dd><dt className="font-bold">Travaux et contrôles effectués</dt><dd className="whitespace-pre-wrap break-words">{report.actions}</dd><dt className="font-bold">Suite prévue</dt><dd className="whitespace-pre-wrap break-words">{report.next_steps}</dd></dl>
@@ -93,19 +111,20 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
           <Button disabled={busy} type="submit">Transmettre mon compte rendu</Button>
         </form> : null}
       </section>
-      <section className="rounded-2xl border border-sanispa-line bg-white p-5">
-        <h2 className="text-xl font-bold">3. Les factures d’intervention</h2>
-        <p className="my-3 text-sm">Chaque facture doit être déposée par le partenaire dans ce dossier. Elle est nécessaire pour clôturer une réparation.</p>
+      <section id={role === "client" ? "factures" : undefined} className="scroll-mt-4 rounded-2xl border border-sanispa-line bg-white p-5">
+        <h2 className="text-xl font-bold">{role === "client" ? "Factures d’intervention" : "3. Les factures d’intervention"}</h2>
+        {role === "partner" ? <p className="my-3 text-sm">Chaque facture doit être déposée par le partenaire dans ce dossier. Elle est nécessaire pour clôturer une réparation.</p> : null}
         <div className="grid gap-2">{data.invoices.map(invoice => <div key={invoice.id}><p className="font-bold">{invoice.file_name}</p><PrivateFile url={`/api/files/document?id=${invoice.id}`} name={invoice.file_name} /></div>)}</div>
-        {!data.invoices.length ? <p>Facture non encore déposée.</p> : null}
+        {!data.invoices.length ? <p className="mt-3">{role === "client" ? "Aucune facture disponible pour cette demande." : "Facture non encore déposée."}</p> : null}
         {role === "partner" ? <form className="mt-4 grid gap-3" onSubmit={e => { e.preventDefault(); void uploadInvoice(); }}>
           <label>Votre facture PDF (3 Mo maximum)<input className={inputClass} type="file" required accept="application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} /></label>
           <Button disabled={busy || !file} type="submit">Déposer la facture du client</Button>
         </form> : null}
       </section>
-      {role === "client" && waiting ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-        <h2 className="text-xl font-bold">4. Votre validation et votre avis</h2>
+      {role === "client" && waiting ? <section id="validation" className="scroll-mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+        <h2 className="text-xl font-bold">Votre validation et votre avis</h2>
         <p className="mt-2">Après avoir lu le compte rendu, indiquez où en est votre projet et évaluez les trois critères.</p>
+        <a href="#rapport" className="mt-2 inline-block text-sm font-bold underline">Relire le compte rendu</a>
         <form className="mt-5 grid gap-5" onSubmit={e => { e.preventDefault(); void save({ reportId: waiting.id, outcome, ...ratings }, "Merci ! Votre validation et votre avis sont enregistrés."); }}>
           <fieldset><legend className="font-bold">Quelle est la situation de votre spa ?</legend><div className="mt-3 grid gap-3 sm:grid-cols-3">{Object.entries(outcomes).map(([value, label]) => <label className="flex gap-2 rounded-xl bg-white p-4" key={value}><input type="radio" name="outcome" required value={value} checked={outcome === value} onChange={() => setOutcome(value as keyof typeof outcomes)} />{label}</label>)}</div></fieldset>
           {outcome === "repaired" && !data.invoices.length ? <p className="text-sm font-bold">Votre partenaire doit encore déposer sa facture avant cette validation.</p> : null}

@@ -30,4 +30,4 @@ export function validateSubmission(input: unknown) {
     if (missing.length) throw new Error("Ajoutez la photo du clavier ou indiquez pourquoi elle est impossible à fournir.");
     return p;
 }
-export const draftSteps = ["/diagnostic", "/questionnaire", "/upload", "/resume"] as const;
+export { draftSteps } from "./client-drafts";

@@ -3,17 +3,19 @@ import {
   statusLabel,
   problemLabel,
   installationLabel,
-  paymentLabel,
 } from "@/lib/display-labels";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { Button } from "@/components/Button";
+import { Button, ButtonLink } from "@/components/Button";
 import { Field, SelectField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
-import { clearDraft, authHeaders } from "@/lib/storage";
+import { clearDraft, authHeaders, readLocalProgress } from "@/lib/storage";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { downloadBlob } from "@/lib/download";
+import { CarePreviewCards, ClientCaseCard, DraftCard, type CarePreview } from "@/components/ClientSpaceCards";
+import { clientCaseProgress, type ClientCase } from "@/lib/client-case-progress";
+import type { DraftListItem } from "@/lib/client-drafts";
 type Profile = {
   first_name: string;
   last_name: string;
@@ -25,18 +27,6 @@ type Profile = {
   spa_brand: string;
   spa_model: string;
   spa_year: string;
-};
-type Diagnostic = {
-  public_reference?: string;
-  id: string;
-  created_at: string;
-  status: string;
-  problem_type: string;
-  choice: string | null;
-  payment_status: string | null;
-  intervened_at?: string | null;
-  intervened_company_name?: string | null;
-  assigned_partner?: { company_name: string } | null;
 };
 type Spa = {
   id: string;
@@ -77,18 +67,29 @@ const documentTypes = [
   "Devis",
   "Autre document",
 ];
+const views = [
+  ["accueil", "Accueil"], ["demandes", "Mes demandes"],
+  ["entretien", "Mon entretien"], ["documents", "Mes documents"],
+] as const;
+type View = (typeof views)[number][0] | "spas";
+
+function currentView(): View {
+  const requested = new URLSearchParams(window.location.search).get("view");
+  if (requested === "spas" || requested === "demandes" || requested === "entretien" || requested === "documents") return requested;
+  return "accueil";
+}
+
 export default function EspaceClientPage() {
-  const [drafts, setDrafts] = useState<
-    Array<{
-      id: string;
-      step: string;
-      updated_at: string;
-    }>
-  >([]);
-  const [view, setView] = useState<"overview" | "history" | "documents" | "spas">("overview");
+  const [drafts, setDrafts] = useState<DraftListItem[]>([]);
+  const [draftsLoaded, setDraftsLoaded] = useState(false);
+  const [local, setLocal] = useState<ReturnType<typeof readLocalProgress>>(null);
+  const [sessionEmail, setSessionEmail] = useState("");
+  const [care, setCare] = useState<CarePreview | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [view, setView] = useState<View>("accueil");
   const [token, setToken] = useState("");
   const [profile, setProfile] = useState<Profile>(emptyProfile);
-  const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
+  const [diagnostics, setDiagnostics] = useState<ClientCase[]>([]);
   const [spas, setSpas] = useState<Spa[]>([]);
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
   const [spaForm, setSpaForm] = useState({
@@ -109,44 +110,39 @@ export default function EspaceClientPage() {
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const loadAll = useCallback(async (accessToken?: string) => {
+  const loadAll = useCallback(async (accessToken?: string, signal?: AbortSignal) => {
     const headers = accessToken
       ? { Authorization: `Bearer ${accessToken}` }
       : await authHeaders();
-    const [
-      profileResponse,
-      dashboardResponse,
-      spasResponse,
-      documentsResponse,
-    ] = await Promise.all([
-      fetch("/api/client/profile", { headers }),
-      fetch("/api/client/dashboard", { headers }),
-      fetch("/api/client/spas", { headers }),
-      fetch("/api/client/documents", { headers }),
-    ]);
-    const draftsResponse = await fetch("/api/client/drafts", { headers });
-    if (
-      ![
-        profileResponse,
-        dashboardResponse,
-        spasResponse,
-        documentsResponse,
-        draftsResponse,
-      ].every((r) => r.ok)
-    )
-      throw new Error("Chargement incomplet. Réessayez.");
-    setDrafts((await draftsResponse.json()).drafts || []);
-    const profileData = await profileResponse.json();
-    const dashboardData = await dashboardResponse.json();
-    const spasData = await spasResponse.json();
-    const documentsData = await documentsResponse.json();
-    if (profileData.profile) setProfile(profileData.profile);
-    setDiagnostics(dashboardData.diagnostics ?? []);
-    setSpas(spasData.spas ?? []);
-    setDocuments(documentsData.documents ?? []);
+    const paths = ["/profile", "/dashboard?followUp=1", "/spas", "/documents", "/drafts", "/care?overview=1"];
+    const [profile, cases, spas, documents, drafts, care] = await Promise.allSettled(
+      paths.map(async (path) => {
+        const response = await fetch("/api/client" + path, { headers, signal, cache: "no-store" });
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json();
+      }),
+    );
+    if (signal?.aborted) return;
+    if (profile.status === "fulfilled" && profile.value.profile) setProfile(profile.value.profile);
+    if (cases.status === "fulfilled") setDiagnostics(cases.value.diagnostics ?? []);
+    if (spas.status === "fulfilled") setSpas(spas.value.spas ?? []);
+    if (documents.status === "fulfilled") setDocuments(documents.value.documents ?? []);
+    if (drafts.status === "fulfilled") {
+      setDrafts(drafts.value.drafts ?? []);
+      setDraftsLoaded(true);
+    }
+    if (care.status === "fulfilled") setCare(care.value);
+    const problems = [profile, cases, spas, documents, drafts].filter(result => result.status === "rejected");
+    setLoadError(problems.some(result => result.reason?.message === "401")
+      ? "Votre session a expiré. Reconnectez-vous pour retrouver votre espace."
+      : problems.length ? "Certaines informations n’ont pas pu être chargées. Réessayez." : "");
   }, []);
   useEffect(() => {
     const supabase = getSupabaseBrowser();
+    const controller = new AbortController();
+    setView(currentView());
+    const restoreView = () => setView(currentView());
+    window.addEventListener("popstate", restoreView);
     let initialized = false;
     let currentUser: string | null = null;
     const { data: subscription } = supabase.auth.onAuthStateChange(
@@ -157,23 +153,39 @@ export default function EspaceClientPage() {
           return;
         }
         setToken(session?.access_token ?? "");
+        setSessionEmail(session?.user.email?.toLowerCase() || "");
       },
     );
     async function load() {
       try {
         const { data } = await supabase.auth.getSession();
+        if (controller.signal.aborted) return;
+        setLocal(readLocalProgress());
         currentUser = data.session?.user.id ?? null;
         initialized = true;
-        if (data.session) await loadAll(data.session.access_token);
+        if (data.session) await loadAll(data.session.access_token, controller.signal);
       } catch {
-        setError("Impossible de charger votre espace. Réessayez.");
+        if (!controller.signal.aborted) setLoadError("Impossible de charger votre espace. Réessayez.");
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
     void load();
-    return () => subscription.subscription.unsubscribe();
+    return () => {
+      controller.abort();
+      subscription.subscription.unsubscribe();
+      window.removeEventListener("popstate", restoreView);
+    };
   }, [loadAll]);
+  function selectView(next: View) {
+    if (view === next) return;
+    const url = new URL(window.location.href);
+    if (next === "accueil") url.searchParams.delete("view");
+    else url.searchParams.set("view", next);
+    window.history.pushState(null, "", url);
+    setView(next);
+    window.scrollTo(0, 0);
+  }
   function updateProfile(key: keyof Profile, value: string) {
     setProfile((current) => ({ ...current, [key]: value }));
   }
@@ -300,9 +312,31 @@ export default function EspaceClientPage() {
     clearDraft();
     window.location.href = "/";
   }
+  const canResumeLocal = local?.pending &&
+    (!sessionEmail || !local.draft.email || sessionEmail === local.draft.email.trim().toLowerCase()) &&
+    (!token || !draftsLoaded || !local.draft.version || drafts.some(draft => draft.id === local.draft.draftId));
+  const localDraft: DraftListItem | null = local && canResumeLocal ? {
+    id: "local",
+    step: local.step,
+    updated_at: local.updatedAt,
+    problemType: local.draft.problemType,
+    spaId: local.draft.spaId,
+    spaBrand: local.draft.spaBrand,
+    spaModel: local.draft.spaModel,
+    local: true,
+  } : null;
+  const availableDrafts = localDraft
+    ? [localDraft, ...drafts.filter(draft => draft.id !== local?.draft.draftId || draft.version !== local?.draft.version)]
+    : drafts;
+  const dossierToHighlight = diagnostics.find(dossier => clientCaseProgress(dossier).needsAttention) ||
+    diagnostics.find(dossier => clientCaseProgress(dossier).label !== "Dossier terminé") || diagnostics[0];
+  const reportsToRead = diagnostics.filter(dossier => clientCaseProgress(dossier).needsAttention);
+  const casesWithReports = diagnostics.filter(dossier => dossier.reports?.length);
+  const latestDocument = documents.find(document => document.kind === "uploaded" && document.issuedBy !== "client");
+  const pendingInvoice = reportsToRead.find(dossier => !dossier.invoices?.length);
   if (loading) {
     return (
-      <AppShell compact>
+      <AppShell compact clientSpace>
         <div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">
           Chargement de votre espace client...
         </div>
@@ -311,21 +345,22 @@ export default function EspaceClientPage() {
   }
   if (!token) {
     return (
-      <AppShell compact>
+      <AppShell compact clientSpace>
         <StepHeader
           eyebrow="Espace client"
           title="Mon espace spa"
           description="Retrouvez l’historique de votre spa, votre carnet, vos rappels, vos relevés, vos factures et vos rapports dans un seul espace. Services gratuits pour le moment."
         />
+        {localDraft ? <div className="mb-5 max-w-xl"><DraftCard draft={localDraft} spas={[]} /></div> : null}
         <div className="flex flex-wrap gap-3">
           <Link
-            href="/connexion?next=compte"
+            href={localDraft ? "/connexion?next=diagnostic" : "/connexion?next=compte"}
             className="rounded-md bg-sanispa-navy px-5 py-3 font-bold text-white focus-ring"
           >
             Se connecter
           </Link>
           <Link
-            href="/acces?next=compte"
+            href={localDraft ? "/acces?next=diagnostic" : "/acces?next=compte"}
             className="rounded-md border border-sanispa-line bg-white px-5 py-3 font-bold text-sanispa-navy focus-ring"
           >
             Créer un compte
@@ -335,146 +370,136 @@ export default function EspaceClientPage() {
     );
   }
   return (
-    <AppShell compact>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <StepHeader
-          eyebrow="Espace client"
-          title="Mon espace spa"
-          description="L’historique et les outils de votre spa, réunis au même endroit."
-        />
+    <AppShell compact clientSpace>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-x-3">
+        <h1 className="text-2xl font-bold text-sanispa-navy sm:text-3xl">Mon espace spa</h1>
         <button
           onClick={logout}
-          className="rounded-md border border-sanispa-line bg-white px-4 py-2 text-sm font-bold text-sanispa-steel focus-ring"
+          className="focus-ring min-h-11 rounded-md px-2 text-sm font-bold text-sanispa-steel underline"
         >
           Déconnexion
         </button>
       </div>
 
-      <nav aria-label="Rubriques de mon espace spa" className="mb-5 flex flex-wrap gap-2">{([["overview","Accueil"],["history","Mon historique"],["documents","Factures et rapports"],["spas","Mes spas et mon profil"]] as const).map(([key,label]) => <button type="button" key={key} onClick={()=>setView(key)} aria-current={view === key ? "page" : undefined} className={`focus-ring rounded-full border px-4 py-3 text-sm font-bold ${view === key ? "bg-sanispa-blue text-white" : "border-sanispa-line bg-white"}`}>{label}</button>)}</nav>
-      {view === "overview" ? <section className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Tous mes services spa">
-        <button type="button" onClick={()=>setView("history")} className="focus-ring rounded-2xl border border-sanispa-line bg-white p-5 text-left"><h2 className="text-xl font-bold">Mon historique →</h2><p className="mt-2 text-sm leading-6">{diagnostics.length} demande(s) · {drafts.length} brouillon(s). Suivi des interventions et nom du technicien.</p></button>
-        <button type="button" onClick={()=>setView("documents")} className="focus-ring rounded-2xl border border-sanispa-line bg-white p-5 text-left"><h2 className="text-xl font-bold">Factures et rapports →</h2><p className="mt-2 text-sm leading-6">Retrouvez et ajoutez les documents de votre spa.</p></button>
-        {[["Mon carnet et mes rappels","Entretiens, filtres et rappels automatiques.","/premium/carnet"],["Mes relevés d’eau","Historique des mesures et aide aux ajustements.","/premium/releves"],["Mon assistant IA","Une aide pour l’eau, les pannes et l’entretien.","/premium/assistant"],["Les notices de mon spa","Documents en français par marque et référence.","/premium/notices"],["Le forum des particuliers","Échanges entre propriétaires, modérés par SANISPA.","/premium/forum"],["Mes rendez-vous en visio","Mes demandes et rendez-vous avec SANISPA.","/visio"]].map(([title,text,href])=><Link key={href} href={href} className="focus-ring rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">{title} →</h2><p className="mt-2 text-sm leading-6">{text}</p></Link>)}
-      </section> : null}
-      <div className="grid gap-5">
-        {error ? (
-          <p className="rounded-md bg-red-50 p-3 text-red-700" role="alert">
-            {error}
-          </p>
+      {view === "accueil" && availableDrafts[0] ? (
+        <section className="mb-5" aria-label="Votre déclaration en cours">
+          <h2 className="mb-2 text-xl font-bold">Reprendre ma déclaration</h2>
+          <DraftCard draft={availableDrafts[0]} spas={spas} />
+          {availableDrafts.length > 1 ? <button type="button" onClick={() => selectView("demandes")} className="focus-ring mt-2 min-h-11 font-bold underline">Voir tous mes brouillons</button> : null}
+        </section>
+      ) : null}
+      <nav aria-label="Rubriques de mon espace spa" className="mb-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+        {views.map(([key, label]) => (
+          <button type="button" key={key} onClick={() => selectView(key)} aria-current={view === key ? "page" : undefined}
+            className={`focus-ring min-h-12 rounded-xl border px-3 py-2 text-sm font-bold sm:rounded-full sm:px-5 ${view === key ? "border-sanispa-blue bg-sanispa-blue text-white" : "border-sanispa-line bg-white"}`}>
+            {label}
+          </button>
+        ))}
+      </nav>
+      {loadError ? (
+        <p className="mb-4 rounded-xl bg-amber-50 p-4 text-sm" role="alert">
+          {loadError}{" "}
+          {loadError.startsWith("Votre session") ? <Link href="/connexion?next=compte" className="font-bold underline">Me connecter</Link>
+            : <button type="button" className="font-bold underline" onClick={() => void loadAll(token)}>Réessayer</button>}
+        </p>
+      ) : null}
+      <div className="grid min-w-0 gap-5">
+        {error ? <p className="rounded-md bg-red-50 p-3 text-red-700" role="alert">{error}</p> : null}
+        {view === "accueil" ? (
+          <>
+            {dossierToHighlight ? (
+              <section aria-label="Votre demande à suivre">
+                <h2 className="mb-2 text-xl font-bold">{reportsToRead.length ? "Action à faire" : "Ma demande à suivre"}</h2>
+                <ClientCaseCard dossier={dossierToHighlight} />
+              </section>
+            ) : null}
+            <section aria-label="L’entretien de votre spa">
+              <h2 className="mb-2 text-xl font-bold">Mon entretien</h2>
+              <CarePreviewCards care={care} spas={spas} />
+            </section>
+            <section className="min-w-0 rounded-2xl border border-sanispa-line bg-white p-4 sm:p-5">
+              <h2 className="text-xl font-bold">Mes documents</h2>
+              <p className="mt-2 break-words text-sm">
+                {pendingInvoice ? `Facture d’intervention attendue pour le dossier n°${pendingInvoice.public_reference || "en cours"}.`
+                  : latestDocument ? `Dernier document reçu · ${latestDocument.name}` : "Retrouvez les résumés, rapports et factures disponibles."}
+              </p>
+              <button type="button" className="focus-ring mt-2 min-h-11 font-bold underline" onClick={() => selectView("documents")}>Ouvrir mes documents</button>
+            </section>
+            <div className="flex flex-wrap items-center gap-3">
+              <ButtonLink href="/diagnostic?new=1" variant="secondary">Déclarer une panne</ButtonLink>
+              <button type="button" className="focus-ring min-h-12 px-2 font-bold underline" onClick={() => selectView("spas")}>Mes spas et mon profil</button>
+            </div>
+          </>
         ) : null}
-        {drafts.length && view === "history" ? (
-          <section className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-            <h2 className="text-xl font-bold">Mes brouillons</h2>
-            <p className="mt-2 text-sanispa-steel">
-              Ces saisies sont enregistrées dans votre espace client. Elles ne
-              sont pas encore envoyées à SANISPA.
-            </p>
-            <div className="mt-4 grid gap-3">
-              {drafts.map((d) => (
-                <div key={d.id} className="rounded-md bg-sanispa-ice p-4">
-                  <p className="font-bold">
-                    Brouillon {d.id.slice(0, 8).toUpperCase()}
-                  </p>
-                  <p className="my-2 text-sm">
-                    Dernière sauvegarde le{" "}
-                    {new Date(d.updated_at).toLocaleString("fr-FR")}
-                  </p>
-                  <Link
-                    className="font-bold text-sanispa-blue underline"
-                    href={`/reprendre?id=${d.id}`}
-                  >
-                    Reprendre mon brouillon
-                  </Link>
+
+        {view === "demandes" ? (
+          <>
+            {availableDrafts.length ? (
+              <section>
+                <h2 className="mb-2 text-xl font-bold">Mes brouillons</h2>
+                <p className="mb-3 text-sm text-sanispa-steel">Les brouillons n’ont pas encore été envoyés à SANISPA.</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {availableDrafts.map(draft => <DraftCard key={draft.id} draft={draft} spas={spas} />)}
                 </div>
+              </section>
+            ) : null}
+            <section>
+              <h2 className="mb-3 text-xl font-bold">Mes demandes envoyées</h2>
+              {diagnostics.length ? <div className="grid gap-3 md:grid-cols-2">
+                {diagnostics.map(dossier => <ClientCaseCard key={dossier.id} dossier={dossier} />)}
+              </div> : <p className="text-sm text-sanispa-steel">{loadError ? "Le suivi pourra être affiché après actualisation." : "Aucune demande envoyée pour le moment."}</p>}
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <ButtonLink href="/diagnostic?new=1" variant="secondary">Nouvelle demande</ButtonLink>
+                <Link href="/visio" className="focus-ring inline-flex min-h-12 items-center font-bold underline">Mes rendez-vous en visio</Link>
+              </div>
+            </section>
+          </>
+        ) : null}
+
+        {view === "entretien" ? (
+          <section>
+            <h2 className="mb-3 text-xl font-bold">Mon entretien</h2>
+            <CarePreviewCards care={care} spas={spas} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {[
+                ["Mon assistant spa", "Pour l’eau, l’entretien ou une panne.", "/premium/assistant"],
+                ["Notices en français", "Retrouvez votre clavier à l’aide des photos.", "/premium/notices"],
+                ["Forum des particuliers", "Échangez avec d’autres propriétaires.", "/premium/forum"],
+              ].map(([title, description, href]) => (
+                <Link href={href} key={href} className="focus-ring rounded-2xl border border-sanispa-line bg-white p-4">
+                  <h3 className="font-bold">{title} →</h3><p className="mt-1 text-sm">{description}</p>
+                </Link>
               ))}
+              <button type="button" onClick={() => selectView("spas")} className="focus-ring rounded-2xl border border-sanispa-line bg-white p-4 text-left">
+                <span className="font-bold">Mes spas et mon profil →</span>
+              </button>
             </div>
           </section>
         ) : null}
-        {view === "overview" || view === "history" ? <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-sanispa-line bg-white p-5"><div><h2 className="text-xl font-bold">Un nouveau problème ?</h2><p className="mt-2 text-sm">Déclarez ce que vous constatez ; le questionnaire s’adapte au problème choisi.</p></div><Link href="/diagnostic?new=1" className="focus-ring rounded-full bg-sanispa-blue px-5 py-3 font-bold text-white">Déclarer une panne</Link></section> : null}
 
-        <section hidden={view !== "history"} className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold text-sanispa-navy">
-            Mes demandes et interventions
-          </h2>
-          <Link href="/visio" className="mt-4 inline-flex rounded-full border border-sanispa-line bg-white px-4 py-3 text-sm font-bold text-sanispa-blue">Mes rendez-vous en visio →</Link>
-          <p className="mt-3 text-sm">Vos demandes, rapports et factures restent accessibles gratuitement dans cet espace.</p>
-          <div className="mt-4 grid gap-3">
-            {diagnostics.length ? (
-              diagnostics.map((diagnostic) => (
-                <div
-                  key={diagnostic.id}
-                  className="rounded-md bg-sanispa-ice p-4"
-                >
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">
-                    Dossier n°{diagnostic.public_reference || "Référence en cours"}
-                  </p>
-                  <p className="mt-2 font-bold text-sanispa-navy">
-                    {problemLabel(diagnostic.problem_type)} ·{" "}
-                    {statusLabel(diagnostic.status)}
-                  </p>
-                  <p className="text-sm text-sanispa-steel">
-                    {new Date(diagnostic.created_at).toLocaleString("fr-FR")} ·
-                    Paiement :{" "}
-                    {paymentLabel(diagnostic.payment_status, diagnostic.choice)}
-                  </p>
-                  {diagnostic.intervened_at &&
-                  diagnostic.intervened_company_name ? (
-                    <p className="mt-3 text-sm font-bold">
-                      Intervention effectuée par{" "}
-                      {diagnostic.intervened_company_name} le{" "}
-                      {new Date(diagnostic.intervened_at).toLocaleDateString(
-                        "fr-FR",
-                      )}
-                      .
-                    </p>
-                  ) : diagnostic.assigned_partner ? (
-                    <p className="mt-3 text-sm">
-                      Dossier confié à{" "}
-                      {diagnostic.assigned_partner.company_name} · intervention
-                      non encore confirmée.
-                    </p>
-                  ) : null}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Link href={`/espace-client/interventions/${diagnostic.id}`} className="rounded-md border border-sanispa-line px-3 py-2 text-sm font-bold">Suivre l’intervention et donner mon avis</Link>
-                    <button
-                      onClick={() =>
-                        downloadDocument({
-                          id: diagnostic.id,
-                          kind: "summary",
-                          name: `Résumé de demande n°${diagnostic.public_reference || "Référence en cours"}`,
-                          date: diagnostic.created_at,
-                          type: "Résumé",
-                          problemType: diagnostic.problem_type,
-                          status: diagnostic.status,
-                          spa: "",
-                        })
-                      }
-                      className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy focus-ring"
-                    >
-                      Télécharger le résumé PDF
-                    </button>
-                    <Link
-                      href={
-                        diagnostic.problem_type === "traitement-eau"
-                          ? `/paiement?diagnosticId=${diagnostic.id}`
-                          : `/diagnostic?new=1&problemType=${diagnostic.problem_type}`
-                      }
-                      className="rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-blue focus-ring"
-                    >
-                      {diagnostic.problem_type === "traitement-eau"
-                        ? "Mon assistance eau"
-                        : "Nouvelle demande similaire"}
-                    </Link>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-sanispa-steel">
-                Aucune demande transmise pour le moment.
-              </p>
-            )}
-          </div>
-        </section>
+        {view === "documents" && casesWithReports.length ? (
+          <section>
+            <h2 className="mb-2 text-xl font-bold">Rapports d’intervention</h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              {casesWithReports.map(dossier => {
+                const action = clientCaseProgress(dossier);
+                return (
+                  <article key={dossier.id} className="min-w-0 rounded-xl border border-sanispa-line bg-white p-4">
+                    <h3 className="break-words font-bold">{problemLabel(dossier.problem_type)}</h3>
+                    <p className="mt-1 text-sm">Dossier n°{dossier.public_reference || "Référence en cours"}</p>
+                    <div className="mt-3">
+                      <ButtonLink href={action.needsAttention ? action.href : `/espace-client/interventions/${dossier.id}#rapport`}
+                        variant={action.needsAttention ? "primary" : "secondary"}>
+                        {action.needsAttention ? "Valider le rapport" : "Lire le compte rendu"}
+                      </ButtonLink>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            {pendingInvoice ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm">La facture du dossier n°{pendingInvoice.public_reference || "en cours"} doit encore être déposée avant de clôturer une réparation.</p> : null}
+          </section>
+        ) : null}
 
         <section hidden={view !== "spas"} className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
           <h2 className="text-xl font-bold text-sanispa-navy">Mes spas</h2>
@@ -544,6 +569,8 @@ export default function EspaceClientPage() {
             Mes factures et documents
           </h2>
 
+          <details className="my-4 rounded-xl border border-sanispa-line bg-sanispa-ice p-4">
+            <summary className="focus-ring cursor-pointer font-bold">Ajouter un document</summary>
           <form
             onSubmit={uploadDocument}
             className="mt-4 grid gap-4 rounded-md border border-dashed border-sanispa-line bg-sanispa-ice p-4"
@@ -622,6 +649,7 @@ export default function EspaceClientPage() {
               {uploadingDocument ? "Ajout du document…" : "Ajouter le document"}
             </Button>
           </form>
+          </details>
 
           <div className="mt-4 grid gap-3">
             {documents.length ? (

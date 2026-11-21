@@ -18,7 +18,7 @@ export function PremiumForum() {
     catch (e) { setError(e instanceof Error ? e.message : "Envoi impossible."); }
     finally { setBusy(false); }
   }
-  return <div className="mt-6 grid gap-5">{error ? <p role="alert" className="rounded-xl bg-white p-4 text-red-800">{error} <Link href="/premium" className="underline">Mes services gratuits</Link></p> : null}{message ? <p role="status" className="rounded-xl bg-emerald-50 p-4">{message}</p> : null}
+  return <div className="mt-6 grid gap-5">{error ? <p role="alert" className="rounded-xl bg-white p-4 text-red-800">{error} <Link href="/connexion?next=forum" className="underline">Me connecter</Link></p> : null}{message ? <p role="status" className="rounded-xl bg-emerald-50 p-4">{message}</p> : null}
     {posts ? <><form className="grid gap-4 rounded-2xl border border-sanispa-line bg-white p-5" onSubmit={e => { e.preventDefault(); void submit(); }}><h2 className="text-xl font-bold">Participer à la discussion</h2><p className="text-sm">Ne publiez pas de coordonnées personnelles ni d’offre commerciale. Une expérience partagée ne remplace pas l’avis d’un professionnel.</p>
       <label>Mon message concerne<select className="mt-2 w-full rounded-xl border border-sanispa-line p-3" value={parent} onChange={e => setParent(e.target.value)}><option value="">Une nouvelle discussion</option>{posts.filter(p => !p.parentId && p.state === "approved").map(p => <option value={p.id} key={p.id}>{p.title}</option>)}</select></label>
       {!parent ? <label>Titre <span className="text-sm">(3 à 150 caractères)</span><input className="mt-2 w-full rounded-xl border border-sanispa-line p-3" required minLength={3} maxLength={150} value={title} onChange={e => setTitle(e.target.value)} /></label> : null}

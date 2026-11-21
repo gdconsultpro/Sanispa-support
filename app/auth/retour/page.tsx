@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { problemTypes } from "@/lib/questions";
 import { confirmedClientDestination } from "@/lib/client-access";
-import { emptyDraft, readDraft, saveDraft, writeDraft } from "@/lib/storage";
+import { emptyDraft, readDraft, readLocalProgress, saveDraft, writeDraft } from "@/lib/storage";
 export default function Callback() {
   const [error, setError] = useState("");
   const confirmation = useRef<Promise<void> | null>(null);
@@ -35,16 +35,18 @@ export default function Callback() {
             "Ce lien est invalide ou expiré. Demandez un nouveau lien d'accès.",
           );
         const draft = readDraft();
+        const progress = readLocalProgress();
         const query = new URLSearchParams(window.location.search);
         const next = query.get("next");
-        const destination = next === "partenaire" ? "/partenaire/inscription" : next === "compte" ? "/espace-client" : ["carnet", "releves", "notices"].includes(next || "") ? `/premium/${next}` : query.get("next") === "visio" ? "/visio" : query.get("next") === "admin" ? "/admin/connexion" : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
+        const destination = next === "partenaire" ? "/partenaire/inscription" : next === "compte" ? "/espace-client" : ["carnet", "releves", "notices", "assistant", "forum"].includes(next || "") ? `/premium/${next}` : query.get("next") === "visio" ? "/visio" : query.get("next") === "admin" ? "/admin/connexion" : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
           draft,
           data.session.user.email || "",
           query.get("next") === "diagnostic",
         );
         if (destination === "/questionnaire" || destination === "/upload") {
-          await saveDraft(draft, destination);
-          if (active) window.location.replace(destination);
+          const step = progress?.updatedAt ? progress.step : destination;
+          await saveDraft(draft, step);
+          if (active) window.location.replace(step);
         } else if (active && destination === "/diagnostic") {
           const requested = new URLSearchParams(window.location.search).get(
             "problemType",
@@ -80,8 +82,8 @@ export default function Callback() {
           <p role="alert" className="mt-4">
             {error}
           </p>
-          <Link className="mt-4 block underline" href="/connexion?next=compte">
-            Me connecter à mon compte
+          <Link className="mt-4 block underline" href="/espace-client">
+            Retrouver mon espace spa
           </Link>
         </>
       ) : null}

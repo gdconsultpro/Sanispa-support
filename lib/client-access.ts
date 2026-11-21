@@ -1,7 +1,7 @@
 import { problemTypes } from "./questions";
 import type { DiagnosticDraft } from "./types";
 export function publicClientIntent(value: string | null) {
-  return ["premium", "visio", "carnet", "releves", "notices", "compte", "partenaire"].includes(value || "") ? value as "premium" | "visio" | "carnet" | "releves" | "notices" | "compte" | "partenaire" : "diagnostic";
+  return ["premium", "visio", "carnet", "releves", "notices", "assistant", "forum", "compte", "partenaire"].includes(value || "") ? value as "premium" | "visio" | "carnet" | "releves" | "notices" | "assistant" | "forum" | "compte" | "partenaire" : "diagnostic";
 }
 
 /** Carry only the category in the link; contact details stay on the original device. */
@@ -14,12 +14,12 @@ export function clientConfirmationUrl(origin: string, problemType?: string, inte
 }
 
 /** Token stays in the URL fragment, outside HTTP logs and Referrer headers. */
-export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin" | "visio" | "carnet" | "releves" | "notices" | "compte" | "partenaire", problemType?: string) {
+export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin" | "visio" | "carnet" | "releves" | "notices" | "assistant" | "forum" | "compte" | "partenaire", problemType?: string) {
   const base = new URL(origin);
   if (base.protocol !== "https:" && !(base.protocol === "http:" && base.hostname === "localhost"))
     throw new Error("Invalid confirmation origin");
   const url = new URL(clientConfirmationUrl(base.origin, problemType, intent === "premium" ? "premium" : "diagnostic"));
-  if (["recovery", "admin", "visio", "carnet", "releves", "notices", "compte", "partenaire"].includes(intent)) url.searchParams.set("next", intent);
+  if (["recovery", "admin", "visio", "carnet", "releves", "notices", "assistant", "forum", "compte", "partenaire"].includes(intent)) url.searchParams.set("next", intent);
   url.hash = new URLSearchParams({ token_hash: token, type: intent === "recovery" ? "recovery" : "email" }).toString();
   return url.href;
 }

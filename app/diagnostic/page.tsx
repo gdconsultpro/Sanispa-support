@@ -48,64 +48,81 @@ function DiagnosticContent() {
   const searchParams = useSearchParams();
   const [draft, setDraft] = useState<DiagnosticDraft>(emptyDraft);
   const [spas, setSpas] = useState<Spa[]>([]);
-  const [selectedSpaId, setSelectedSpaId] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const requestedProblem = problemTypes.find(
       (p) => p.value === searchParams.get("problemType"),
     )?.value;
-    if (searchParams.get("new") === "1") clearDraft();
+    let active = true;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("new") === "1") {
+      clearDraft();
+      url.searchParams.delete("new");
+      window.history.replaceState(null, "", url);
+    }
     const savedDraft = readDraft();
     setDraft(
       normalizeDiagnostic({
         ...savedDraft,
-        problemType: requestedProblem || savedDraft.problemType,
+        problemType: savedDraft.problemType || requestedProblem || "",
       }),
     );
     async function prefillFromClientAccount() {
       try {
         const supabase = getSupabaseBrowser();
         const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (!token) return;
+        const session = data.session;
+        if (!active || !session) return;
+        const token = session.access_token;
+        const email = session.user.email || "";
+        setAccountEmail(email);
+        setDraft(current => ({ ...current, email }));
         const headers = { Authorization: `Bearer ${token}` };
         const [profileResponse, spasResponse] = await Promise.all([
           fetch("/api/client/profile", { headers }),
           fetch("/api/client/spas", { headers }),
         ]);
-        const profileData = await profileResponse.json();
-        const spasData = await spasResponse.json();
+        const profileData = profileResponse.ok ? await profileResponse.json() : {};
+        const spasData = spasResponse.ok ? await spasResponse.json() : {};
+        if (!active) return;
         const profile = profileData.profile;
-        const loadedSpas = spasData.spas ?? [];
+        const loadedSpas: Spa[] = spasData.spas ?? [];
         setSpas(loadedSpas);
-        const firstSpa = loadedSpas[0];
-        if (firstSpa) setSelectedSpaId(firstSpa.id);
-        setDraft((current) => ({
-          ...current,
-          name:
-            current.name ||
-            [profile?.first_name, profile?.last_name].filter(Boolean).join(" "),
-          phone: current.phone || profile?.phone || "",
-          email: current.email || profile?.email || "",
-          address: current.address || profile?.address || "",
-          postalCode: current.postalCode || profile?.postal_code || "",
-          city: current.city || profile?.city || "",
-          spaBrand:
-            current.spaBrand || firstSpa?.brand || profile?.spa_brand || "",
-          spaModel:
-            current.spaModel || firstSpa?.model || profile?.spa_model || "",
-          spaYear:
-            current.spaYear || firstSpa?.spa_year || profile?.spa_year || "",
-          installationType:
-            current.installationType || firstSpa?.installation_type || "",
-          problemType: requestedProblem || current.problemType,
-        }));
+        setDraft((current) => {
+          const linkedSpa = loadedSpas.find(spa => spa.id === current.spaId);
+          const onlySpa = !current.draftId && !current.spaId && !current.spaBrand && !current.spaModel &&
+            !current.spaYear && !current.installationType && loadedSpas.length === 1 ? loadedSpas[0] : undefined;
+          const spa = linkedSpa || onlySpa;
+          return {
+            ...current,
+            spaId: spasResponse.ok ? spa?.id : current.spaId,
+            name:
+              current.name ||
+              [profile?.first_name, profile?.last_name].filter(Boolean).join(" "),
+            phone: current.phone || profile?.phone || "",
+            email,
+            address: current.address || profile?.address || "",
+            postalCode: current.postalCode || profile?.postal_code || "",
+            city: current.city || profile?.city || "",
+            spaBrand:
+              current.spaBrand || spa?.brand || "",
+            spaModel:
+              current.spaModel || spa?.model || "",
+            spaYear:
+              current.spaYear || spa?.spa_year || "",
+            installationType:
+              current.installationType || (spa?.installation_type === "interieur" || spa?.installation_type === "exterieur"
+                ? spa.installation_type : ""),
+          };
+        });
       } catch {
         // Le formulaire reste disponible même si le client n'est pas connecté.
       }
     }
     prefillFromClientAccount();
+    return () => { active = false; };
   }, [searchParams]);
   const moving = draft.problemType === "demenagement";
   const requiredFilled = useMemo(() => {
@@ -134,11 +151,14 @@ function DiagnosticContent() {
     );
   }
   function selectSpa(spaId: string) {
-    setSelectedSpaId(spaId);
     const spa = spas.find((item) => item.id === spaId);
-    if (!spa) return;
+    if (!spa) {
+      update("spaId", undefined);
+      return;
+    }
     setDraft((current) => ({
       ...current,
+      spaId: spa.id,
       spaBrand: spa.brand || "",
       spaModel: spa.model || "",
       spaYear: spa.spa_year || "",
@@ -159,19 +179,19 @@ function DiagnosticContent() {
     setBusy(true);
     try {
       if (moving) validateAnswers(draft, false);
+      const { data } = await getSupabaseBrowser().auth.getSession();
       const next = {
         ...draft,
         ...(moving ? { address: String(draft.answers.moving_departure || ""), choice: "devis" as const, paymentPlan: "" as const } : {}),
         draftId: draft.draftId || crypto.randomUUID(),
-        spaId: selectedSpaId || undefined,
+        email: data.session?.user.email_confirmed_at ? data.session.user.email || draft.email : draft.email,
       };
-      writeDraft(next);
-      const { data } = await getSupabaseBrowser().auth.getSession();
+      const destination = moving ? "/upload" : "/questionnaire";
       if (!data.session?.user.email_confirmed_at) {
+        writeDraft(next, destination);
         router.push("/acces?next=diagnostic");
         return;
       }
-      const destination = moving ? "/upload" : "/questionnaire";
       await saveDraft(next, destination);
       router.push(destination);
     } catch (e) {
@@ -188,7 +208,7 @@ function DiagnosticContent() {
         title={moving ? "Préparer le déménagement de mon spa" : "Informations client et spa"}
         description={moving ? "Décrivez le spa, le trajet et les accès aux deux adresses. Vos photos et vidéos permettront à SANISPA d’étudier la faisabilité et de préparer un devis. Aucune réservation ni facturation à cette étape." : "Les champs marqués d’un * sont obligatoires ; les autres sont facultatifs. Vos informations peuvent être préremplies après connexion. Vous pourrez enregistrer votre brouillon dans votre espace client avant d’envoyer la demande."}
       />
-      <DraftSave draft={draft} step="/diagnostic" />
+      <DraftSave draft={draft} step="/diagnostic" sync={Boolean(accountEmail && draft.email === accountEmail)} />
       <BackLink href="/espace-client" label="Retour à mon espace client" />
 
       <form
@@ -206,7 +226,7 @@ function DiagnosticContent() {
           <SelectField
             label="Choisir le spa concerné"
             name="selectedSpa"
-            value={selectedSpaId}
+            value={draft.spaId || ""}
             onChange={selectSpa}
             options={spas.map((spa) => ({
               value: spa.id,
@@ -240,6 +260,8 @@ function DiagnosticContent() {
             onChange={(value) => update("email", value)}
             required
             type="email"
+            readOnly={Boolean(accountEmail)}
+            autoComplete="email"
           />
           {!moving ? <Field
             label="Adresse"
