@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fullDatabase } from "./helpers/full-database";
-import { partnerMapPath, partnerNewClientPath, partnerVisitAddress, plannerDate, plannerRange, timelineDropTime, timelineQuarter, visitsOverlap } from "../lib/partner-planner";
+import { matchesPlannerMapFilters, partnerMapPath, partnerNewClientPath, partnerVisitAddress, plannerDate, plannerRange, timelineDropTime, timelineQuarter, visitsOverlap } from "../lib/partner-planner";
 import { partnerReturnPath } from "../lib/partner-navigation";
 
 test("private visits can only reference a client in the same partner company", async () => {
@@ -18,7 +18,10 @@ test("private visits can only reference a client in the same partner company", a
       values($1,$2,$3,'Entretien','2026-11-23T09:00Z','2026-11-23T10:00Z')`;
     await assert.rejects(db.query(schedule, [second, visit, client]), /foreign key constraint/);
     await db.query(schedule, [first, visit, client]);
-    assert.equal((await db.query("select * from partner_private_visits where partner_id=$1", [second])).rows.length, 0);
+    await assert.rejects(db.query("update partner_private_visits set ends_at=null where id=$1", [visit]), /partner_private_visits_schedule_pair/);
+    await db.query("update partner_private_visits set starts_at=null, ends_at=null where id=$1", [visit]);
+    assert.equal((await db.query("select id from partner_private_visits where partner_id=$1 and starts_at is null", [first])).rows.length, 1);
+    assert.equal((await db.query("select id from partner_private_visits where partner_id=$1", [second])).rows.length, 0);
     assert.equal((await db.query("select * from partner_appointments")).rows.length, 0);
     assert.equal((await db.query("select * from synchroteam_exports")).rows.length, 0);
     for (const actor of ["anon", "authenticated"]) {
@@ -32,6 +35,18 @@ test("private visits can only reference a client in the same partner company", a
   } finally {
     await db.close();
   }
+});
+
+test("map filters combine status and technician, including visits without a date or technician", () => {
+  const dated = { startsAt: "2026-11-23T09:00Z", technicianId: "camille" };
+  const awaiting = { startsAt: null, technicianId: "camille" };
+  const unassigned = { startsAt: null, technicianId: null };
+  assert.equal(matchesPlannerMapFilters(dated, "scheduled", "camille"), true);
+  assert.equal(matchesPlannerMapFilters(dated, "pending", "camille"), false);
+  assert.equal(matchesPlannerMapFilters(awaiting, "pending", "camille"), true);
+  assert.equal(matchesPlannerMapFilters(awaiting, "pending", ""), false);
+  assert.equal(matchesPlannerMapFilters(unassigned, "pending", ""), true);
+  assert.equal(matchesPlannerMapFilters(unassigned, "all", "all"), true);
 });
 
 test("adjacent visits do not overlap and the planner is a valid return after sign-in", () => {

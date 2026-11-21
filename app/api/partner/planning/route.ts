@@ -4,9 +4,11 @@ import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
 import { interventionError } from "@/lib/interventions";
-import { partnerClientAddress, partnerVisitAddress, type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
+import { partnerClientAddress, partnerVisitAddress, type PendingPartnerDossier, type PendingPrivatePartnerVisit,
+  type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
 const privateClientColumns = "id,name,phone,email,street,postal_code,city,intervention_type,description,latitude,longitude,source_diagnostic_id";
+const privateVisitColumns = `id,title,description,starts_at,ends_at,technician_id,updated_at,client:partner_private_clients!inner(${privateClientColumns})`;
 const stockColumns = "id,category,label,reference,quantity,updated_at";
 const timestamp = z.string().datetime({ offset: true });
 const technicianId = z.string().uuid().nullable();
@@ -28,8 +30,8 @@ const privateVisitInput = z.object({
   client_id: z.string().uuid(),
   title: z.string().trim().min(1).max(140),
   description: z.string().trim().max(2500),
-  starts_at: timestamp,
-  ends_at: timestamp,
+  starts_at: timestamp.nullable(),
+  ends_at: timestamp.nullable(),
   technician_id: technicianId.optional(),
   expected_at: timestamp.optional(),
 }).strict();
@@ -70,7 +72,9 @@ async function requirePlanner(request: Request) {
   return { ...context, partner: context.partner, user: context.user };
 }
 
-async function locateAddress(address: Pick<PrivatePartnerClient, "street" | "postal_code" | "city">) {
+type Address = Pick<PrivatePartnerClient, "street" | "postal_code" | "city">;
+
+async function locateAddress(address: Address, budget?: AbortSignal) {
   const unknown = { latitude: null, longitude: null };
   if (!address.street || !address.postal_code || !address.city) return unknown;
   const params = new URLSearchParams({
@@ -80,7 +84,7 @@ async function locateAddress(address: Pick<PrivatePartnerClient, "street" | "pos
   const number = address.street.match(/^\d+(?:\s*(?:bis|ter|quater)(?=\s|$)|[a-z](?=\s|$))?/i)?.[0];
   try {
     const response = await fetch("https://data.geopf.fr/geocodage/search?" + params, {
-      cache: "no-store", signal: AbortSignal.timeout(4500),
+      cache: "no-store", signal: budget ? AbortSignal.any([budget, AbortSignal.timeout(4500)]) : AbortSignal.timeout(4500),
     });
     if (!response.ok) return unknown;
     const results = z.object({
@@ -100,6 +104,37 @@ async function locateAddress(address: Pick<PrivatePartnerClient, "street" | "pos
   } catch {
     return unknown;
   }
+}
+
+async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: Array<Address | null>) {
+  function addressKey(address: Address) {
+    return partnerClientAddress(address).toLowerCase();
+  }
+  const located = new Map<string, Awaited<ReturnType<typeof locateAddress>>>();
+  const lookup = new Map<string, Address>();
+  for (const client of clients) {
+    if (client.latitude !== null && client.longitude !== null) {
+      located.set(addressKey(client), { latitude: client.latitude, longitude: client.longitude });
+    }
+  }
+  for (const address of [...clients, ...sanispaAddresses]) {
+    if (!address?.street || !address.postal_code || !address.city) continue;
+    const key = addressKey(address);
+    if (!located.has(key)) lookup.set(key, address);
+  }
+  const remaining = [...lookup.entries()];
+  const budget = AbortSignal.timeout(8000);
+  for (let offset = 0; offset < remaining.length && !budget.aborted; offset += 20) {
+    const started = Date.now();
+    await Promise.all(remaining.slice(offset, offset + 20).map(async ([key, address]) => {
+      located.set(key, await locateAddress(address, budget));
+    }));
+    // Spread provider lookups across the selected week without delaying small maps.
+    const delay = 600 - (Date.now() - started);
+    if (delay > 0 && offset + 20 < remaining.length && !budget.aborted)
+      await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  return (address: Address | null) => address ? located.get(addressKey(address)) : undefined;
 }
 
 export async function GET(request: Request) {
@@ -131,36 +166,48 @@ export async function GET(request: Request) {
     const { from, to } = rangeInput.parse({ from: params.get("from"), to: params.get("to") });
     const duration = Date.parse(to) - Date.parse(from);
     if (!(duration > 0 && duration <= 32 * 24 * 3600000)) throw new HttpError(400, "Choisissez une période valide.");
-    const [privateVisits, sanispaVisits, team] = await Promise.all([
-      supabase.from("partner_private_visits")
-        .select(`id,title,description,starts_at,ends_at,technician_id,updated_at,client:partner_private_clients!inner(${privateClientColumns})`)
-        .eq("partner_id", partner.id).eq("client.partner_id", partner.id).lt("starts_at", to).gt("ends_at", from).order("starts_at"),
+    const forMap = params.get("map") === "1";
+    if (forMap && duration > 8 * 24 * 3600000) throw new HttpError(400, "Choisissez un jour ou une semaine pour la carte.");
+    const privateQuery = () => supabase.from("partner_private_visits").select(privateVisitColumns)
+      .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
+    const [privateVisits, sanispaVisits, team, waitingPrivate, waitingSanispa] = await Promise.all([
+      privateQuery().lt("starts_at", to).gt("ends_at", from).order("starts_at"),
       supabase.from("partner_appointments")
         .select("diagnostic_id,starts_at,ends_at,technician_id,updated_at,diagnostic:diagnostics!inner(problem_type,status,customer:customers(name,address))")
         .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id).is("diagnostic.archived_at", null)
         .lt("starts_at", to).gt("ends_at", from).order("starts_at"),
-      params.get("map") === "1" ? [] : technicians(),
+      technicians(),
+      forMap ? privateQuery().is("starts_at", null).order("updated_at", { ascending: false }) : null,
+      forMap ? supabase.from("diagnostics")
+        .select("id,problem_type,status,customer:customers(name,address),partner_appointments(),intervention_reports()")
+        .eq("assigned_partner_id", partner.id).is("archived_at", null).not("status", "in", "(CLOSED,terminé)")
+        .is("partner_appointments", null).is("intervention_reports", null).order("created_at", { ascending: false }) : null,
     ]);
     if (privateVisits.error) throw privateVisits.error;
     if (sanispaVisits.error) throw sanispaVisits.error;
-    if (params.get("map") === "1" && duration <= 26 * 3600000) {
-      const addresses = new Map<string, ReturnType<typeof locateAddress>>();
-      function locate(address: Pick<PrivatePartnerClient, "street" | "postal_code" | "city"> | null) {
-        if (!address?.street || !address.postal_code || !address.city) return;
-        const key = partnerClientAddress(address).toLowerCase();
-        if (!addresses.has(key) && addresses.size < 25) addresses.set(key, locateAddress(address));
-        return addresses.get(key);
+    if (waitingPrivate?.error) throw waitingPrivate.error;
+    if (waitingSanispa?.error) throw waitingSanispa.error;
+    if (forMap) {
+      const visits = privateVisits.data as unknown as PrivatePartnerVisit[];
+      const sanispa = sanispaVisits.data as unknown as SanispaPartnerVisit[];
+      const pendingVisits = (waitingPrivate?.data ?? []) as unknown as PendingPrivatePartnerVisit[];
+      const pendingDossiers = (waitingSanispa?.data ?? []) as unknown as PendingPartnerDossier[];
+      const dossierAddress = (dossier: PendingPartnerDossier | SanispaPartnerVisit["diagnostic"]) => partnerVisitAddress(dossier.customer?.address);
+      const location = await mapLocations(
+        [...visits, ...pendingVisits].map(visit => visit.client),
+        [...sanispa.map(visit => dossierAddress(visit.diagnostic)), ...pendingDossiers.map(dossierAddress)],
+      );
+      function locateVisit<T extends (PrivatePartnerVisit | PendingPrivatePartnerVisit)>(visit: T) {
+        return visit.client.latitude !== null && visit.client.longitude !== null
+          ? visit : { ...visit, client: { ...visit.client, ...location(visit.client) } };
       }
-      const [visits, sanispa] = await Promise.all([
-        Promise.all((privateVisits.data as unknown as PrivatePartnerVisit[]).map(async visit => {
-          if (visit.client.latitude !== null && visit.client.longitude !== null) return visit;
-          return { ...visit, client: { ...visit.client, ...await locate(visit.client) } };
-        })),
-        Promise.all((sanispaVisits.data as unknown as SanispaPartnerVisit[]).map(async visit => ({
-          ...visit, ...await locate(partnerVisitAddress(visit.diagnostic.customer?.address)),
-        }))),
-      ]);
-      return NextResponse.json({ visits, sanispa, technicians: team });
+      return NextResponse.json({
+        visits: visits.map(locateVisit),
+        sanispa: sanispa.map(visit => ({ ...visit, ...location(dossierAddress(visit.diagnostic)) })),
+        pendingVisits: pendingVisits.map(locateVisit),
+        pendingDossiers: pendingDossiers.map(dossier => ({ ...dossier, ...location(dossierAddress(dossier)) })),
+        technicians: team,
+      });
     }
     return NextResponse.json({ visits: privateVisits.data, sanispa: sanispaVisits.data, technicians: team });
   } catch (error) {
@@ -186,7 +233,8 @@ export async function POST(request: Request) {
         p_expected: command.expected_at, p_start: command.starts_at, p_technician: command.technician_id,
       });
       if (error?.message.includes("TECHNICIAN_NOT_FOUND")) throw new HttpError(404, "Ce technicien est introuvable dans votre planning.");
-      if (error?.message.includes("APPOINTMENT_CHANGED")) throw new HttpError(409, "Ce rendez-vous a été modifié. Le planning a été actualisé.");
+      if (/APPOINTMENT_CHANGED|partner_private_visits_schedule_pair/.test(error?.message ?? ""))
+        throw new HttpError(409, "Ce rendez-vous a été modifié. Le planning a été actualisé.");
       if (error) throw interventionError(error);
       return NextResponse.json({ saved: true });
     }
@@ -237,9 +285,11 @@ export async function POST(request: Request) {
     }
 
     const { action: _action, expected_at, ...input } = command;
-    const duration = Date.parse(input.ends_at) - Date.parse(input.starts_at);
-    if (duration <= 0 || duration > 12 * 3600000)
-      throw new HttpError(400, "Prévoyez une fin après le début et une durée de 12 heures maximum.");
+    if (input.starts_at !== null || input.ends_at !== null) {
+      const duration = input.starts_at !== null && input.ends_at !== null ? Date.parse(input.ends_at) - Date.parse(input.starts_at) : 0;
+      if (!(duration > 0 && duration <= 12 * 3600000))
+        throw new HttpError(400, "Prévoyez une fin après le début et une durée de 12 heures maximum.");
+    }
     const table = supabase.from("partner_private_visits");
     const result = expected_at
       ? await table.update({ ...input, updated_at }).eq("partner_id", partner.id).eq("id", input.id)

@@ -35,9 +35,10 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
     for (const group of groups.values()) {
       const first = group[0];
       const title = group.length > 1 ? `${group.length} interventions à cette adresse` : first.title;
+      const pinColor = group.every(point => point.pending) ? "bg-amber-600" : "bg-sanispa-blue";
       marker([first.latitude, first.longitude], {
         icon: divIcon({
-          className: "grid place-items-center rounded-full border-[3px] border-white bg-sanispa-blue text-sm font-bold text-white shadow-lg",
+          className: `grid place-items-center rounded-full border-[3px] border-white ${pinColor} text-sm font-bold text-white shadow-lg`,
           html: group.length > 1 ? "+" + group.length : String(points.indexOf(first) + 1),
           iconSize: [36, 36],
           iconAnchor: [18, 18],

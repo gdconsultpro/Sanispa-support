@@ -21,6 +21,10 @@ export type PrivatePartnerVisit = ScheduledVisit & {
   description: string;
   client: PrivatePartnerClient;
 };
+export type PendingPrivatePartnerVisit = Omit<PrivatePartnerVisit, "starts_at" | "ends_at"> & {
+  starts_at: null;
+  ends_at: null;
+};
 export type SanispaPartnerVisit = ScheduledVisit & {
   diagnostic_id: string;
   diagnostic: { problem_type: string; status: string; customer: { name: string | null; address: string | null } | null };
@@ -49,7 +53,36 @@ export type PartnerMapPoint = {
   title: string;
   detail?: string;
   address?: string;
+  pending?: boolean;
 };
+
+export type PendingPartnerDossier = {
+  id: string;
+  problem_type: string;
+  status: string;
+  customer: { name: string | null; address: string | null } | null;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+export type PlannerMapIntervention = {
+  id: string;
+  title: string;
+  address: string;
+  startsAt: string | null;
+  technicianId: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  client?: PrivatePartnerClient;
+  visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit;
+  dossierId?: string;
+};
+
+export function matchesPlannerMapFilters(item: Pick<PlannerMapIntervention, "startsAt" | "technicianId">,
+  status: "all" | "scheduled" | "pending", technician: string) {
+  return (status === "all" || (status === "scheduled") === Boolean(item.startsAt)) &&
+    (technician === "all" || (item.technicianId ?? "") === technician);
+}
 
 export type PrivatePartnerStock = {
   id: string;
