@@ -26,11 +26,13 @@ export default function Callback() {
           if (result.error) throw new Error("Ce lien est invalide ou expiré. Demandez un nouveau lien d’accès.");
         })();
         await confirmation.current;
+        if (!active) return;
         if (new URLSearchParams(window.location.hash.slice(1)).has("error"))
           throw new Error(
             "Ce lien est invalide ou expiré. Demandez un nouveau lien d’accès.",
           );
         const { data, error } = await getSupabaseBrowser().auth.getSession();
+        if (!active) return;
         if (error || !data.session?.user.email_confirmed_at)
           throw new Error(
             "Ce lien est invalide ou expiré. Demandez un nouveau lien d'accès.",
