@@ -4,7 +4,7 @@ import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
 import { interventionError } from "@/lib/interventions";
-import { partnerClientAddress, partnerVisitAddress, type PrivatePartnerClient, type SanispaPartnerVisit } from "@/lib/partner-planner";
+import { partnerClientAddress, partnerVisitAddress, type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
 const privateClientColumns = "id,name,phone,email,street,postal_code,city,intervention_type,description,latitude,longitude,source_diagnostic_id";
 const stockColumns = "id,category,label,reference,quantity,updated_at";
@@ -144,16 +144,23 @@ export async function GET(request: Request) {
     if (privateVisits.error) throw privateVisits.error;
     if (sanispaVisits.error) throw sanispaVisits.error;
     if (params.get("map") === "1" && duration <= 26 * 3600000) {
-      const visits = sanispaVisits.data as unknown as SanispaPartnerVisit[];
       const addresses = new Map<string, ReturnType<typeof locateAddress>>();
-      const located = await Promise.all(visits.map(async visit => {
-        const address = partnerVisitAddress(visit.diagnostic.customer?.address);
-        if (!address?.street) return visit;
-        const key = partnerClientAddress(address);
+      function locate(address: Pick<PrivatePartnerClient, "street" | "postal_code" | "city"> | null) {
+        if (!address?.street || !address.postal_code || !address.city) return;
+        const key = partnerClientAddress(address).toLowerCase();
         if (!addresses.has(key) && addresses.size < 25) addresses.set(key, locateAddress(address));
-        return { ...visit, ...await addresses.get(key) };
-      }));
-      return NextResponse.json({ visits: privateVisits.data, sanispa: located, technicians: team });
+        return addresses.get(key);
+      }
+      const [visits, sanispa] = await Promise.all([
+        Promise.all((privateVisits.data as unknown as PrivatePartnerVisit[]).map(async visit => {
+          if (visit.client.latitude !== null && visit.client.longitude !== null) return visit;
+          return { ...visit, client: { ...visit.client, ...await locate(visit.client) } };
+        })),
+        Promise.all((sanispaVisits.data as unknown as SanispaPartnerVisit[]).map(async visit => ({
+          ...visit, ...await locate(partnerVisitAddress(visit.diagnostic.customer?.address)),
+        }))),
+      ]);
+      return NextResponse.json({ visits, sanispa, technicians: team });
     }
     return NextResponse.json({ visits: privateVisits.data, sanispa: sanispaVisits.data, technicians: team });
   } catch (error) {

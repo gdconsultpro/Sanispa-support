@@ -29,6 +29,7 @@ export type SanispaPartnerVisit = ScheduledVisit & {
 };
 
 export type PlannerTechnician = { id: string; name: string };
+export type PlannerSlot = { startsAt: string; technicianId: string | null };
 export type PlannerAppointment = ScheduledVisit & {
   id: string;
   title: string;
@@ -90,6 +91,10 @@ export function timelineDropTime(dayStart: number, dayEnd: number, drop: number,
   const lastStart = dayStart + Math.max(0, Math.floor((dayEnd - dayStart - duration) / slot)) * slot;
   const start = dayStart + Math.round((drop - dayStart) / slot) * slot;
   return Math.min(lastStart, Math.max(dayStart, start));
+}
+
+export function timelineQuarter(hourStart: number, fraction: number) {
+  return hourStart + Math.max(0, Math.min(3, Math.floor(fraction * 4))) * 15 * 60000;
 }
 
 export function partnerClientAddress({ street, postal_code, city }: Pick<PrivatePartnerClient, "street" | "postal_code" | "city">) {

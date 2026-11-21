@@ -2,7 +2,10 @@
 
 import { useEffect, useId, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { Button } from "@/components/Button";
-import { plannerDate, plannerDay, plannerTime, timelineDropTime, visitsOverlap, type PlannerAppointment, type PlannerTechnician } from "@/lib/partner-planner";
+import {
+  plannerDate, plannerDay, plannerTime, timelineDropTime, timelineQuarter, visitsOverlap,
+  type PlannerAppointment, type PlannerSlot, type PlannerTechnician,
+} from "@/lib/partner-planner";
 
 const hour = 3600000;
 const inputClass = "focus-ring min-h-12 w-full min-w-0 rounded-lg border border-sanispa-line bg-white px-3 py-2 text-base";
@@ -18,13 +21,14 @@ export function PlannerTechnicianSelect({ team, selected }: { team: PlannerTechn
   </div>;
 }
 
-export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMove }: {
+export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMove, onCreate }: {
   day: string;
   appointments: PlannerAppointment[];
   team: PlannerTechnician[];
   busy: boolean;
   onAdd: (id: string, name: string) => Promise<boolean>;
   onMove: (appointment: PlannerAppointment, start: Date, technician: string | null) => Promise<boolean>;
+  onCreate: (slot: PlannerSlot) => void;
 }) {
   const [selected, setSelected] = useState<PlannerAppointment | null>(null);
   const [newTechnician, setNewTechnician] = useState<string | null>(null);
@@ -84,7 +88,7 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
         Ajouter un technicien
       </Button>
     </div>
-    <p className="mb-3 text-sm text-sanispa-steel">Touchez un rendez-vous pour le déplacer. Sur ordinateur, vous pouvez aussi le glisser vers un autre créneau ou une autre ligne.</p>
+    <p className="mb-3 text-sm text-sanispa-steel">Choisissez un créneau vide pour créer un rendez-vous. Touchez un rendez-vous pour le déplacer, ou glissez-le sur ordinateur.</p>
     {selected || newTechnician ? <section className="mb-3 rounded-xl bg-sanispa-ice p-4">
       <h4 ref={heading} tabIndex={-1} className="font-bold">{selected ? "Déplacer le rendez-vous" : "Ajouter un technicien au planning"}</h4>
       {selected ? <p className="mt-1 break-words text-sm">{selected.title} · {plannerTime(selected.starts_at)}–{plannerTime(selected.ends_at)}</p> : null}
@@ -129,6 +133,9 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
               endByLane[lane] = ends;
               return { appointment, begins, ends, lane };
             });
+          function free(time: number) {
+            return slots.every(slot => time < slot.begins || time >= slot.ends);
+          }
           return <div role="row" key={row.id} className="flex border-b border-sanispa-line last:border-0">
             <div role="rowheader" className="sticky left-0 z-10 flex w-28 shrink-0 items-start break-words border-r border-sanispa-line bg-white px-2 py-3 text-sm font-bold sm:w-44">
               <span className="min-w-0">{row.name}</span>
@@ -147,6 +154,29 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
                 setOver(row.id);
               }}
               onDrop={event => drop(event, row.id)}>
+              <div className="absolute inset-0 flex">
+                {Array.from({ length }, (_, index) => {
+                  const hourStart = start + index * hour;
+                  const firstFree = [0, 0.25, 0.5, 0.75].map(fraction => timelineQuarter(hourStart, fraction)).find(free);
+                  const label = firstFree === undefined ? undefined
+                    : `Créer un rendez-vous à ${plannerTime(new Date(firstFree).toISOString())} · ${row.name}`;
+                  return <button type="button" key={hourStart} aria-label={label} disabled={busy || firstFree === undefined}
+                    className="focus-ring flex shrink-0 items-center justify-center text-lg font-bold text-transparent hover:bg-sanispa-ice hover:text-sanispa-blue focus-visible:bg-sanispa-ice focus-visible:text-sanispa-blue disabled:pointer-events-none"
+                    style={{ width: columnWidth }}
+                    title={label ? "Créer un rendez-vous" : undefined}
+                    onClick={event => {
+                      if (firstFree === undefined || drag.current) return;
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const time = event.detail === 0 ? firstFree : timelineQuarter(hourStart, (event.clientX - rect.left) / rect.width);
+                      if (!free(time)) return;
+                      setNewTechnician(null);
+                      setSelected(null);
+                      onCreate({ startsAt: new Date(time).toISOString(), technicianId: row.id || null });
+                    }}>
+                    <span aria-hidden="true">+</span>
+                  </button>;
+                })}
+              </div>
               {slots.map(({ appointment, begins, ends, lane }) => {
                 const overlap = appointments.some(other => other !== appointment && other.technician_id === appointment.technician_id && visitsOverlap(appointment, other));
                 const time = `${plannerTime(appointment.starts_at)}–${plannerTime(appointment.ends_at)}`;
@@ -155,7 +185,7 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
                   draggable={draggable} disabled={!appointment.movable || busy}
                   title={`${appointment.title} · ${time}${overlap ? " · Chevauchement" : ""}`}
                   aria-label={`${appointment.movable ? "Déplacer" : "Voir"} ${appointment.title}, ${time}${overlap ? ", chevauchement" : ""}`}
-                  className={`focus-ring absolute flex h-12 min-w-0 flex-col justify-center overflow-hidden rounded-lg border px-1.5 text-left text-xs font-bold disabled:opacity-75 ${draggable ? "cursor-grab" : ""} ${overlap ? "border-amber-500" : "border-transparent"} ${appointment.source === "sanispa" ? "bg-emerald-100 text-emerald-950" : "bg-sanispa-blue text-white"}`}
+                  className={`focus-ring absolute z-[1] flex h-12 min-w-0 flex-col justify-center overflow-hidden rounded-lg border px-1.5 text-left text-xs font-bold disabled:opacity-75 ${draggable ? "cursor-grab" : ""} ${overlap ? "border-amber-500" : "border-transparent"} ${appointment.source === "sanispa" ? "bg-emerald-100 text-emerald-950" : "bg-sanispa-blue text-white"}`}
                   style={{ top: 4 + 54 * lane, left: (begins - start) / hour * columnWidth, width: Math.max(2, (ends - begins) / hour * columnWidth - 2) }}
                   onClick={() => { setNewTechnician(null); setSelected(appointment); }}
                   onDragStart={event => {

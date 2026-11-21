@@ -12,7 +12,7 @@ import { partnerAuthError, partnerToken, redirectPartnerAccess } from "@/lib/par
 import { partnerReturnPath } from "@/lib/partner-navigation";
 import {
   interventionTypes, partnerClientAddress, partnerDirections, partnerClientsPath, partnerMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
-  type PartnerMapPoint, type PlannerAppointment, type PlannerPeriod, type PlannerTechnician, type PrivatePartnerClient,
+  type PartnerMapPoint, type PlannerAppointment, type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit,
 } from "@/lib/partner-planner";
 
@@ -28,9 +28,11 @@ const actionClass = "focus-ring inline-flex min-h-11 items-center text-sm font-b
 type ClientPage = { clients: PrivatePartnerClient[]; more: boolean; technicians: PlannerTechnician[] };
 type StockPage = { stock: PrivatePartnerStock[]; more: boolean };
 type Agenda = { visits: PrivatePartnerVisit[]; sanispa: SanispaPartnerVisit[]; technicians: PlannerTechnician[] };
-type Editor = { type: "client"; id: string; client?: PrivatePartnerClient }
-  | { type: "visit"; id: string; client: PrivatePartnerClient; visit?: PrivatePartnerVisit }
+type Booking = { id: string; slot: PlannerSlot };
+type FormEditor = { type: "client"; id: string; client?: PrivatePartnerClient; booking?: Booking; returnToMap?: boolean }
+  | { type: "visit"; id: string; client: PrivatePartnerClient; visit?: PrivatePartnerVisit; slot?: PlannerSlot }
   | { type: "stock"; id: string; item?: PrivatePartnerStock };
+type Editor = FormEditor | { type: "pickClient"; id: string; slot: PlannerSlot };
 const periods = { day: "Jour", week: "Semaine", month: "Mois" } as const;
 const stockLabels = { piece: "Pièce détachée", spa: "Spa" } as const;
 class PlannerRequestError extends Error {
@@ -71,6 +73,7 @@ export default function PartnerPlanningPage() {
   const [saveError, setSaveError] = useState("");
   const [gridError, setGridError] = useState("");
   const [notice, setNotice] = useState("");
+  const [bookedDay, setBookedDay] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
   const mapTitle = useRef<HTMLHeadingElement>(null);
@@ -134,6 +137,7 @@ export default function PartnerPlanningPage() {
     setEditor(null);
     setSavedClient(null);
     setNotice("");
+    setBookedDay(null);
     setSaveError("");
     setGridError("");
     setOffset(0);
@@ -144,6 +148,7 @@ export default function PartnerPlanningPage() {
   async function saveFromGrid(payload: object, success: string, date?: Date) {
     if (saving) return false;
     setNotice("");
+    setBookedDay(null);
     setGridError("");
     setSaving(true);
     try {
@@ -186,13 +191,18 @@ export default function PartnerPlanningPage() {
     setMapped(null);
     setSavedClient(null);
     setNotice("");
+    setBookedDay(null);
     setSaveError("");
     setEditor(next);
   }
 
+  function chooseBookingClient(booking: Booking, client: PrivatePartnerClient) {
+    edit({ type: "visit", id: booking.id, client, slot: booking.slot });
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!editor || saving) return;
+    if (!editor || editor.type === "pickClient" || saving) return;
     const values = new FormData(event.currentTarget);
     const value = (name: string) => String(values.get(name) ?? "");
     setSaveError("");
@@ -205,11 +215,17 @@ export default function PartnerPlanningPage() {
             intervention_type: value("intervention_type"), description: value("description") },
         });
         if (!result) return;
+        if (editor.booking) {
+          chooseBookingClient(editor.booking, result.client);
+          return;
+        }
         if (editor.client) setNotice("La fiche client a été enregistrée.");
         else setSavedClient(result.client);
-        setSearch("");
-        setOffset(0);
-        setView("clients");
+        if (!editor.returnToMap) {
+          setSearch("");
+          setOffset(0);
+          setView("clients");
+        }
         setEditor(null);
         setRevision(current => current + 1);
       } else if (editor.type === "stock") {
@@ -223,7 +239,8 @@ export default function PartnerPlanningPage() {
         setRevision(current => current + 1);
       } else {
         const start = new Date(value("date") + "T" + value("start"));
-        const end = new Date(value("date") + "T" + value("end"));
+        const end = editor.slot ? new Date(+start + Number(value("duration")) * 60000) : new Date(value("date") + "T" + value("end"));
+        if (!editor.slot && end < start) end.setDate(end.getDate() + 1);
         if (Number.isNaN(+start) || Number.isNaN(+end) || end <= start)
           throw new Error("L’heure de fin doit être après l’heure de début.");
         const result = await plannerRequest(endpoint, {
@@ -237,7 +254,8 @@ export default function PartnerPlanningPage() {
         setView("agenda");
         window.history.replaceState(null, "", path);
         setEditor(null);
-        setNotice("L’intervention a été planifiée.");
+        setNotice("Le rendez-vous a été enregistré.");
+        setBookedDay(plannerDate(start));
         setRevision(current => current + 1);
       }
     } catch (error) {
@@ -252,6 +270,8 @@ export default function PartnerPlanningPage() {
     ...agenda.sanispa.map(visit => ({ ...visit, source: "sanispa" as const })),
   ].sort((left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at)) : null;
   const team = (view === "clients" ? page?.technicians : agenda?.technicians) ?? [];
+  const currentBooking = editor?.type === "client" ? editor.booking : editor?.type === "visit" && editor.slot
+    ? { id: editor.id, slot: editor.slot } : undefined;
   const appointments: PlannerAppointment[] = (entries ?? []).map(entry => entry.source === "private" ? {
     ...entry, title: entry.title + " · " + entry.client.name, movable: true,
   } : {
@@ -289,7 +309,13 @@ export default function PartnerPlanningPage() {
       <Button type="button" variant={view === "stock" ? "primary" : "secondary"} aria-pressed={view === "stock"} disabled={saving} onClick={() => changeView("stock")}>Mon stock</Button>
     </div>
 
-    {notice ? <p role="status" className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{notice}</p> : null}
+    {notice ? <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
+      <p role="status">{notice}</p>
+      {bookedDay ? <button type="button" className={actionClass} onClick={() => {
+        setDay(bookedDay);
+        changeView("map");
+      }}>Voir le rendez-vous sur la carte</button> : null}
+    </div> : null}
     {gridError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{gridError}</p> : null}
     {savedClient && view === "clients" ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
       <p role="status" className="break-words font-bold text-emerald-900">Fiche créée pour {savedClient.name}.</p>
@@ -301,7 +327,13 @@ export default function PartnerPlanningPage() {
     </div> : null}
     {!loadError && (view === "clients" ? !page : view === "stock" ? !inventory : !agenda) ? <p role="status">Chargement…</p> : null}
 
-    {editor ? <PlannerEditor key={editor.type + editor.id} editor={editor} day={day} team={team} save={save} error={saveError} saving={saving} close={() => setEditor(null)} /> : null}
+    {editor?.type === "pickClient" ? <SlotClientPicker key={editor.id} slot={editor.slot} team={team}
+      choose={client => chooseBookingClient(editor, client)}
+      add={() => edit({ type: "client", id: crypto.randomUUID(), booking: editor })}
+      close={() => setEditor(null)} />
+      : editor ? <PlannerEditor key={editor.type + editor.id} editor={editor} day={day} team={team}
+        save={save} error={saveError} saving={saving} close={() => setEditor(null)}
+        back={currentBooking ? () => edit({ type: "pickClient", ...currentBooking }) : undefined} /> : null}
 
     {mapped ? <section className={panelClass + " mb-4"} aria-labelledby="map-title">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4">
@@ -398,6 +430,7 @@ export default function PartnerPlanningPage() {
       }}>Aujourd’hui</button> : null}
       {view === "agenda" && period === "day" && entries ? <PartnerScheduleGrid key={day} day={day} appointments={appointments}
         team={team} busy={saving} onMove={moveFromGrid}
+        onCreate={slot => edit({ type: "pickClient", id: crypto.randomUUID(), slot })}
         onAdd={(id, name) => saveFromGrid({ action: "addTechnician", id, name }, "Technicien ajouté au planning.")} /> : null}
       {view === "map" ? <div className="mb-4">
         <PartnerPrivateMap points={points} label="Carte des interventions du jour" />
@@ -436,6 +469,8 @@ export default function PartnerPlanningPage() {
             {entry.description ? <p className="whitespace-pre-wrap break-words text-sm">{entry.description}</p> : null}
             <div className="flex flex-wrap gap-x-4">
               {view === "agenda" && partnerClientAddress(entry.client) ? <button type="button" disabled={saving} className={actionClass} onClick={() => { setEditor(null); setMapped(entry.client); }}>Voir sur la carte</button> : null}
+              {view === "map" && !points.some(point => point.id === entry.id) ? <button type="button" disabled={saving} className={actionClass}
+                onClick={() => edit({ type: "client", id: entry.client.id, client: entry.client, returnToMap: true })}>Compléter l’adresse</button> : null}
               <button type="button" disabled={saving} className={actionClass} onClick={() => edit({ type: "visit", id: entry.id, client: entry.client, visit: entry })}>Modifier le rendez-vous</button>
             </div>
           </> : <>
@@ -449,27 +484,94 @@ export default function PartnerPlanningPage() {
   </AppShell>;
 }
 
-function PlannerEditor({ editor, day, team, save, saving, error, close }: {
-  editor: Editor; day: string; team: PlannerTechnician[]; save: (event: FormEvent<HTMLFormElement>) => void;
-  saving: boolean; error: string; close: () => void;
+function slotSummary(slot: PlannerSlot, team: PlannerTechnician[]) {
+  const date = new Date(slot.startsAt).toLocaleDateString("fr-FR", { dateStyle: "long" });
+  const technician = team.find(member => member.id === slot.technicianId)?.name ?? "À affecter";
+  return `${date} à ${plannerTime(slot.startsAt)} · ${technician}`;
+}
+
+function SlotClientPicker({ slot, team, choose, add, close }: {
+  slot: PlannerSlot; team: PlannerTechnician[]; choose: (client: PrivatePartnerClient) => void; add: () => void; close: () => void;
+}) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<ClientPage | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => { heading.current?.focus(); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({ section: "clients", name: search, offset: String(offset) });
+    setPage(null);
+    setError("");
+    void plannerRequest(endpoint + "?" + params, { signal: controller.signal })
+      .then(result => { if (!controller.signal.aborted && result) setPage(result); })
+      .catch(error => { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "Impossible de charger les clients."); });
+    return () => controller.abort();
+  }, [search, offset, attempt]);
+
+  return <section className={panelClass + " mb-4"} aria-labelledby="booking-title">
+    <h2 id="booking-title" ref={heading} tabIndex={-1} className="text-xl font-bold">Nouveau rendez-vous</h2>
+    <p className="mt-1 text-sm">{slotSummary(slot, team)}</p>
+    <div className="my-3 flex flex-wrap gap-2">
+      <Button type="button" onClick={add}>Ajouter un client</Button>
+      <Button type="button" variant="secondary" onClick={close}>Annuler</Button>
+    </div>
+    <form className="mb-3 flex flex-wrap items-end gap-2" onSubmit={event => {
+      event.preventDefault();
+      setOffset(0);
+      setSearch(String(new FormData(event.currentTarget).get("name") ?? "").trim());
+    }}>
+      <label className="min-w-0 flex-1 text-sm font-bold">
+        Rechercher un client
+        <input name="name" type="search" maxLength={140} className={inputClass + " mt-1"} />
+      </label>
+      <Button type="submit" variant="secondary">Rechercher</Button>
+    </form>
+    {error ? <div role="alert" className="text-sm text-red-700">{error} <button type="button" className={actionClass} onClick={() => setAttempt(value => value + 1)}>Réessayer</button></div>
+      : !page ? <p role="status" className="text-sm">Chargement des clients…</p>
+      : !page.clients.length ? <p className="text-sm">{search ? "Aucun client ne correspond à cette recherche." : "Le carnet est vide."}</p>
+      : <ul className="max-h-80 divide-y divide-sanispa-line overflow-y-auto">
+        {page.clients.map(client => <li key={client.id}>
+          <button type="button" className="focus-ring block min-h-12 w-full rounded-md px-2 py-2 text-left hover:bg-sanispa-ice" onClick={() => choose(client)}>
+            <span className="block break-words font-bold">{client.name}</span>
+            <span className="block break-words text-sm text-sanispa-steel">{partnerClientAddress(client) || "Adresse à compléter"}</span>
+          </button>
+        </li>)}
+      </ul>}
+    {page && (offset > 0 || page.more) ? <div className="mt-3 flex flex-wrap gap-2">
+      <Button type="button" variant="secondary" disabled={offset === 0} onClick={() => setOffset(value => Math.max(0, value - 30))}>Précédent</Button>
+      <Button type="button" variant="secondary" disabled={!page.more} onClick={() => setOffset(value => value + 30)}>Suivant</Button>
+    </div> : null}
+  </section>;
+}
+
+function PlannerEditor({ editor, day, team, save, saving, error, close, back }: {
+  editor: FormEditor; day: string; team: PlannerTechnician[]; save: (event: FormEvent<HTMLFormElement>) => void;
+  saving: boolean; error: string; close: () => void; back?: () => void;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
   useEffect(() => { title.current?.focus(); }, []);
   const visit = editor.type === "visit" ? editor.visit : undefined;
-  const startingDay = visit ? plannerDate(new Date(visit.starts_at)) : day;
+  const slot = editor.type === "visit" ? editor.slot : editor.type === "client" ? editor.booking?.slot : undefined;
+  const startsAt = visit?.starts_at ?? slot?.startsAt;
+  const startingDay = startsAt ? plannerDate(new Date(startsAt)) : day;
   return <section className={panelClass + " mb-4"}>
     <h2 ref={title} tabIndex={-1} className="break-words text-xl font-bold">
       {editor.type === "client" ? editor.client ? "Modifier la fiche client" : "Ajouter un client"
         : editor.type === "stock" ? editor.item ? "Modifier l’article" : "Ajouter un article"
         : `Intervention chez ${editor.client.name}`}
     </h2>
+    {editor.type === "client" && slot ? <p className="mt-2 text-sm">{slotSummary(slot, team)}</p> : null}
     {editor.type === "visit" ? <p className="mt-2 break-words text-sm">{partnerClientAddress(editor.client)}</p> : null}
     <form onSubmit={save}>
       <fieldset disabled={saving} className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
         {editor.type === "client" ? <>
           <PlannerField label="Nom du client" name="name" maxLength={140} defaultValue={editor.client?.name} required />
           <PlannerField label="Téléphone (facultatif)" name="phone" type="tel" maxLength={35} defaultValue={editor.client?.phone} />
-          <details open={editor.client ? true : undefined} className="min-w-0 rounded-xl border border-sanispa-line p-3 sm:col-span-2">
+          <details open={editor.client || editor.booking ? true : undefined} className="min-w-0 rounded-xl border border-sanispa-line p-3 sm:col-span-2">
             <summary className="focus-ring cursor-pointer text-sm font-bold">Ajouter l’adresse et les détails (facultatif)</summary>
             <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
               <PlannerField label="E-mail" name="email" type="email" maxLength={254} defaultValue={editor.client?.email} />
@@ -492,14 +594,16 @@ function PlannerEditor({ editor, day, team, save, saving, error, close }: {
         </> : <>
           <InterventionFields type={visit?.title ?? editor.client.intervention_type} description={visit?.description ?? editor.client.description} />
           <PlannerField label="Jour de l’intervention" name="date" type="date" min="1900-01-01" max="2099-12-31" defaultValue={startingDay} required />
-          <PlannerField label="Heure de début" name="start" type="time" defaultValue={visit ? plannerTime(visit.starts_at) : "09:00"} required />
-          <PlannerField label="Heure de fin" name="end" type="time" defaultValue={visit ? plannerTime(visit.ends_at) : "10:00"} required />
-          <PlannerTechnicianSelect team={team} selected={visit?.technician_id} />
+          <PlannerField label="Heure de début" name="start" type="time" defaultValue={startsAt ? plannerTime(startsAt) : "09:00"} required />
+          {slot ? <PlannerField label="Durée (en minutes)" name="duration" type="number" min={1} max={720} defaultValue={60} required />
+            : <PlannerField label="Heure de fin" name="end" type="time" defaultValue={visit ? plannerTime(visit.ends_at) : "10:00"} required />}
+          <PlannerTechnicianSelect team={team} selected={visit?.technician_id ?? slot?.technicianId} />
         </>}
         {error ? <p role="alert" className="text-sm font-bold text-red-700 sm:col-span-2">{error}</p> : null}
         <div className="flex flex-wrap gap-2 sm:col-span-2">
-          <Button type="submit">{saving ? "Enregistrement…" : editor.type === "client" ? "Enregistrer le client"
+          <Button type="submit">{saving ? "Enregistrement…" : editor.type === "client" ? editor.booking ? "Enregistrer le client et continuer" : "Enregistrer le client"
             : editor.type === "stock" ? "Enregistrer l’article" : "Enregistrer le rendez-vous"}</Button>
+          {back ? <Button type="button" variant="secondary" onClick={back}>Changer de client</Button> : null}
           <Button type="button" variant="secondary" onClick={close}>Annuler</Button>
         </div>
       </fieldset>

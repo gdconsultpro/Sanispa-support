@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fullDatabase } from "./helpers/full-database";
-import { partnerMapPath, partnerNewClientPath, partnerVisitAddress, plannerDate, plannerRange, timelineDropTime, visitsOverlap } from "../lib/partner-planner";
+import { partnerMapPath, partnerNewClientPath, partnerVisitAddress, plannerDate, plannerRange, timelineDropTime, timelineQuarter, visitsOverlap } from "../lib/partner-planner";
 import { partnerReturnPath } from "../lib/partner-navigation";
 
 test("private visits can only reference a client in the same partner company", async () => {
@@ -50,6 +50,9 @@ test("adjacent visits do not overlap and the planner is a valid return after sig
   const hour = 3600000;
   assert.equal(timelineDropTime(0, 24 * hour, 10.2 * hour, hour), 10.25 * hour);
   assert.equal(timelineDropTime(0, 24 * hour, 24 * hour, hour), 23 * hour);
+  assert.equal(timelineQuarter(10 * hour, 0.26), 10.25 * hour);
+  assert.equal(timelineQuarter(10 * hour, 0.74), 10.5 * hour);
+  assert.equal(timelineQuarter(10 * hour, 1), 10.75 * hour);
 });
 
 test("moving a private or assigned visit preserves its duration and rejects stale or foreign changes", async () => {
