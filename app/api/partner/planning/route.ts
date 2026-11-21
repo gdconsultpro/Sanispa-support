@@ -4,6 +4,8 @@ import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
 import { interventionError } from "@/lib/interventions";
+import { getPartnerRoadRoute } from "@/lib/partner-road-route";
+import { maximumTourRouteStops } from "@/lib/partner-tour-routing";
 import { partnerClientAddress, partnerVisitAddress, type PendingPartnerDossier, type PendingPrivatePartnerVisit,
   type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
@@ -62,7 +64,13 @@ const tourInput = z.object({
   action: z.literal("bookTourVisit"), source: z.enum(["private", "sanispa"]), id: z.string().uuid(),
   expected_at: timestamp.nullable(), starts_at: timestamp, ends_at: timestamp, technician_id: z.string().uuid(),
 }).strict();
-const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput]);
+const coordinateInput = z.object({
+  latitude: z.number().finite().min(-85).max(85), longitude: z.number().finite().min(-180).max(180),
+}).strict();
+const tourRouteInput = z.object({
+  action: z.literal("routeTour"), stops: z.array(coordinateInput.nullable()).min(2).max(maximumTourRouteStops),
+}).strict();
+const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, tourRouteInput]);
 const rangeInput = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
@@ -263,6 +271,11 @@ export async function POST(request: Request) {
   try {
     const { partner, supabase, user } = await requirePlanner(request);
     const command = actions.parse(await readJson(request, 14000));
+    if (command.action === "routeTour") {
+      await rateLimit(supabase, `partner-tour-route:${partner.id}`, 12);
+      return NextResponse.json(await getPartnerRoadRoute(command.stops, request.signal),
+        { headers: { "Cache-Control": "private, no-store" } });
+    }
     await rateLimit(supabase, `partner-private-planner:${partner.id}`, 30);
     const updated_at = new Date().toISOString();
     if (command.action === "addTechnician") {

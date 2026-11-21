@@ -1,16 +1,18 @@
 "use client";
 
-import { divIcon, latLngBounds, map, marker, tileLayer } from "leaflet";
+import { divIcon, latLngBounds, layerGroup, map, marker, polyline, tileLayer, type LayerGroup } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
 import { partnerDirections, type PartnerMapPoint } from "@/lib/partner-planner";
+import type { RouteLine } from "@/lib/partner-tour-routing";
 
 const tiles = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png";
 
-export default function PartnerPrivateMap({ points, label = "Carte de l’adresse", onAppointment }: {
-  points: PartnerMapPoint[]; label?: string; onAppointment?: (id: string) => void;
+export default function PartnerPrivateMap({ points, label = "Carte de l’adresse", onAppointment, routeLines }: {
+  points: PartnerMapPoint[]; label?: string; onAppointment?: (id: string) => void; routeLines?: RouteLine[];
 }) {
   const element = useRef<HTMLDivElement>(null);
+  const routeLayer = useRef<LayerGroup | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
     if (!element.current) return;
@@ -34,16 +36,24 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
       referrerPolicy: "no-referrer",
       attribution: '© <a href="https://www.ign.fr/">IGN</a>',
     }).on("tileload", () => { loaded = true; }).on("load", () => setAvailable(loaded)).addTo(instance);
+    routeLayer.current = layerGroup().addTo(instance);
     for (const group of groups.values()) {
       const first = group[0];
-      const title = group.length > 1 ? `${group.length} interventions à cette adresse` : first.title;
+      const steps = group.flatMap(point => point.step ?? []);
+      const title = group.length > 1
+        ? steps.length ? "Étapes " + steps.join(", ") : `${group.length} interventions à cette adresse`
+        : first.step ? `Étape ${first.step} · ${first.title}` : first.title;
+      const pinLabel = steps.length
+        ? steps.length > 3 ? `${steps[0]} +${steps.length - 1}` : steps.join("·")
+        : group.length > 1 ? "+" + group.length : String(points.indexOf(first) + 1);
+      const width = Math.max(36, pinLabel.length * 8 + 10);
       const pinColor = group.every(point => point.pending) ? "bg-amber-600" : "bg-sanispa-blue";
       const pin = marker([first.latitude, first.longitude], {
         icon: divIcon({
           className: `grid place-items-center rounded-full border-[3px] border-white ${pinColor} text-sm font-bold text-white shadow-lg`,
-          html: group.length > 1 ? "+" + group.length : String(points.indexOf(first) + 1),
-          iconSize: [36, 36],
-          iconAnchor: [18, 18],
+          html: pinLabel,
+          iconSize: [width, 36],
+          iconAnchor: [width / 2, 18],
           popupAnchor: [0, -16],
         }),
         title,
@@ -59,7 +69,7 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
         for (const point of group) {
           const item = document.createElement("div");
           const name = document.createElement("strong");
-          name.textContent = point.title;
+          name.textContent = point.step ? `${point.step}. ${point.title}` : point.title;
           item.append(name);
           if (point.detail) {
             const detail = document.createElement("div");
@@ -92,8 +102,18 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
     }
     const observer = new ResizeObserver(() => instance.invalidateSize());
     observer.observe(element.current);
-    return () => { observer.disconnect(); instance.remove(); };
+    return () => { observer.disconnect(); instance.remove(); routeLayer.current = null; };
   }, [points, onAppointment]);
+  useEffect(() => {
+    const layer = routeLayer.current;
+    if (!layer) return;
+    layer.clearLayers();
+    for (const line of routeLines ?? []) {
+      const coordinates = line.map(([longitude, latitude]): [number, number] => [latitude, longitude]);
+      polyline(coordinates, { color: "#fff", weight: 8, opacity: 0.95, interactive: false }).addTo(layer);
+      polyline(coordinates, { color: "#096fd0", weight: 5, opacity: 0.92, interactive: false }).addTo(layer);
+    }
+  }, [points, onAppointment, routeLines]);
 
   return <>
     <div ref={element} role="region" aria-label={label} className="isolate h-72 w-full rounded-xl bg-sanispa-ice sm:h-96" />

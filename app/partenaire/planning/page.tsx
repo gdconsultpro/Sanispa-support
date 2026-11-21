@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
@@ -13,10 +13,11 @@ import { partnerAuthError, partnerToken, redirectPartnerAccess } from "@/lib/par
 import { partnerReturnPath } from "@/lib/partner-navigation";
 import {
   interventionTypes, partnerClientAddress, partnerDirections, partnerClientsPath, partnerMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
-  type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention,
+  type MapCoordinate, type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention,
   type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
+import type { TourDrivingRoute } from "@/lib/partner-tour-routing";
 
 const path = "/partenaire/planning";
 const endpoint = "/api/partner/planning";
@@ -188,6 +189,12 @@ export default function PartnerPlanningPage() {
       setSaving(false);
     }
   }
+
+  const loadDrivingTour = useCallback(async (stops: (MapCoordinate | null)[], signal: AbortSignal): Promise<TourDrivingRoute> => {
+    const route = await plannerRequest(endpoint, { payload: { action: "routeTour", stops }, signal });
+    if (!route) throw new Error("Reconnectez-vous pour calculer la tournée.");
+    return route;
+  }, []);
 
   function moveFromGrid(appointment: PlannerAppointment, start: Date, technician: string | null) {
     if (!Number.isFinite(+start)) {
@@ -483,7 +490,7 @@ export default function PartnerPlanningPage() {
       {view === "map" ? <>
         {mapWeek ? <p className="mb-3 font-bold">Semaine du {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" })
           .formatRange(mapWeek, plannerDay(plannerDate(mapWeek), 6))}</p> : null}
-        <PartnerTourMap items={mapItems} team={team} period={mapPeriod} scope={day} busy={saving} onBook={saveTourVisit}
+        <PartnerTourMap items={mapItems} team={team} period={mapPeriod} scope={day} busy={saving} onBook={saveTourVisit} loadRoute={loadDrivingTour}
           onVisit={visit => edit({ type: "visit", id: visit.id, client: visit.client, visit })}
           onAddress={client => edit({ type: "client", id: client.id, client, returnToMap: true })} />
       </> : null}

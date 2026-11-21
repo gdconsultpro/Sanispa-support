@@ -53,6 +53,7 @@ export type PartnerMapPoint = {
   detail?: string;
   address?: string;
   pending?: boolean;
+  step?: number;
 };
 
 export type PendingPartnerDossier = MapPosition & {
@@ -86,22 +87,27 @@ export type TourBooking = {
   technician_id: string;
 };
 
-type LocatedIntervention = PlannerMapIntervention & { latitude: number; longitude: number };
+export type MapCoordinate = { latitude: number; longitude: number };
+type LocatedIntervention = PlannerMapIntervention & MapCoordinate;
 
 function hasMapCoordinates(item: PlannerMapIntervention): item is LocatedIntervention {
   return item.latitude !== null && item.longitude !== null;
 }
 
+export function mapDistanceKm(left: MapCoordinate, right: MapCoordinate) {
+  const radians = Math.PI / 180;
+  const north = Math.sin((right.latitude - left.latitude) * radians / 2);
+  const east = Math.sin((right.longitude - left.longitude) * radians / 2);
+  const halfChord = north ** 2 + Math.cos(left.latitude * radians) * Math.cos(right.latitude * radians) * east ** 2;
+  return 12742 * Math.asin(Math.sqrt(Math.min(1, halfChord)));
+}
+
 export function nearbyPendingVisits(anchor: PlannerMapIntervention, items: PlannerMapIntervention[], radius: number) {
   if (!hasMapCoordinates(anchor)) return [];
-  const radians = Math.PI / 180;
   return items.flatMap(item => {
     if (item.startsAt || !hasMapCoordinates(item) ||
         (anchor.technicianId && item.technicianId && item.technicianId !== anchor.technicianId)) return [];
-    const north = Math.sin((item.latitude - anchor.latitude) * radians / 2);
-    const east = Math.sin((item.longitude - anchor.longitude) * radians / 2);
-    const halfChord = north ** 2 + Math.cos(anchor.latitude * radians) * Math.cos(item.latitude * radians) * east ** 2;
-    const distance = 12742 * Math.asin(Math.sqrt(Math.min(1, halfChord)));
+    const distance = mapDistanceKm(anchor, item);
     return distance <= radius ? [{ item, distance }] : [];
   }).sort((left, right) => left.distance - right.distance || left.item.title.localeCompare(right.item.title, "fr"));
 }

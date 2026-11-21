@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/Button";
+import { PartnerDrivingTour, type LoadDrivingTour } from "@/components/PartnerDrivingTour";
 import { matchesPlannerMapFilters, nearbyPendingVisits, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
   type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
   type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
@@ -16,7 +17,7 @@ const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
 const filterClass = "focus-ring mt-1 min-h-12 w-full rounded-lg border border-sanispa-line bg-white px-3 text-base";
 const linkClass = "focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline";
 
-export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook }: {
+export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute }: {
   items: PlannerMapIntervention[] | null;
   team: PlannerTechnician[];
   period: "day" | "week";
@@ -25,12 +26,15 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
   onVisit: (visit: PrivatePartnerVisit | PendingPrivatePartnerVisit) => void;
   onAddress: (client: PrivatePartnerClient) => void;
   onBook: (booking: TourBooking) => Promise<void>;
+  loadRoute: LoadDrivingTour;
 }) {
   const [status, setStatus] = useState<"all" | "scheduled" | "pending">("all");
   const [technician, setTechnician] = useState("all");
+  const [showTour, setShowTour] = useState(false);
   const [selected, setSelected] = useState<{ id: string; scope: string } | null>(null);
   const [confirmation, setConfirmation] = useState<{ id: string; message: string } | null>(null);
   const filterId = useId();
+  const tourTechnician = team.find(member => member.id === technician) ?? (team.length === 1 ? team[0] : undefined);
   const panelScope = period + ":" + scope;
   const chooseAppointment = useCallback((id: string) => {
     setConfirmation(null);
@@ -62,21 +66,28 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
     <div className="mb-3 grid gap-3 sm:grid-cols-2">
       <div>
         <label htmlFor={filterId + "-technician"} className="text-sm font-bold">Technicien</label>
-        <select id={filterId + "-technician"} className={filterClass} value={technician} onChange={event => setTechnician(event.target.value)}>
-          <option value="all">Toute l’équipe</option>
-          <option value="">À affecter</option>
+        <select id={filterId + "-technician"} className={filterClass} value={showTour ? tourTechnician?.id ?? "all" : technician} onChange={event => setTechnician(event.target.value)}>
+          <option value="all">{showTour ? "Choisir un technicien" : "Toute l’équipe"}</option>
+          {!showTour ? <option value="">À affecter</option> : null}
           {team.map(member => <option value={member.id} key={member.id}>{member.name}</option>)}
         </select>
       </div>
       <div>
         <label htmlFor={filterId + "-status"} className="text-sm font-bold">Statut</label>
-        <select id={filterId + "-status"} className={filterClass} value={status} onChange={event => setStatus(event.target.value as typeof status)}>
+        <select id={filterId + "-status"} className={filterClass} value={showTour ? "scheduled" : status} disabled={showTour}
+          onChange={event => setStatus(event.target.value as typeof status)}>
           <option value="all">Toutes les interventions</option>
           <option value="scheduled">Planifiées</option>
           <option value="pending">À planifier</option>
         </select>
       </div>
     </div>
+    <label className="mb-3 flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm font-bold">
+      <input type="checkbox" className="h-5 w-5 accent-sanispa-blue" checked={showTour}
+        onChange={event => setShowTour(event.target.checked)} />
+      Afficher la tournée
+    </label>
+    {showTour ? <PartnerDrivingTour items={items} technician={tourTechnician} scope={scope} loadRoute={loadRoute} /> : <>
     {items && status !== "scheduled" ? <p className="mb-2 text-sm font-bold">
       {waitingCount} {waitingCount === 1 ? "intervention à planifier" : "interventions à planifier"}
     </p> : null}
@@ -116,6 +127,7 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
         </li>)}
       </ul>}
     </section> : null}
+    </>}
   </>;
 }
 
