@@ -1,9 +1,51 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
-import { restoreDraft } from "@/lib/storage";
-export default function ResumeDraft() { const [error, setError] = useState(""); useEffect(() => { const id = new URLSearchParams(window.location.search).get("id"); if (!id) {
-    setError("Sélectionnez un diagnostic dans votre espace client.");
-    return;
-} restoreDraft(id).then(result => window.location.replace(result.step), e => setError(e.message)); }, []); return <AppShell compact><h1 className="text-2xl font-bold">Reprise de votre diagnostic</h1><p className="mt-3" role="status">{error || "Récupération de votre saisie…"}</p>{error ? <Link href="/espace-client" className="mt-4 block underline">Mon espace client</Link> : null}</AppShell>; }
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { readLocalProgress, restoreDraft } from "@/lib/storage";
+
+export default function ResumeDraft() {
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    async function resume() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("local") === "1") {
+        const progress = readLocalProgress();
+        const { data } = await getSupabaseBrowser().auth.getSession();
+        const email = data.session?.user.email?.toLowerCase();
+        if (!progress?.pending || (email && progress.draft.email && email !== progress.draft.email.trim().toLowerCase())) {
+          throw new Error("Aucun brouillon à reprendre sur cet appareil pour ce compte.");
+        }
+        // A disconnected user can return to the first step and confirm their account.
+        if (active) window.location.replace(data.session ? progress.step : "/diagnostic");
+        return;
+      }
+      const id = params.get("id");
+      if (!id) throw new Error("Sélectionnez un brouillon dans votre espace spa.");
+      const result = await restoreDraft(id);
+      if (active) window.location.replace(result.step);
+    }
+    void resume().catch((cause) => {
+      if (!active) return;
+      setError(cause instanceof TypeError
+        ? "Connexion interrompue. Réessayez lorsque le réseau est disponible."
+        : cause instanceof Error ? cause.message : "Impossible de reprendre votre brouillon.");
+    });
+    return () => { active = false; };
+  }, []);
+
+  return (
+    <AppShell compact>
+      <h1 className="text-2xl font-bold">Reprendre ma déclaration</h1>
+      {error ? (
+        <>
+          <p className="mt-3" role="alert">{error}</p>
+          <Link href="/espace-client?view=demandes" className="mt-4 block font-bold underline">Retrouver mes brouillons</Link>
+        </>
+      ) : <p className="mt-3" role="status">Récupération de votre saisie…</p>}
+    </AppShell>
+  );
+}

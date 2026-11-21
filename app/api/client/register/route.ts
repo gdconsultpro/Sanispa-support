@@ -7,7 +7,7 @@ import { clientTokenConfirmationUrl } from "@/lib/client-access";
 import { sendClientAccessLink } from "@/lib/email";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { getSupabaseAdmin } from "@/lib/supabase";
-const schema=z.object({email:z.string().trim().toLowerCase().email().max(254),password:z.string().min(12).max(128),next:z.enum(["compte","diagnostic","partenaire","premium","visio","carnet","releves","notices"]),problemType:z.string().max(60).optional()}).strict();
+const schema=z.object({email:z.string().trim().toLowerCase().email().max(254),password:z.string().min(12).max(128),next:z.enum(["compte","diagnostic","partenaire","premium","visio","carnet","releves","notices","assistant","forum"]),problemType:z.string().max(60).optional()}).strict();
 const hash=(s:string)=>createHash("sha256").update(s).digest("hex");
 export async function POST(request:Request){
  try{

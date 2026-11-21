@@ -107,7 +107,7 @@ export default function ManualsPage() {
 
   return (
     <AppShell compact>
-      <Link href="/premium" className="font-bold underline">← Mon espace spa</Link>
+      <Link href="/espace-client?view=entretien" className="font-bold underline">← Mon entretien</Link>
       <h1 className="mt-5 text-3xl font-bold">Les notices en français de mon spa</h1>
       <p className="mt-3 leading-7">
         Comparez votre clavier aux photos, puis vérifiez sa référence exacte avant d’ouvrir la notice.

@@ -1,9 +1,11 @@
 import { normalizeDiagnostic } from "./diagnostic-answers";
 import { DiagnosticDraft } from "@/lib/types";
 import { getSupabaseBrowser } from "./supabase-browser";
+import { draftSteps, type DraftStep } from "./client-drafts";
 export const draftKey = "sanispa-diagnostic-draft";
+type LocalProgress = { step: DraftStep; updatedAt: string; pending: boolean };
 export const emptyDraft: DiagnosticDraft = { name: "", phone: "", email: "", address: "", postalCode: "", city: "", spaBrand: "", spaModel: "", spaYear: "", installationType: "", powerSupply: "", problemType: "", answers: {}, photos: {}, choice: "", paymentPlan: "" };
-export function readDraft(): DiagnosticDraft {
+function readStoredDraft(): DiagnosticDraft & { localProgress?: LocalProgress } {
     if (typeof window === "undefined")
         return { ...emptyDraft };
     try {
@@ -13,9 +15,28 @@ export function readDraft(): DiagnosticDraft {
         return { ...emptyDraft };
     }
 }
-export function writeDraft(draft: DiagnosticDraft) {
+export function readDraft(): DiagnosticDraft {
+    const { localProgress: _progress, ...draft } = readStoredDraft();
+    return draft;
+}
+export function readLocalProgress() {
+    const { localProgress, ...draft } = readStoredDraft();
+    if (!draft.problemType || draft.diagnosticId) return null;
+    if (localProgress && draftSteps.includes(localProgress.step)) return { draft, ...localProgress };
+    if (!draft.version) return { draft, step: "/diagnostic" as const, updatedAt: null, pending: true };
+    return null;
+}
+export function writeDraft(draft: DiagnosticDraft, step?: DraftStep, pending = true) {
     try {
-        window.localStorage.setItem(draftKey, JSON.stringify({ ...normalizeDiagnostic(draft), version: draft.draftId ? versions.get(draft.draftId) ?? draft.version : draft.version }));
+        const previous = step ? null : readStoredDraft();
+        const localStep = step || (previous?.draftId === draft.draftId ? previous?.localProgress?.step : undefined);
+        const value = JSON.stringify({
+            ...normalizeDiagnostic(draft),
+            version: draft.draftId ? versions.get(draft.draftId) ?? draft.version : draft.version,
+            ...(localStep ? { localProgress: { step: localStep, updatedAt: new Date().toISOString(), pending } } : {}),
+        });
+        window.localStorage.setItem(draftKey, value);
+        return value;
     }
     catch {
         throw new Error("La sauvegarde sur cet appareil est impossible. Réduisez les photos ou libérez de l'espace.");
@@ -30,10 +51,11 @@ export async function authHeaders() {
 }
 const versions = new Map<string, number>();
 let queue: Promise<unknown> = Promise.resolve();
-export async function saveDraft(input: DiagnosticDraft, step: string) {
+export async function saveDraft(input: DiagnosticDraft, step: DraftStep) {
     const draft = normalizeDiagnostic(input);
+    const id = draft.draftId || crypto.randomUUID();
+    const localSnapshot = writeDraft({ ...draft, draftId: id }, step);
     const work = queue.catch(() => { }).then(async () => {
-        const id = draft.draftId || crypto.randomUUID();
         const { data } = await getSupabaseBrowser().auth.getSession();
         if (!data.session || !data.session.user.email_confirmed_at)
             throw new Error("Confirmez votre adresse e-mail pour sauvegarder votre diagnostic.");
@@ -46,7 +68,7 @@ export async function saveDraft(input: DiagnosticDraft, step: string) {
             throw new Error(result.error || "Sauvegarde impossible.");
         versions.set(id, result.draft.version);
         const next = { ...draft, draftId: id, version: result.draft.version };
-        writeDraft(next);
+        if (window.localStorage.getItem(draftKey) === localSnapshot) writeDraft(next, step, false);
         return next;
     });
     queue = work;
@@ -57,9 +79,13 @@ export async function restoreDraft(id: string) {
     const result = await response.json();
     if (!response.ok)
         throw new Error(result.error || "Diagnostic introuvable.");
-    if (result.draft.submitted_at) {clearDraft();return { submitted: true, step: "/espace-client" };}
+    if (result.draft.submitted_at) {
+        if (readDraft().draftId === id) clearDraft();
+        return { submitted: true, step: "/espace-client" };
+    }
+    if (!draftSteps.includes(result.draft.step)) throw new Error("Cette étape n’est plus disponible.");
     const draft = normalizeDiagnostic({ ...emptyDraft, ...result.draft.payload, draftId: result.draft.id, version: result.draft.version });
     versions.set(id, draft.version);
-    writeDraft(draft);
+    writeDraft(draft, result.draft.step, false);
     return { submitted: false, step: result.draft.step, draft };
 }

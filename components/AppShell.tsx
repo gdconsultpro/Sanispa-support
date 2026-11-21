@@ -5,15 +5,17 @@ import { paymentsPaused } from "@/lib/commercial-mode";
 export function AppShell({
   children,
   compact = false,
+  clientSpace = false,
 }: {
   children: React.ReactNode;
   compact?: boolean;
+  clientSpace?: boolean;
 }) {
   return (
     <main className="app-background min-h-screen">
       {paymentsPaused() ? <div className="bg-sanispa-blue px-4 py-2 text-center text-xs font-medium text-white">Services gratuits pour les particuliers et les partenaires · Sans carte bancaire</div> : null}
       <header className="border-b border-white/80 bg-white/90">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
+        <div className={`mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 sm:px-6 ${clientSpace ? "py-3 sm:py-5" : "py-5"}`}>
           <Link href="/" className="inline-flex items-center focus-ring">
             <Image
               src="/sanispa-logo.png"
@@ -26,8 +28,8 @@ export function AppShell({
           </Link>
           <nav aria-label="Navigation principale" className="flex flex-wrap items-center justify-end gap-2 text-sm font-bold">
             <Link href="/diagnostic?new=1" className="focus-ring rounded-full bg-sanispa-blue px-4 py-3 text-white">Déclarer une panne</Link>
-            <Link href="/espace-client" className="focus-ring rounded-full border border-sanispa-line bg-white px-4 py-3">Mon espace spa</Link>
-            <Link href="/partenaire/connexion" className="focus-ring rounded-full border border-sanispa-line bg-white px-4 py-3">Professionnels</Link>
+            <Link href="/espace-client" className={`focus-ring rounded-full border border-sanispa-line bg-white px-4 py-3 ${clientSpace ? "hidden sm:inline-flex" : ""}`}>Mon espace spa</Link>
+            <Link href="/partenaire/connexion" className={`focus-ring rounded-full border border-sanispa-line bg-white px-4 py-3 ${clientSpace ? "hidden sm:inline-flex" : ""}`}>Professionnels</Link>
           </nav>
         </div>
       </header>

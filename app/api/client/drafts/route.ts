@@ -16,10 +16,12 @@ export async function GET(request: Request) {
                 throw new HttpError(404, "Brouillon introuvable.");
             return NextResponse.json({ draft: data });
         }
-        const { data, error } = await supabase.from("diagnostic_drafts").select("id,step,updated_at,version").eq("user_id", user.id).is("submitted_at", null).order("updated_at", { ascending: false }).limit(50);
+        const { data, error } = await supabase.from("diagnostic_drafts")
+            .select("id,step,updated_at,version,problemType:payload->>problemType,spaId:payload->>spaId,spaBrand:payload->>spaBrand,spaModel:payload->>spaModel")
+            .eq("user_id", user.id).is("submitted_at", null).order("updated_at", { ascending: false }).limit(50);
         if (error)
             throw error;
-        return NextResponse.json({ drafts: data });
+        return NextResponse.json({ drafts: data }, { headers: { "Cache-Control": "private, no-store" } });
     }
     catch (e) {
         return apiError(e);

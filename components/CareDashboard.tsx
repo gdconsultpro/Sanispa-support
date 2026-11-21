@@ -99,7 +99,16 @@ export function CareDashboard({ view = "carnet" }: { view?: "carnet" | "releves"
   useEffect(() => { if (editingId) editDate.current?.focus(); }, [editingId]);
   const [readingDate, setReadingDate] = useState(""), [water, setWater] = useState({ volume: "", temperature: "", ph: "", tac: "", disinfectant: "inconnu", disinfectantValue: "", product: "", note: "" });
   const [brand, setBrand] = useState(""), [model, setModel] = useState("");
-  const load = useCallback(async (signal?: AbortSignal) => { const r: Care = await clientRequest("/api/client/care", { signal }); if (!signal?.aborted) { setData(r); setSpaId(current => current || r.spas[0]?.id || ""); } }, []);
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const result: Care = await clientRequest("/api/client/care", { signal });
+    if (signal?.aborted) return;
+    const requested = new URLSearchParams(window.location.search).get("spa");
+    setData(result);
+    setSpaId(current => {
+      const wanted = current || requested;
+      return result.spas.find(spa => spa.id === wanted)?.id || result.spas[0]?.id || "";
+    });
+  }, []);
   useEffect(() => { const controller = new AbortController(); setDate(localDateTime()); setReadingDate(localDateTime()); void load(controller.signal).catch(e => { if (!controller.signal.aborted) setError(e.message); }); return () => controller.abort(); }, [load]);
   async function save(payload: unknown, afterSave?: () => void) {
     if (busy) return; setBusy(true); setError(""); setMessage("");
@@ -144,7 +153,7 @@ export function CareDashboard({ view = "carnet" }: { view?: "carnet" | "releves"
   }
   const number = (s: string) => s.trim() ? Number(s.replace(",", ".")) : null;
   return <div className="mt-6 grid min-w-0 grid-cols-1 gap-5">
-    <nav aria-label="Suivi de mon spa" className="flex flex-wrap gap-3">{[["carnet", "Mon carnet et mes rappels"], ["releves", "Mes relevés d’eau"]].map(([key,label]) => <Link key={key} href={`/premium/${key}`} aria-current={view === key ? "page" : undefined} className={`focus-ring rounded-full border px-5 py-3 font-bold ${view === key ? "bg-sanispa-blue text-white" : "bg-white"}`}>{label}</Link>)}</nav>
+    <nav aria-label="Suivi de mon spa" className="flex flex-wrap gap-3">{[["carnet", "Mon carnet et mes rappels"], ["releves", "Mes relevés d’eau"]].map(([key,label]) => <Link key={key} href={`/premium/${key}${spaId ? `?spa=${encodeURIComponent(spaId)}` : ""}`} aria-current={view === key ? "page" : undefined} className={`focus-ring rounded-full border px-5 py-3 font-bold ${view === key ? "bg-sanispa-blue text-white" : "bg-white"}`}>{label}</Link>)}</nav>
     {error ? <p role="alert" className="rounded-xl bg-white p-4 text-red-800">{error} <Link className="font-bold underline" href={`/connexion?next=${view}`}>Me connecter à mon compte</Link></p> : null}{message ? <p role="status" className="rounded-xl bg-emerald-50 p-4">{message}</p> : null}
     {!data && !error ? <p role="status">Chargement du carnet…</p> : null}
     {data && !data.spas.length ? <section className="rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Mon premier spa</h2><p className="mt-2">Ajoutez votre spa ici pour enregistrer vos entretiens, rappels et mesures. La marque et le modèle peuvent rester inconnus.</p><form onSubmit={addSpa} className="mt-4 grid gap-4 sm:grid-cols-2"><label>Marque du spa<input className={input} maxLength={150} value={brand} onChange={e => setBrand(e.target.value)} placeholder="Ex. Jacuzzi, ou laisser vide" /></label><label>Modèle, si connu<input className={input} maxLength={150} value={model} onChange={e => setModel(e.target.value)} /></label><Button type="submit" disabled={busy}>Ajouter mon spa et commencer</Button></form></section> : null}
