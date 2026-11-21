@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { CreateAccountForm } from "@/components/CreateAccountForm";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { publicClientIntent } from "@/lib/client-access";
-import { emptyDraft, readDraft, writeDraft } from "@/lib/storage";
+import { emptyDraft, readDraft, readLocalProgress, writeDraft } from "@/lib/storage";
 
 export default function AccessPage() {
   const [ready, setReady] = useState(false);
@@ -36,6 +36,13 @@ export default function AccessPage() {
     const draft = readDraft();
     const isLocalDeclaration = intent === "diagnostic" && !draft.version && !draft.diagnosticId;
     const belongsToAddress = draft.email.trim().toLowerCase() === address;
+    const progress = isLocalDeclaration ? readLocalProgress() : null;
+    if (progress) {
+      const id = draft.draftId || crypto.randomUUID();
+      const payload = { ...draft, draftId: id, email: address };
+      writeDraft(payload, progress.step);
+      return { id, step: progress.step, payload };
+    }
     writeDraft(isLocalDeclaration || belongsToAddress ? { ...draft, email: address } : { ...emptyDraft, email: address });
   }
 
@@ -54,7 +61,7 @@ export default function AccessPage() {
           <>
             <p className="my-5 leading-7">
               Votre e-mail, un mot de passe et un seul mail de confirmation. {intent === "diagnostic"
-                ? "Votre déclaration est conservée sur cet appareil. Vous la retrouverez juste après confirmation."
+                ? "Vous retrouverez votre déclaration en ouvrant le lien de confirmation, même sur un autre appareil."
                 : "Retrouvez ensuite votre spa, son historique et tous vos services gratuits."}
             </p>
             {ready ? <CreateAccountForm intent={intent} initialEmail={email} problemType={problem} beforeSubmit={remember} /> : <p role="status">Chargement…</p>}

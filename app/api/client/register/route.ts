@@ -4,15 +4,22 @@ import { z } from "zod";
 import { requireSameOrigin } from "@/lib/admin-auth";
 import { rateLimit } from "@/lib/client-auth";
 import { clientTokenConfirmationUrl } from "@/lib/client-access";
+import { draftSchema, draftSteps } from "@/lib/draft-schema";
 import { sendClientAccessLink } from "@/lib/email";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { getSupabaseAdmin } from "@/lib/supabase";
-const schema=z.object({email:z.string().trim().toLowerCase().email().max(254),password:z.string().min(12).max(128),next:z.enum(["compte","diagnostic","partenaire","premium","visio","carnet","releves","notices","assistant","forum"]),problemType:z.string().max(60).optional()}).strict();
+const schema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  password: z.string().min(12).max(128),
+  next: z.enum(["compte", "diagnostic", "partenaire", "premium", "visio", "carnet", "releves", "notices", "assistant", "forum"]),
+  problemType: z.string().max(60).optional(),
+  draft: z.object({ id: z.string().uuid(), step: z.enum(draftSteps), payload: draftSchema }).strict().optional(),
+}).strict().refine(input => !input.draft || (input.next === "diagnostic" && !input.draft.payload.spaId));
 const hash=(s:string)=>createHash("sha256").update(s).digest("hex");
 export async function POST(request:Request){
  try{
   requireSameOrigin(request);
-  const p=schema.parse(await readJson(request,2000));
+  const p=schema.parse(await readJson(request));
   const origin=process.env.NEXT_PUBLIC_APP_URL;
   if(!origin||!process.env.RESEND_API_KEY)throw new HttpError(503,"La création de compte est momentanément indisponible.");
   const supabase=getSupabaseAdmin();
@@ -30,10 +37,22 @@ export async function POST(request:Request){
    throw new HttpError(503,"Le compte n’a pas pu être créé. Réessayez dans une minute.");
   }
   const user=generated.data.user,token=generated.data.properties?.hashed_token;
-  if(!user||user.email_confirmed_at||(user.banned_until&&Date.parse(user.banned_until)>Date.now()))throw new HttpError(409,"Utilisez la connexion ou « Mot de passe oublié » pour accéder à votre compte existant.");
+  if(!user||user.email?.toLowerCase()!==p.email||user.email_confirmed_at||(user.banned_until&&Date.parse(user.banned_until)>Date.now()))throw new HttpError(409,"Utilisez la connexion ou « Mot de passe oublié » pour accéder à votre compte existant.");
   if(!token||!/^[A-Za-z0-9_-]{32,256}$/.test(token))throw new Error("Invalid signup confirmation");
-  const url=clientTokenConfirmationUrl(origin,token,p.next,p.problemType);
-  const delivery=await sendClientAccessLink(p.email,url,false,`signup:${hash(token)}`,true);
+  const url = new URL(clientTokenConfirmationUrl(origin, token, p.next, p.draft?.payload.problemType || p.problemType));
+  if (p.draft) {
+    const { id, step, payload } = p.draft;
+    const { error } = await supabase.from("client_signup_drafts").upsert({
+      id,
+      user_id: user.id,
+      step,
+      payload: { ...payload, email: p.email },
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    }, { onConflict: "user_id,id" });
+    if (error) throw error;
+    url.searchParams.set("draft", id);
+  }
+  const delivery=await sendClientAccessLink(p.email,url.href,false,`signup:${hash(token)}`,true);
   if(delivery.skipped)throw new HttpError(503,"L’envoi du mail n’a pas abouti. Réessayez dans une minute pour recevoir la confirmation.");
   return NextResponse.json({ok:true},{headers:{"Cache-Control":"no-store"}});
  }catch(e){return apiError(e);}

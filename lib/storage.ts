@@ -74,8 +74,15 @@ export async function saveDraft(input: DiagnosticDraft, step: DraftStep) {
     queue = work;
     return work;
 }
-export async function restoreDraft(id: string) {
-    const response = await fetch(`/api/client/drafts?id=${encodeURIComponent(id)}`, { headers: await authHeaders() });
+export async function restoreDraft(id: string, { signup = false } = {}) {
+    const headers = await authHeaders();
+    const response = signup
+        ? await fetch("/api/client/drafts", {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
+        })
+        : await fetch(`/api/client/drafts?id=${encodeURIComponent(id)}`, { headers });
     const result = await response.json();
     if (!response.ok)
         throw new Error(result.error || "Diagnostic introuvable.");

@@ -1,5 +1,8 @@
+import type { DiagnosticDraft } from "./types";
+
 export const draftSteps = ["/diagnostic", "/questionnaire", "/upload", "/resume"] as const;
 export type DraftStep = (typeof draftSteps)[number];
+export type SignupDraft = { id: string; step: DraftStep; payload: DiagnosticDraft };
 export type DraftListItem = {
   id: string;
   step: DraftStep;

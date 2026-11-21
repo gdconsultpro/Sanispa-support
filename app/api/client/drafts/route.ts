@@ -27,6 +27,21 @@ export async function GET(request: Request) {
         return apiError(e);
     }
 }
+export async function POST(request: Request) {
+    try {
+        const { user, supabase } = await requireUser(request);
+        const { id } = z.object({ id: z.string().uuid() }).strict().parse(await readJson(request, 1000));
+        const { data, error } = await supabase.rpc("claim_client_signup_draft", { p_id: id, p_user: user.id });
+        if (error)
+            throw error;
+        if (!data)
+            throw new HttpError(404, "Ce brouillon n’est plus disponible via ce lien. Vous pouvez retrouver vos déclarations dans votre espace spa.");
+        return NextResponse.json({ draft: data }, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    catch (e) {
+        return apiError(e);
+    }
+}
 export async function PUT(request: Request) {
     try {
         const { user, supabase } = await requireUser(request);

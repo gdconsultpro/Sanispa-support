@@ -111,6 +111,32 @@ test("legacy shared administrator password is never accepted", async () => {
   );
   assert.equal(response?.status, 401);
 });
+test("signup drafts stay private, can be claimed once, and cannot replace later edits", async () => {
+  const db = await database();
+  const expired = "00000000-0000-4000-8000-000000000011";
+  const claim = (draftId: string, userId: string) => db.query<{ draft: null | { payload: typeof payload; step: string; version: number } }>(
+    "select public.claim_client_signup_draft($1,$2) as draft", [draftId, userId],
+  );
+  try {
+    await db.query(`insert into client_signup_drafts(id,user_id,step,payload,expires_at) values
+      ($1,$2,'/questionnaire',$3,now()+interval '1 day'), ($4,$2,'/questionnaire',$3,now()-interval '1 minute')`,
+    [id, user, JSON.stringify(payload), expired]);
+    await db.exec("set role authenticated");
+    await assert.rejects(claim(id, user), /permission denied/);
+    await assert.rejects(db.query("select id from client_signup_drafts"), /permission denied/);
+    await db.exec("set role service_role");
+    assert.equal((await claim(id, other)).rows[0].draft, null);
+    assert.equal((await claim(expired, user)).rows[0].draft, null);
+    assert.deepEqual((await claim(id, user)).rows[0].draft?.payload, payload);
+    await db.query("select save_diagnostic_draft($1,$2,1,'/upload',$3)", [id, user, JSON.stringify(payload)]);
+    const retried = (await claim(id, user)).rows[0].draft;
+    assert.equal(retried?.step, "/upload");
+    assert.equal(retried?.version, 2);
+    assert.equal((await db.query("select id from client_signup_drafts where id=$1", [id])).rows.length, 0);
+  } finally {
+    await db.close();
+  }
+});
 test("draft ownership, cross-device conflict, submission transaction and duplicate retry", async () => {
   const db = await database();
   try {

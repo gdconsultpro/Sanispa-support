@@ -6,7 +6,7 @@ import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { problemTypes } from "@/lib/questions";
 import { adminLoginPath } from "@/lib/admin-navigation";
 import { confirmedClientDestination } from "@/lib/client-access";
-import { emptyDraft, readDraft, readLocalProgress, saveDraft, writeDraft } from "@/lib/storage";
+import { emptyDraft, readDraft, readLocalProgress, restoreDraft, saveDraft, writeDraft } from "@/lib/storage";
 export default function Callback() {
   const [error, setError] = useState("");
   const confirmation = useRef<Promise<void> | null>(null);
@@ -37,10 +37,16 @@ export default function Callback() {
           throw new Error(
             "Ce lien est invalide ou expiré. Demandez un nouveau lien d'accès.",
           );
-        const draft = readDraft();
-        const progress = readLocalProgress();
         const query = new URLSearchParams(window.location.search);
         const next = query.get("next");
+        const signupDraft = next === "diagnostic" ? query.get("draft") : null;
+        if (signupDraft) {
+          const { step } = await restoreDraft(signupDraft, { signup: true });
+          if (active) window.location.replace(step);
+          return;
+        }
+        const draft = readDraft();
+        const progress = readLocalProgress();
         const destination = next === "partenaire" ? "/partenaire/inscription" : next === "compte" ? "/espace-client" : ["carnet", "releves", "notices", "assistant", "forum"].includes(next || "") ? `/premium/${next}` : query.get("next") === "visio" ? "/visio" : query.get("next") === "admin" ? adminLoginPath(query.get("dossier"), query.get("section")) : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
           draft,
           data.session.user.email || "",
