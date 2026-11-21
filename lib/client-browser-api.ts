@@ -7,6 +7,6 @@ export async function clientRequest(path: string, init: RequestInit = {}) {
   const body = await r.json(); if (!r.ok) throw new Error(body.error || "Service indisponible. Réessayez.");
   return body;
 }
-export function localDateTime() {
-  const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+export function localDateTime(date = new Date()) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }

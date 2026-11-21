@@ -13,7 +13,7 @@ function req(path: string, body?: unknown) { return new Request(origin+path, { m
 async function fixture(run: (state: any) => Promise<void>) {
   const previousFetch = globalThis.fetch, previousEnv = { ...process.env };
   Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: db, SUPABASE_SERVICE_ROLE_KEY: "fixture-only", NEXT_PUBLIC_SANISPA_BILLING_MODE: "live", OPENAI_API_KEY: "fixture-only" });
-  const state = { active: false, partner: false, deduplicated: false, calls: [] as string[], aiCalls: 0, usage: null as any };
+  const state = { active: false, partner: false, deduplicated: false, calls: [] as string[], aiCalls: 0, usage: null as any, reminder: null as any };
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input)); state.calls.push(url.pathname);
     const body = init?.body ? JSON.parse(String(init.body)) : {};
@@ -34,6 +34,16 @@ async function fixture(run: (state: any) => Promise<void>) {
     if (url.pathname.endsWith("/customer_spas") || url.pathname.endsWith("/water_readings")) return Response.json(null);
     if (url.pathname.endsWith("/premium_ai_threads")) return init?.method === "POST" ? new Response(null, { status: 204 }) : Response.json({ id: thread });
     if (url.pathname.endsWith("/rpc/consume_request_limit")) return Response.json(true);
+    if (url.pathname.endsWith("/care_reminders") && init?.method === "PATCH") {
+      const row = state.reminder;
+      assert.equal(url.searchParams.get("user_id"), `eq.${uid}`);
+      assert.equal(url.searchParams.get("completed_at"), "is.null");
+      if (!row || url.searchParams.get("id") !== `eq.${row.id}` ||
+        url.searchParams.get("version") !== `eq.${row.version}` ||
+        row.user_id !== uid || row.completed_at) return Response.json([]);
+      Object.assign(row, body);
+      return Response.json([{ id: row.id }]);
+    }
     if (url.pathname.endsWith("/rpc/begin_premium_ai_request")) return Response.json(state.deduplicated ? { fresh: false, state: "complete", answer: "Réponse déjà conservée." } : { fresh: true });
     if (url.pathname.endsWith("/premium_ai_requests")) {
       if (init?.method === "PATCH") { state.usage = body; return Response.json([{ id: requestId }]); }
@@ -65,4 +75,31 @@ test("Premium AI sends one bounded call, records real usage, reuses a completed 
   assert.equal(s.aiCalls, 1); assert.deepEqual(s.usage, { state: "complete", answer: "Précisez le volume du spa et le produit exact avant tout dosage.", model: "gpt-5.4-mini-2026-03-17", input_tokens: 700, output_tokens: 100 });
   s.deduplicated = true; assert.equal((await ask(req("/api/client/assistant", payload))).status, 200); assert.equal(s.aiCalls, 1);
   assert.equal((await ask(req("/api/client/assistant", { ...payload, readingId: requestId }))).status, 404); assert.equal(s.aiCalls, 1);
+}));
+
+test("an active reminder keeps its identity and rejects stale or foreign edits", () => fixture(async s => {
+  s.active = true;
+  s.reminder = {
+    id: requestId, user_id: uid, completed_at: null, version: 1,
+    title: "Changer le filtre", repeat_days: 30, due_at: "2026-11-30T09:00:00Z",
+  };
+  const edit = {
+    action: "edit-reminder", id: requestId, version: 1, date: "2026-12-12T11:00:00Z",
+    repeatDays: null, repeatMonths: 2,
+  };
+  const submitEdit = (payload: unknown) => saveCare(req("/api/client/care", payload));
+  assert.equal((await submitEdit({ ...edit, repeatYears: 1 })).status, 400);
+  assert.equal((await submitEdit(edit)).status, 200);
+  assert.equal(s.reminder.id, requestId);
+  assert.equal(s.reminder.title, "Changer le filtre");
+  assert.equal(s.reminder.due_at, edit.date);
+  assert.equal(s.reminder.repeat_months, 2);
+  assert.equal(s.reminder.repeat_days, null);
+  assert.equal(s.reminder.version, 2);
+  assert.equal((await submitEdit(edit)).status, 409);
+  s.reminder.user_id = thread;
+  assert.equal((await submitEdit({ ...edit, version: 2 })).status, 409);
+  s.reminder.user_id = uid;
+  s.reminder.completed_at = edit.date;
+  assert.equal((await submitEdit({ ...edit, version: 2 })).status, 409);
 }));

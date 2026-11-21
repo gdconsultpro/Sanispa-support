@@ -24,6 +24,23 @@ export async function POST(request: Request) {
     if (p.action === "complete") {
       const r = await supabase.rpc("complete_care_reminder", { p_id: p.id, p_user: user.id, p_version: p.version });
       if (r.error) throw new HttpError(409, "Ce rappel a changé. Actualisez avant de poursuivre.");
+    } else if (p.action === "edit-reminder") {
+      // Advancing the version also invalidates any e-mail queued for the old schedule.
+      const result = await supabase.from("care_reminders")
+        .update({
+          due_at: p.date,
+          repeat_days: p.repeatDays,
+          repeat_months: p.repeatMonths,
+          repeat_years: p.repeatYears,
+          version: p.version + 1,
+        })
+        .eq("id", p.id)
+        .eq("user_id", user.id)
+        .eq("version", p.version)
+        .is("completed_at", null)
+        .select("id");
+      if (result.error) throw result.error;
+      if (!result.data?.length) throw new HttpError(409, "Ce rappel a changé ou n’est plus disponible. Actualisez le carnet avant de réessayer.");
     } else if (p.action === "delete") {
       const table = { journal: "care_journal", reminder: "care_reminders", reading: "water_readings" }[p.type];
       const r = await supabase.from(table).delete().eq("id", p.id).eq("user_id", user.id).select("id");
