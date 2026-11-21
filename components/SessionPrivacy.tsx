@@ -1,9 +1,15 @@
 "use client";
-import { Fragment, useEffect, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { adminLoginPath } from "@/lib/admin-navigation";
 import { reconcileLocalOwner } from "@/lib/session-privacy";
+
+const ClientSession = createContext<Session | null>(null);
+
+export function useClientSession() {
+  return useContext(ClientSession);
+}
 
 export function SessionPrivacy({ children }: { children: React.ReactNode }) {
   return <ApplicationSessionPrivacy>{children}</ApplicationSessionPrivacy>;
@@ -13,6 +19,7 @@ function ApplicationSessionPrivacy({ children }: { children: React.ReactNode }) 
   const [ready, setReady] = useState(false);
   const [revision, setRevision] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
   useEffect(() => {
     let disposed = false;
     let initialized = false;
@@ -47,6 +54,7 @@ function ApplicationSessionPrivacy({ children }: { children: React.ReactNode }) 
         // Password recovery owns its fields and must retain its completion message.
         if (wasInitialized && changed && path !== "/nouveau-mot-de-passe") setRevision(value => value + 1);
         previousUser = userId;
+        setSession(session);
         setUnavailable(false);
         setReady(true);
       }).catch(() => { if (!disposed && currentSequence === sequence) setUnavailable(true); });
@@ -64,5 +72,5 @@ function ApplicationSessionPrivacy({ children }: { children: React.ReactNode }) 
   }, []);
   if (unavailable) return <main className="p-6"><p role="alert">La session ne peut pas être vérifiée. Vérifiez votre connexion et autorisez le stockage du navigateur, puis rechargez la page.</p></main>;
   if (!ready) return <main className="p-6"><p role="status">Vérification de votre session…</p></main>;
-  return <Fragment key={revision}>{children}</Fragment>;
+  return <ClientSession.Provider value={session}><Fragment key={revision}>{children}</Fragment></ClientSession.Provider>;
 }

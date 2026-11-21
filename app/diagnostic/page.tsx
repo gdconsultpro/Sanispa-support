@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProblemPicker } from "@/components/ProblemPicker";
 import { DraftSave } from "@/components/DraftSave";
@@ -10,6 +10,8 @@ import { Field, SelectField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
 import { normalizeDiagnostic } from "@/lib/diagnostic-answers";
 import { DiagnosticQuestion } from "@/components/DiagnosticQuestion";
+import { DiagnosticContactFields } from "@/components/DiagnosticContactFields";
+import { missingContactFields } from "@/lib/diagnostic-contact";
 import { isQuestionVisible, updateDiagnosticAnswer, validateAnswers } from "@/lib/diagnostic-answers";
 import { problemTypes, questionSets } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
@@ -49,6 +51,8 @@ function DiagnosticContent() {
   const [draft, setDraft] = useState<DiagnosticDraft>(emptyDraft);
   const [spas, setSpas] = useState<Spa[]>([]);
   const [accountEmail, setAccountEmail] = useState("");
+  const [ready, setReady] = useState(false);
+  const [otherSpa, setOtherSpa] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -63,79 +67,64 @@ function DiagnosticContent() {
       window.history.replaceState(null, "", url);
     }
     const savedDraft = readDraft();
-    setDraft(
-      normalizeDiagnostic({
-        ...savedDraft,
-        problemType: savedDraft.problemType || requestedProblem || "",
-      }),
-    );
+    const initial = normalizeDiagnostic({ ...savedDraft, problemType: savedDraft.problemType || requestedProblem || "" });
     async function prefillFromClientAccount() {
+      let draft = initial;
+      let email = "";
+      let loadedSpas: Spa[] = [];
       try {
         const supabase = getSupabaseBrowser();
         const { data } = await supabase.auth.getSession();
         const session = data.session;
-        if (!active || !session) return;
-        const token = session.access_token;
-        const email = session.user.email || "";
-        setAccountEmail(email);
-        setDraft(current => ({ ...current, email }));
-        const headers = { Authorization: `Bearer ${token}` };
-        const [profileResponse, spasResponse] = await Promise.all([
-          fetch("/api/client/profile", { headers }),
-          fetch("/api/client/spas", { headers }),
-        ]);
-        const profileData = profileResponse.ok ? await profileResponse.json() : {};
-        const spasData = spasResponse.ok ? await spasResponse.json() : {};
-        if (!active) return;
-        const profile = profileData.profile;
-        const loadedSpas: Spa[] = spasData.spas ?? [];
-        setSpas(loadedSpas);
-        setDraft((current) => {
-          const linkedSpa = loadedSpas.find(spa => spa.id === current.spaId);
-          const onlySpa = !current.draftId && !current.spaId && !current.spaBrand && !current.spaModel &&
-            !current.spaYear && !current.installationType && loadedSpas.length === 1 ? loadedSpas[0] : undefined;
+        if (active && session?.user.email_confirmed_at && session.user.email) {
+          email = session.user.email;
+          draft = { ...initial, email };
+          const headers = { Authorization: `Bearer ${session.access_token}` };
+          const [profileResult, spasResult] = await Promise.allSettled(
+            ["/api/client/profile", "/api/client/spas"].map(async path => {
+              const response = await fetch(path, { headers, signal: AbortSignal.timeout(10000) });
+              if (!response.ok) throw new Error("Informations indisponibles");
+              return response.json();
+            }),
+          );
+          const profile = profileResult.status === "fulfilled" ? profileResult.value.profile : undefined;
+          loadedSpas = spasResult.status === "fulfilled" ? spasResult.value.spas ?? [] : [];
+          const linkedSpa = loadedSpas.find(spa => spa.id === initial.spaId);
+          const onlySpa = !initial.draftId && !initial.spaId && !hasSpaDetails(initial) && loadedSpas.length === 1 ? loadedSpas[0] : undefined;
           const spa = linkedSpa || onlySpa;
-          return {
-            ...current,
-            spaId: spasResponse.ok ? spa?.id : current.spaId,
-            name:
-              current.name ||
-              [profile?.first_name, profile?.last_name].filter(Boolean).join(" "),
-            phone: current.phone || profile?.phone || "",
-            email,
-            address: current.address || profile?.address || "",
-            postalCode: current.postalCode || profile?.postal_code || "",
-            city: current.city || profile?.city || "",
-            spaBrand:
-              current.spaBrand || spa?.brand || "",
-            spaModel:
-              current.spaModel || spa?.model || "",
-            spaYear:
-              current.spaYear || spa?.spa_year || "",
-            installationType:
-              current.installationType || (spa?.installation_type === "interieur" || spa?.installation_type === "exterieur"
-                ? spa.installation_type : ""),
+          draft = {
+            ...draft,
+            spaId: spasResult.status === "fulfilled" ? spa?.id : initial.spaId,
+            name: initial.name || [profile?.first_name, profile?.last_name].filter(Boolean).join(" "),
+            phone: initial.phone || profile?.phone || "",
+            address: initial.address || profile?.address || "",
+            postalCode: initial.postalCode || profile?.postal_code || "",
+            city: initial.city || profile?.city || "",
+            spaBrand: initial.spaBrand || spa?.brand || "",
+            spaModel: initial.spaModel || spa?.model || "",
+            spaYear: initial.spaYear || spa?.spa_year || "",
+            installationType: initial.installationType || savedInstallation(spa),
           };
-        });
+        }
       } catch {
-        // Le formulaire reste disponible même si le client n'est pas connecté.
+        // Une session indisponible ne bloque pas le parcours public.
       }
+      if (!active) return;
+      setDraft(draft);
+      setAccountEmail(email);
+      setSpas(loadedSpas);
+      setOtherSpa(false);
+      setReady(true);
     }
     prefillFromClientAccount();
     return () => { active = false; };
   }, [searchParams]);
   const moving = draft.problemType === "demenagement";
-  const requiredFilled = useMemo(() => {
-    return Boolean(
-      draft.name &&
-        draft.phone &&
-        draft.email &&
-        draft.postalCode &&
-        draft.city &&
-        draft.installationType &&
-        draft.problemType,
-    );
-  }, [draft]);
+  const showContact = moving || !accountEmail;
+  const selectedSpa = spas.find(spa => spa.id === draft.spaId);
+  const manualSpa = otherSpa || (!selectedSpa && hasSpaDetails(draft));
+  const showSpaFields = moving || !accountEmail || !spas.length || manualSpa;
+  const showInstallation = showSpaFields || !savedInstallation(selectedSpa);
   function update<K extends keyof DiagnosticDraft>(
     key: K,
     value: DiagnosticDraft[K],
@@ -152,25 +141,22 @@ function DiagnosticContent() {
   }
   function selectSpa(spaId: string) {
     const spa = spas.find((item) => item.id === spaId);
-    if (!spa) {
-      update("spaId", undefined);
-      return;
-    }
+    setOtherSpa(spaId === "autre");
     setDraft((current) => ({
       ...current,
-      spaId: spa.id,
-      spaBrand: spa.brand || "",
-      spaModel: spa.model || "",
-      spaYear: spa.spa_year || "",
-      installationType: (spa.installation_type ||
-        "") as DiagnosticDraft["installationType"],
+      spaId: spa?.id,
+      spaBrand: spa?.brand || "",
+      spaModel: spa?.model || "",
+      spaYear: spa?.spa_year || "",
+      installationType: savedInstallation(spa),
+      powerSupply: "",
     }));
   }
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     setError("");
-    if (!requiredFilled) {
+    if (!draft.problemType || !draft.installationType || (showContact && missingContactFields(draft).length)) {
       setError(
         "Veuillez renseigner tous les champs obligatoires avant de continuer.",
       );
@@ -180,6 +166,8 @@ function DiagnosticContent() {
     try {
       if (moving) validateAnswers(draft, false);
       const { data } = await getSupabaseBrowser().auth.getSession();
+      if (accountEmail && !data.session?.user.email_confirmed_at)
+        throw new Error("Reconnectez-vous pour poursuivre votre déclaration.");
       const next = {
         ...draft,
         ...(moving ? { address: String(draft.answers.moving_departure || ""), choice: "devis" as const, paymentPlan: "" as const } : {}),
@@ -200,13 +188,26 @@ function DiagnosticContent() {
       setBusy(false);
     }
   }
+  const installationField = (
+    <SelectField label="Type d’installation" name="installationType" value={draft.installationType}
+      onChange={value => update("installationType", value as DiagnosticDraft["installationType"])}
+      required options={[{ value: "interieur", label: "Intérieur" }, { value: "exterieur", label: "Extérieur" }]} />
+  );
+  const spaFields = (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field label="Marque du spa si connue" name="spaBrand" value={draft.spaBrand} onChange={value => update("spaBrand", value)} />
+      <Field label="Modèle si connu" name="spaModel" value={draft.spaModel} onChange={value => update("spaModel", value)} />
+      <Field label="Année approximative si connue" name="spaYear" value={draft.spaYear} onChange={value => update("spaYear", value)} />
+    </div>
+  );
+  if (!ready) return <AppShell compact><p role="status">Chargement de votre déclaration…</p></AppShell>;
   return (
     <AppShell compact>
       <StepHeader
         eyebrow="Étape 1"
         labels={moving ? ["Le transport", "Photos et vidéos", "La validation"] : undefined}
-        title={moving ? "Préparer le déménagement de mon spa" : "Informations client et spa"}
-        description={moving ? "Décrivez le spa, le trajet et les accès aux deux adresses. Vos photos et vidéos permettront à SANISPA d’étudier la faisabilité et de préparer un devis. Aucune réservation ni facturation à cette étape." : "Les champs marqués d’un * sont obligatoires ; les autres sont facultatifs. Vos informations peuvent être préremplies après connexion. Vous pourrez enregistrer votre brouillon dans votre espace client avant d’envoyer la demande."}
+        title={moving ? "Préparer le déménagement de mon spa" : accountEmail ? "Déclarer une panne" : "Informations client et spa"}
+        description={moving ? "Décrivez le spa, le trajet et les accès aux deux adresses. Vos photos et vidéos permettront à SANISPA d’étudier la faisabilité et de préparer un devis. Aucune réservation ni facturation à cette étape." : accountEmail ? "Choisissez la panne et le spa concerné. Vous pourrez vérifier vos coordonnées avant l’envoi." : "Les champs marqués d’un * sont obligatoires. Votre saisie sera conservée pour la reprendre après confirmation de votre compte."}
       />
       <DraftSave draft={draft} step="/diagnostic" sync={Boolean(accountEmail && draft.email === accountEmail)} />
       <BackLink href="/espace-client" label="Retour à mon espace client" />
@@ -220,119 +221,61 @@ function DiagnosticContent() {
           onChange={(value) => update("problemType", value)}
         />}
         <h2 className="border-t border-sanispa-line pt-6 text-xl font-bold">
-          {moving ? "Vos coordonnées et le lieu d’enlèvement" : "Votre spa et vos coordonnées"}
+          {moving ? "Vos coordonnées et le lieu d’enlèvement" : showContact ? "Votre spa et vos coordonnées" : "Le spa concerné"}
         </h2>
         {spas.length > 0 ? (
           <SelectField
             label="Choisir le spa concerné"
             name="selectedSpa"
-            value={draft.spaId || ""}
+            value={selectedSpa?.id || (manualSpa ? "autre" : "")}
             onChange={selectSpa}
-            options={spas.map((spa) => ({
+            required={Boolean(accountEmail)}
+            options={[...spas.map((spa) => ({
               value: spa.id,
               label: [spa.brand, spa.model, spa.spa_year]
                 .filter(Boolean)
                 .join(" - "),
-            }))}
+            })), { value: "autre", label: "Un autre spa" }]}
           />
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Nom"
-            name="name"
-            value={draft.name}
-            onChange={(value) => update("name", value)}
-            required
-          />
-          <Field
-            label="Téléphone"
-            name="phone"
-            value={draft.phone}
-            onChange={(value) => update("phone", value)}
-            required
-            type="tel"
-          />
-          <Field
-            label="Adresse e-mail"
-            name="email"
-            value={draft.email}
-            onChange={(value) => update("email", value)}
-            required
-            type="email"
-            readOnly={Boolean(accountEmail)}
-            autoComplete="email"
-          />
-          {!moving ? <Field
-            label="Adresse"
-            name="address"
-            value={draft.address}
-            onChange={(value) => update("address", value)}
-          /> : null}
-          <Field
-            label={moving ? "Code postal d’enlèvement" : "Code postal"}
-            name="postalCode"
-            value={draft.postalCode}
-            onChange={(value) => update("postalCode", value)}
-            required
-          />
-          <Field
-            label={moving ? "Ville d’enlèvement" : "Ville"}
-            name="city"
-            value={draft.city}
-            onChange={(value) => update("city", value)}
-            required
-          />
-          <Field
-            label="Marque du spa si connue"
-            name="spaBrand"
-            value={draft.spaBrand}
-            onChange={(value) => update("spaBrand", value)}
-          />
-          <Field
-            label="Modèle si connu"
-            name="spaModel"
-            value={draft.spaModel}
-            onChange={(value) => update("spaModel", value)}
-          />
-          <Field
-            label="Année approximative si connue"
-            name="spaYear"
-            value={draft.spaYear}
-            onChange={(value) => update("spaYear", value)}
-          />
-          <SelectField
-            label="Type d'installation"
-            name="installationType"
-            value={draft.installationType}
-            onChange={(value) =>
-              update(
-                "installationType",
-                value as DiagnosticDraft["installationType"],
-              )
-            }
-            required
-            options={[
-              { value: "interieur", label: "Intérieur" },
-              { value: "exterieur", label: "Extérieur" },
-            ]}
-          />
-        </div>
+        {showContact ? <DiagnosticContactFields draft={draft} moving={moving} readOnlyEmail={Boolean(accountEmail)} onChange={update} /> : null}
+        {showSpaFields || selectedSpa ? (
+          <div className="space-y-4">
+            {showInstallation ? installationField : null}
+            {accountEmail && !moving ? (
+              <details key={draft.spaId || "autre"} className="rounded-xl border border-sanispa-line p-4">
+                <summary className="cursor-pointer font-bold">{selectedSpa ? "Modifier les infos du spa pour cette demande" : "Ajouter la marque, le modèle ou l’année"}</summary>
+                <div className="mt-4 space-y-4">
+                  {spaFields}
+                  {!showInstallation ? installationField : null}
+                </div>
+              </details>
+            ) : spaFields}
+          </div>
+        ) : null}
 
         {moving ? <div className="space-y-5 border-t border-sanispa-line pt-6">{questionSets.demenagement.filter(q => isQuestionVisible(q, draft.answers, questionSets.demenagement)).map(q => <div key={q.id} className="space-y-3">{q.section ? <h2 className="text-xl font-bold">{q.section}</h2> : null}<DiagnosticQuestion question={q} value={draft.answers[q.id]} onChange={value => { setError(""); setDraft(current => ({ ...updateDiagnosticAnswer(current, q.id, value), ...(q.id === "moving_departure" ? { address: String(value) } : {}) })); }} /></div>)}<p className="rounded-xl bg-sanispa-ice p-4 text-sm leading-6">Ne déplacez pas le spa pour répondre. Le poids, les dimensions et les moyens de levage seront confirmés par le professionnel avant le transport.</p></div> : null}
         {error ? (
-          <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">
+          <p role="alert" className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">
             {error}
           </p>
         ) : null}
-        <p className="text-sm text-sanispa-steel">
-          Si vous n’êtes pas connecté, vous créerez votre compte avec un mot de passe.
-          Un seul e-mail confirmera votre adresse et vous ramènera à votre demande.
-        </p>
+        {!accountEmail ? <p className="text-sm text-sanispa-steel">
+          Vous pourrez créer votre compte avec un mot de passe. L’e-mail de confirmation vous ramènera à votre demande.
+        </p> : null}
         <Button type="submit" disabled={busy} className="w-full sm:w-auto">
           {busy ? "Préparation de votre parcours…" : moving ? "Ajouter mon dossier photo ou vidéo" : "Continuer ma déclaration"}
         </Button>
       </form>
     </AppShell>
   );
+}
+
+function hasSpaDetails(draft: DiagnosticDraft) {
+  return Boolean(draft.spaBrand || draft.spaModel || draft.spaYear || draft.installationType);
+}
+
+function savedInstallation(spa?: Spa) {
+  return spa?.installation_type === "interieur" || spa?.installation_type === "exterieur" ? spa.installation_type : "";
 }

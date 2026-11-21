@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { problemTypes } from "./questions";
 import { missingRequiredPhotos, normalizeDiagnostic, validateAnswers } from "./diagnostic-answers";
+import { missingContactFields } from "./diagnostic-contact";
 import type { ProblemType } from "./types";
 const text = z.string().max(500);
 export const draftSchema = z.object({
@@ -21,7 +22,7 @@ export const draftSchema = z.object({
 }).transform(normalizeDiagnostic);
 export function validateSubmission(input: unknown) {
     const p = draftSchema.parse(input);
-    if (![p.name, p.phone, p.postalCode, p.city, p.installationType].every(v => v.trim()))
+    if (missingContactFields(p).length || !p.installationType)
         throw new Error("Complétez vos coordonnées et l'installation du spa.");
     if (!p.choice || (p.choice === "remote" && (p.paymentPlan !== "water" || p.problemType !== "traitement-eau")))
         throw new Error("Choisissez une prestation disponible.");

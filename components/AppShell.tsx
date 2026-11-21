@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { paymentsPaused } from "@/lib/commercial-mode";
+import { ClientAccountLink } from "./ClientAccountLink";
 
 export function AppShell({
   children,
@@ -28,7 +29,7 @@ export function AppShell({
           </Link>
           <nav aria-label="Navigation principale" className="flex flex-wrap items-center justify-end gap-2 text-sm font-bold">
             <Link href="/diagnostic?new=1" className="focus-ring rounded-full bg-sanispa-blue px-4 py-3 text-white">Déclarer une panne</Link>
-            <Link href="/espace-client" className={`focus-ring rounded-full border border-sanispa-line bg-white px-4 py-3 ${clientSpace ? "hidden sm:inline-flex" : ""}`}>Mon espace spa</Link>
+            <ClientAccountLink clientSpace={clientSpace} />
             <Link href="/partenaire/connexion" className={`focus-ring rounded-full border border-sanispa-line bg-white px-4 py-3 ${clientSpace ? "hidden sm:inline-flex" : ""}`}>Professionnels</Link>
           </nav>
         </div>

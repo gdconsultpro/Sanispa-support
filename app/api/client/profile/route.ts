@@ -6,7 +6,8 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "Non connecté" }, { status: 401 });
 
   const metadata = user.user_metadata ?? {};
-  const { data: existing } = await supabase.from("client_profiles").select("*").eq("user_id", user.id).maybeSingle();
+  const { data: existing, error } = await supabase.from("client_profiles").select("*").eq("user_id", user.id).maybeSingle();
+  if (error) return NextResponse.json({ error: "Profil indisponible." }, { status: 503 });
 
   if (existing) return NextResponse.json({ profile: existing });
 
@@ -24,9 +25,7 @@ export async function GET(request: Request) {
     spa_year: metadata.spaYear || ""
   };
 
-  const { data, error } = await supabase.from("client_profiles").insert(profile).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ profile: data });
+  return NextResponse.json({ profile });
 }
 
 export async function PUT(request: Request) {

@@ -6,6 +6,8 @@ import { GET as care } from "../app/api/client/care/route";
 import { clientCaseProgress, type ClientCase } from "../lib/client-case-progress";
 import { clientCaseLoginPath, clientCaseReturnPath } from "../lib/client-case-navigation";
 import { sendCustomerConfirmation } from "../lib/email";
+import { clientDisplayName } from "../lib/client-display-name";
+import { missingContactFields } from "../lib/diagnostic-contact";
 
 const owner = "90000000-0000-4000-8000-000000000001";
 const dossierId = "90000000-0000-4000-8000-000000000002";
@@ -15,6 +17,14 @@ const dossier: ClientCase = {
   id: dossierId, public_reference: "SAV-1", status: "NEW",
   problem_type: "fuite", choice: "intervention", payment_status: null, created_at: created,
 };
+
+test("the session label uses the first name and last initial for current and legacy profiles", () => {
+  assert.equal(clientDisplayName("Camille", "Durand"), "Camille D.");
+  assert.equal(clientDisplayName("Jean-Pierre Évrard", ""), "Jean-Pierre É.");
+  assert.equal(clientDisplayName(" Camille ", null), "Camille");
+  assert.equal(clientDisplayName(null, null), "");
+  assert.deepEqual(missingContactFields({ name: "Camille", email: "camille@example.invalid", phone: "  ", postalCode: "", city: "Strasbourg", address: "" }), ["phone", "postalCode"]);
+});
 
 test("the receipt e-mail has three separate destinations on the current app origin", async () => {
   const previousFetch = globalThis.fetch;

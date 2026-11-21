@@ -137,6 +137,27 @@ test("signup drafts stay private, can be claimed once, and cannot replace later 
     await db.close();
   }
 });
+test("submitting a breakdown fills empty profile details and preserves existing contact information", async () => {
+  const db = await database();
+  try {
+    await db.query("insert into client_profiles(user_id,email,first_name,last_name,phone,city) values($1,$2,'Camille','Durand','','Lyon')",
+      [user, payload.email]);
+    const declared = { ...payload, name: "Camille Durand", address: "1 voie fictive" };
+    await db.query("select save_diagnostic_draft($1,$2,0,'/resume',$3)", [id, user, JSON.stringify(declared)]);
+    assert.equal((await db.query<{ phone: string }>("select phone from client_profiles where user_id=$1", [user])).rows[0].phone, "");
+    await db.query("select submit_diagnostic($1,$2,1,'75','{}','[]','[]','[]')", [id, user]);
+    const profile = await db.query("select first_name,last_name,phone,address,postal_code,city from client_profiles where user_id=$1", [user]);
+    assert.deepEqual(profile.rows[0], { first_name: "Camille", last_name: "Durand", phone: payload.phone, address: declared.address, postal_code: payload.postalCode, city: "Lyon" });
+    const movingId = "00000000-0000-4000-8000-000000000015";
+    await db.query("insert into client_profiles(user_id,email) values($1,'other@example.invalid')", [other]);
+    await db.query("select save_diagnostic_draft($1,$2,0,'/resume',$3)", [movingId, other, JSON.stringify({ ...declared, email: "other@example.invalid", problemType: "demenagement" })]);
+    await db.query("select submit_diagnostic($1,$2,1,'75','{}','[]','[]','[]')", [movingId, other]);
+    assert.deepEqual((await db.query("select address,postal_code,city from client_profiles where user_id=$1", [other])).rows[0],
+      { address: null, postal_code: null, city: null });
+  } finally {
+    await db.close();
+  }
+});
 test("draft ownership, cross-device conflict, submission transaction and duplicate retry", async () => {
   const db = await database();
   try {

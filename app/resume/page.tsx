@@ -13,6 +13,7 @@ import { ShopLinks } from "@/components/ShopLinks";
 import { StepHeader } from "@/components/StepHeader";
 import { normalizeDiagnostic, updateDiagnosticAnswer } from "@/lib/diagnostic-answers";
 import { DiagnosticQuestion } from "@/components/DiagnosticQuestion";
+import { missingContactFields, type ContactField } from "@/lib/diagnostic-contact";
 import { remotePlans, spaAccessQuestion } from "@/lib/questions";
 import { DiagnosticDraft, PaymentPlan } from "@/lib/types";
 import { emptyDraft, readDraft, writeDraft, saveDraft, authHeaders } from "@/lib/storage";
@@ -22,8 +23,11 @@ export default function ResumePage() {
     const [error, setError] = useState("");
     const [saving, setSaving] = useState(false);
     const [wantsVideo, setWantsVideo] = useState(false);
+    const [editingContact, setEditingContact] = useState(false);
+    const [missingContact, setMissingContact] = useState<readonly ContactField[]>([]);
     useEffect(() => {
         const stored = readDraft();
+        setMissingContact(missingContactFields(stored));
         setDraft(stored.problemType === "demenagement" ? { ...stored, choice: "devis", paymentPlan: "" } : stored);
         if (!stored.problemType)
             router.push("/diagnostic");
@@ -34,8 +38,16 @@ export default function ResumePage() {
         writeDraft(next);
     }
     const isWaterAnalysis = draft.problemType === "traitement-eau";
+    const moving = draft.problemType === "demenagement";
     const availableRemotePlans = isWaterAnalysis ? remotePlans.filter((plan) => plan.enabled && plan.id === "water") : [];
     async function submit() {
+        const missing = missingContactFields(draft);
+        if (missing.length) {
+            setError("Complétez vos coordonnées avant d’envoyer votre demande.");
+            if (!moving && missing.some(field => !missingContact.includes(field))) setEditingContact(true);
+            document.getElementById("coordonnees-declaration")?.scrollIntoView({ block: "start" });
+            return;
+        }
         if (!draft.choice) {
             setError("Veuillez choisir une orientation avant de valider.");
             return;
@@ -70,7 +82,18 @@ export default function ResumePage() {
       <BackLink href="/upload"/>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
-        <div><DiagnosticSummary draft={draft}/>{draft.problemType === "demenagement" && draft.draftId ? <div className="mt-4"><MovingMedia draftId={draft.draftId} readOnly /></div> : null}</div>
+        <div>
+          <DiagnosticSummary draft={draft} contactEdit={draft.problemType && !moving ? {
+            fields: missingContact,
+            expanded: editingContact,
+            toggle: () => setEditingContact(value => !value),
+            onChange: (field, value) => {
+              setError("");
+              setDraft(current => ({ ...current, [field]: value }));
+            },
+          } : undefined} />
+          {moving && draft.draftId ? <div className="mt-4"><MovingMedia draftId={draft.draftId} readOnly /></div> : null}
+        </div>
 
         <aside className="space-y-4">
           {draft.problemType === "demenagement" ? <section className="rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Étude de faisabilité et devis de transport</h2><p className="mt-3 text-sm leading-7">SANISPA étudiera les adresses, les accès, les dimensions et le poids du spa ainsi que les moyens de levage à prévoir. Vos photos et vidéos jointes au dossier aideront à préparer le devis. L’envoi de cette demande n’engage aucune réservation ni aucun règlement.</p></section> : <>
@@ -109,7 +132,7 @@ export default function ResumePage() {
             }} />
           </section> : null}
           {draft.problemType !== "demenagement" ? <section className="rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Un accompagnement en visio ?</h2><p className="mt-3 text-sm leading-7 text-sanispa-steel">30 minutes avec SANISPA pour préciser votre panne et vous guider. {paymentsPaused() ? "Service actuellement gratuit, sans règlement. Le rendez-vous est confirmé par SANISPA." : "Tarif : 59 € TTC. Réservation après confirmation de SANISPA."}</p><label className="mt-4 flex items-start gap-3 text-sm font-bold"><input type="checkbox" className="mt-1" checked={wantsVideo} onChange={event => { setWantsVideo(event.target.checked); if (event.target.checked && !draft.choice) setChoice("intervention"); }} />Demander une visio après l’envoi de mon dossier</label>{wantsVideo ? <p className="mt-2 text-sm">Vous indiquerez vos disponibilités sur l’écran suivant pour envoyer votre demande de visio.</p> : null}</section> : null}
-          {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
+          {error ? <p role="alert" className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
           <Button type="button" onClick={submit} disabled={saving} className="w-full">
             {saving ? "Envoi de la demande…" : "Envoyer ma demande"}
           </Button>
