@@ -118,3 +118,23 @@ test("actual server role can submit reports and queue reminders without SELECT o
     assert.equal(payload.userId, client); assert.equal(payload.email, undefined);
   } finally { await db.close(); }
 });
+
+test("the partner may cancel the displayed future slot, but a stale cancellation preserves its replacement", async () => {
+  const db = await fixture();
+  try {
+    const dates = ["2032-01-10T10:00:00+00:00", "2032-01-10T11:00:00+00:00"];
+    const replacement = ["2032-01-10T12:00:00+00:00", "2032-01-10T13:00:00+00:00"];
+    const cancel = "select cancel_partner_appointment($1,$2,$3,$4,$5)";
+    const schedule = "select save_partner_appointment($1,$2,$3,$4,$5)";
+    await db.query(schedule, [diagnostic, partner, actor, ...dates]);
+    await db.query(schedule, [diagnostic, partner, actor, ...replacement]);
+    await assert.rejects(db.query(cancel, [diagnostic, other, stranger, ...replacement]), /ASSIGNED_PARTNER_REQUIRED/);
+    await assert.rejects(db.query(cancel, [diagnostic, partner, actor, ...dates]), /APPOINTMENT_CHANGED/);
+    await db.query(cancel, [diagnostic, partner, actor, ...replacement]);
+    await db.query(cancel, [diagnostic, partner, actor, ...replacement]);
+    assert.equal((await db.query("select * from partner_appointments")).rows.length, 0);
+    assert.equal((await db.query("select * from diagnostic_activity where event_type='appointment_cancelled'")).rows.length, 1);
+  } finally {
+    await db.close();
+  }
+});

@@ -20,10 +20,16 @@ export async function loadPartnerSession(token: string) {
     headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(20000)
   });
   const body = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(body?.error || "Votre accès partenaire n’a pas pu être vérifié. Réessayez.");
+  if (!response.ok) {
+    if (response.status === 403 && body?.code === "PARTNER_REGISTRATION_REQUIRED") {
+      window.location.replace("/partenaire/inscription");
+      return null;
+    }
+    throw new Error(body?.error || "Votre accès partenaire n’a pas pu être vérifié. Réessayez.");
+  }
   if (!body?.partner?.id || typeof body.passwordChangeRequired !== "boolean")
     throw new Error("La réponse du serveur ne confirme pas votre accès partenaire. Réessayez.");
-  return body as { partner: { id: string; company_name: string }; passwordChangeRequired: boolean };
+  return body as { partner: { id: string; company_name: string; verification_status?: "existing" | "pending" | "verified" }; passwordChangeRequired: boolean };
 }
 export function partnerAuthError(error: unknown) {
   const code = (error as { code?: string })?.code;

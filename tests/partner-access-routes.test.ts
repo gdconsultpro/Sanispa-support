@@ -22,8 +22,8 @@ async function fixture(run:(state:any)=>Promise<void>){
  try{await run(state);}finally{globalThis.fetch=oldFetch;keys.forEach((k,i)=>{if(prev[i]===undefined)delete process.env[k];else process.env[k]=prev[i];});}
 }
 test('successful Auth and absent or inactive access are explicit failures',()=>fixture(async s=>{
- s.linked=false;let r=await session(request('/api/partner/session'));assert.equal(r.status,403);assert.match((await r.json()).error,/connexion est réussie.*aucune entreprise/);
- s.linked=true;s.inactive=true;r=await session(request('/api/partner/session'));assert.equal(r.status,403);assert.match((await r.json()).error,/désactivé/);
+ s.linked=false;let r=await session(request('/api/partner/session'));assert.equal(r.status,403);const missing=await r.json();assert.match(missing.error,/connexion est réussie.*aucune entreprise/);assert.equal(missing.code,'PARTNER_REGISTRATION_REQUIRED');
+ s.linked=true;s.inactive=true;r=await session(request('/api/partner/session'));assert.equal(r.status,403);const disabled=await r.json();assert.match(disabled.error,/désactivé/);assert.equal(disabled.code,undefined);
 }));
 test('mandatory change permits only the account screen, and blocks dossier reads server-side',()=>fixture(async s=>{
  const r=await session(request('/api/partner/session'));assert.equal(r.status,200);assert.equal((await r.json()).passwordChangeRequired,true);

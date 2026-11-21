@@ -119,12 +119,12 @@ export async function GET(
     if (diagnosticId) {
       const { data, error } = await supabase
         .from("diagnostics")
-        .select("user_id,assigned_partner_id")
+        .select("user_id,assigned_partner_id,archived_at")
         .eq("id", diagnosticId)
         .maybeSingle();
       if (error || !data) throw new HttpError(404, "Fichier introuvable.");
       if (kind === "photo") owner = data.user_id;
-      assignedPartner = data.assigned_partner_id;
+      assignedPartner = data.archived_at ? null : data.assigned_partner_id;
     }
     let allowed =
       owner === session.user.id ||

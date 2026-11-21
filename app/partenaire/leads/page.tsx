@@ -3,6 +3,7 @@ import { paymentsPaused } from "@/lib/commercial-mode";
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { AppShell } from "@/components/AppShell";
 import { ButtonLink } from "@/components/Button";
 import { StepHeader } from "@/components/StepHeader";
@@ -13,6 +14,7 @@ import type { PartnerLeadPreview } from "@/lib/partner-leads";
 
 export default function PartnerLeadsPage() {
   const [leads, setLeads] = useState<PartnerLeadPreview[]>([]);
+  const [pendingVerification, setPendingVerification] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const currentRequest = useRef<AbortController | null>(null);
@@ -46,7 +48,10 @@ export default function PartnerLeadsPage() {
         throw new Error(
           "La liste des demandes n’a pas pu être chargée. Réessayez.",
         );
-      if (!controller.signal.aborted) setLeads(payload.leads);
+      if (!controller.signal.aborted) {
+        setLeads(payload.leads);
+        setPendingVerification(payload.verificationStatus === "pending");
+      }
     } catch (cause) {
       if (!controller.signal.aborted) {
         setLeads([]);
@@ -68,6 +73,7 @@ export default function PartnerLeadsPage() {
 
   return (
     <AppShell compact>
+    <PartnerNavigation current="Demandes" />
       <p className="mb-4 text-sm">
         <Link
           href="/partenaire"
@@ -78,8 +84,8 @@ export default function PartnerLeadsPage() {
       </p>
       <StepHeader
         eyebrow="Espace partenaire"
-        title="Leads techniques"
-        description="Aperçu limité des demandes correspondant à vos départements."
+        title="Demandes proposées"
+        description="Consultez les dossiers que SANISPA vous propose et choisissez ceux que vous pouvez prendre en charge."
       />
 
       {loading ? (
@@ -108,7 +114,7 @@ export default function PartnerLeadsPage() {
 
       {!loading && !error && leads.length === 0 ? (
         <InfoCard>
-          Aucun lead disponible pour vos secteurs pour le moment.
+          {pendingVerification ? "Votre SIRET est en cours de vérification. Vos demandes apparaîtront ici après validation de votre entreprise." : "Aucune demande proposée pour le moment. Vous recevrez un e-mail quand SANISPA vous proposera un dossier."}
         </InfoCard>
       ) : null}
 
@@ -130,7 +136,7 @@ export default function PartnerLeadsPage() {
                   </h2>
                 </div>
                 <p className="text-sm font-semibold text-sanispa-steel">
-                  {formatDate(lead.createdAt)}
+                  Proposée le {formatDate(lead.offeredAt || lead.createdAt)}
                 </p>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
@@ -154,7 +160,7 @@ export default function PartnerLeadsPage() {
               </div>
               {!lead.billing.available ? (
                 <p className="mt-2 text-sm text-sanispa-steel">
-                  Prise en charge indisponible pour le moment.
+                  Ouvrez le dossier pour voir ce qui est nécessaire avant de l’accepter.
                 </p>
               ) : null}
               <div className="mt-4 grid gap-2 text-sm text-sanispa-steel md:grid-cols-3">

@@ -560,13 +560,17 @@ export async function sendPartnerAcceptance(payload: {
   diagnosticId: string;
   partnerName: string;
   notificationKey: string;
-}) {
+}, declined = false) {
   const url = `${process.env.NEXT_PUBLIC_APP_URL}/admin`;
+  const partner = escapeHtml(payload.partnerName);
+  const reference = escapeHtml(payload.dossierReference || "Référence en cours");
   return sendTransactionalEmail({
     to: process.env.ADMIN_NOTIFICATION_EMAIL || "",
-    subject: "SANISPA — Un partenaire a accepté un dossier",
+    subject: declined ? "SANISPA — Partenaire indisponible pour une demande" : "SANISPA — Un partenaire a accepté un dossier",
     idempotencyKey: payload.notificationKey,
-    html: `<h2>Dossier accepté</h2><p>${escapeHtml(payload.partnerName)} a accepté le dossier ${escapeHtml(payload.dossierReference || "Référence en cours")}.</p><p>L’accès a été confirmé après règlement du contact ou au titre de son abonnement complet.</p><p><a href="${escapeHtml(url)}">Consulter l’administration</a></p>`,
+    html: declined
+      ? `<h2>Partenaire indisponible</h2><p>${partner} ne peut pas prendre en charge la demande ${reference}. Vous pouvez étudier une nouvelle attribution.</p><p><a href="${escapeHtml(url)}">Ouvrir l’administration</a></p>`
+      : `<h2>Dossier accepté</h2><p>${partner} a accepté le dossier ${reference}. Les coordonnées sont disponibles dans son espace partenaire.</p><p><a href="${escapeHtml(url)}">Ouvrir l’administration</a></p>`,
   });
 }
 

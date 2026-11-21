@@ -10,6 +10,8 @@ export type PartnerLeadPreview = {
   id: string;
   access: "preview";
   createdAt: string;
+  offeredAt?: string | null;
+  charterRequired?: boolean;
   problemType: string;
   problemTypeKey: string;
   department: string | null;
@@ -41,6 +43,7 @@ export function sanitizePartnerLead(
     id: row.id,
     access: "preview",
     createdAt: row.created_at,
+    offeredAt: row.partner_released_at || null,
     problemType:
       problemTypes.find((type) => type.value === row.problem_type)?.label ??
       "Demande technique",

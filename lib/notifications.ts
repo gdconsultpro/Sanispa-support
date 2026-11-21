@@ -25,7 +25,7 @@ export async function processNotifications(prefix?: string) {
   for (const job of jobs || []) {
     try {
       let result;
-      if (["admin", "customer", "partner_accepted"].includes(job.kind) && job.payload.diagnosticId) {
+      if (["admin", "customer", "partner_accepted", "partner_declined"].includes(job.kind) && job.payload.diagnosticId) {
         const reference = await supabase.from("diagnostics").select("public_reference").eq("id", job.payload.diagnosticId).maybeSingle();
         if (reference.error) throw reference.error;
         job.payload = { ...job.payload, dossierReference: reference.data?.public_reference || "Référence en cours" };
@@ -116,7 +116,7 @@ export async function processNotifications(prefix?: string) {
           if (review.error) throw review.error;
           continue;
         }
-        result = await sendPartnerAcceptance(job.payload);
+        result = await sendPartnerAcceptance(job.payload, job.kind === "partner_declined");
       } else if (job.kind === "customer")
         result = await sendCustomerConfirmation(job.payload);
       else if (job.kind === "partner") {

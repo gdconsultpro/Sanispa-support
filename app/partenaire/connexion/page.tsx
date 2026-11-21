@@ -25,6 +25,7 @@ export default function PartnerLoginPage() {
       if (signInError) throw signInError;
       if (!data.session?.access_token) throw new Error("La connexion n’a pas ouvert de session. Réessayez.");
       const session = await loadPartnerSession(data.session.access_token);
+      if (!session) return;
       const next = partnerReturnPath(new URLSearchParams(window.location.search).get("next"));
       router.replace(session.passwordChangeRequired ? partnerPasswordPath(next) : next);
     } catch (cause) { setError(partnerAuthError(cause)); }
@@ -38,7 +39,7 @@ export default function PartnerLoginPage() {
       {error ? <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
       <Button type="submit" disabled={loading}>{loading ? "Connexion…" : "Se connecter"}</Button>
       <Link className="focus-ring text-sm font-bold text-sanispa-blue underline" href="/mot-de-passe-oublie">Mot de passe oublié</Link>
-      <Link href="/partenaire/inscription" className="focus-ring rounded-xl bg-sanispa-ice p-4 font-bold text-sanispa-blue underline">Nouveau partenaire ? Créer mon espace gratuit →</Link>
+      <Link href="/partenaire/inscription" className="focus-ring rounded-xl bg-sanispa-ice p-4 font-bold text-sanispa-blue underline">Créer ou compléter mon accès partenaire →</Link>
     </form>
   </AppShell>;
 }

@@ -41,7 +41,7 @@ export default function SubscriptionPage() {
     }
   }
   useEffect(() => {
-    void load();
+    if (!paymentsPaused()) void load();
   }, []);
   async function checkout(plan?: SubscriptionPlan) {
     if (busy) return;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 export class HttpError extends Error {
-    constructor(public status: number, message: string) { super(message); }
+    constructor(public status: number, message: string, public code?: string) { super(message); }
 }
 export async function readBytes(request: Request, maxBytes: number) {
     if (Number(request.headers.get("content-length")) > maxBytes)
@@ -34,7 +34,7 @@ export async function readJson(request: Request, maxBytes = 2400000) {
 }
 export function apiError(error: unknown) {
     if (error instanceof HttpError)
-        return NextResponse.json({ error: error.message }, { status: error.status });
+        return NextResponse.json({ error: error.message, ...(error.code ? { code: error.code } : {}) }, { status: error.status });
     if (error instanceof Error && error.name === "ZodError")
         return NextResponse.json({ error: "Vérifiez les informations saisies." }, { status: 400 });
     console.error("Échec opération SANISPA", error instanceof Error ? error.name : "database");

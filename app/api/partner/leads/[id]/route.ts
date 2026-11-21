@@ -3,6 +3,8 @@ import {
   purchaseTermsColumns,
 } from "@/lib/partner-billing";
 import { loadOfferBilling } from "@/lib/partner-offers";
+import { paymentsPaused } from "@/lib/commercial-mode";
+import { partnerCharterVersion } from "@/lib/partner-charter";
 import { canViewPartnerOffer } from "@/lib/partner-release";
 import { apiError } from "@/lib/http";
 import { protectedPhotos } from "@/lib/photos";
@@ -88,7 +90,7 @@ export async function GET(
         { status: 500 },
       );
     }
-    if (!data) {
+    if (!data || data.archived_at) {
       return NextResponse.json(
         { error: "Lead introuvable ou non disponible." },
         { status: 404 },
@@ -141,7 +143,7 @@ export async function GET(
         { status: 403 },
       );
     }
-    if (data.archived_at || !partnerLeadStatuses.includes(data.status))
+    if (!partnerLeadStatuses.includes(data.status))
       return NextResponse.json(
         { error: "Ce dossier n’est plus disponible à la prise en charge." },
         { status: 403 },
@@ -157,6 +159,12 @@ export async function GET(
         { status: 403 },
       );
     const lead = sanitizePartnerLead(data, state.billing);
+    if (paymentsPaused()) {
+      const charter = await supabase.from("partner_charter_acceptances").select("accepted_at")
+        .eq("partner_id", partner.id).eq("version", partnerCharterVersion).maybeSingle();
+      if (charter.error) throw charter.error;
+      lead.charterRequired = !charter.data;
+    }
     lead.canUnlock =
       !state.reservedElsewhere &&
       (lead.canUnlock || state.ownReservation) &&

@@ -43,6 +43,13 @@ test("only validated internal destinations survive login and password replacemen
  const path=`/partenaire/leads/${id}`;assert.equal(partnerReturnPath(path),path);
  for(const invalid of ["//evil.example","https://evil.example","/partenaire/connexion?next=evil","/admin","/partenaire/leads/%2f%2fevil","/partenaire/leads/../admin",`${path}?next=https://evil.example`]) assert.equal(partnerReturnPath(invalid),"/partenaire/leads");
 });
+test("charter preserves the original proposal across authentication", () => {
+ const offer = "/partenaire/leads/" + id;
+ const charter = "/partenaire/abonnement?retour=" + encodeURIComponent(offer);
+ assert.equal(partnerReturnPath(charter), charter);
+ assert.equal(partnerReturnPath("/partenaire/abonnement?retour=https://example.invalid"), "/partenaire/leads");
+ assert.equal(partnerReturnPath(null), "/partenaire");
+});
 test("client-editable metadata never clears the first-password requirement",()=>{
  assert.equal(needsPartnerPasswordChange({app_metadata:{partner_password_change_required:true}}),true);
  assert.equal(needsPartnerPasswordChange({app_metadata:{}}),false);

@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       .is("assigned_partner_id", null)
       .is("archived_at", null)
       .contains("matched_partner_ids", [partner.id])
-      .order("created_at", { ascending: false });
+      .order("partner_released_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
 
     if (error) {
       console.error("[partner-leads] Unable to load partner leads", {
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
         return lead;
       });
     return NextResponse.json(
-      { leads },
+      { leads, verificationStatus: partner.verification_status },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

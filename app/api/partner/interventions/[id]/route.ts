@@ -11,7 +11,7 @@ export async function GET(request: Request, context: Context) {
     if (!partner) throw new HttpError(401, "Connexion partenaire requise.");
     const { id } = await context.params;
     const dossier = await interventionCase(supabase, id, { partnerId: partner.id });
-    return NextResponse.json({ ...await loadIntervention(supabase, id), dossierReference: dossier.public_reference }, { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json({ ...await loadIntervention(supabase, id), dossierReference: dossier.public_reference, dossierStatus: dossier.status }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) { return apiError(e); }
 }
 export async function POST(request: Request, context: Context) {
@@ -22,10 +22,12 @@ export async function POST(request: Request, context: Context) {
     await interventionCase(supabase, id, { partnerId: partner.id });
     await rateLimit(supabase, `intervention:${partner.id}`, 30);
     const action = interventionActionSchema.parse(await readJson(request, 20000));
-    const result = action.action === "schedule"
-      ? await supabase.rpc("save_partner_appointment", { p_diagnostic: id, p_partner: partner.id, p_actor: user.id, p_start: action.start, p_end: action.end })
-      : await supabase.rpc("submit_intervention_report", { p_id: action.id, p_diagnostic: id, p_partner: partner.id, p_actor: user.id,
-        p_performed: action.performedAt, p_findings: action.findings, p_actions: action.actions, p_next: action.nextSteps, p_on_site: action.onSite });
+    const identity = { p_diagnostic: id, p_partner: partner.id, p_actor: user.id };
+    const result = action.action === "report"
+      ? await supabase.rpc("submit_intervention_report", { ...identity, p_id: action.id,
+        p_performed: action.performedAt, p_findings: action.findings, p_actions: action.actions, p_next: action.nextSteps, p_on_site: action.onSite })
+      : await supabase.rpc(action.action === "schedule" ? "save_partner_appointment" : "cancel_partner_appointment",
+        { ...identity, p_start: action.start, p_end: action.end });
     if (result.error) throw interventionError(result.error);
     if (action.action === "report") {
       try { await processNotifications(`report:${action.id}`); }

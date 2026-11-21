@@ -16,7 +16,8 @@ export async function getAuthenticatedPartner(request: Request, options: { allow
   if (active.length > 1) throw new HttpError(403, "Votre compte est rattaché à plusieurs entreprises. Contactez SANISPA pour faire corriger ce rattachement.");
   if (!active.length) throw new HttpError(403, data?.length
     ? "Votre connexion est réussie, mais votre accès partenaire ou votre entreprise est désactivé. Contactez SANISPA."
-    : "Votre connexion est réussie, mais ce compte n’est rattaché à aucune entreprise. Complétez votre inscription sur /partenaire/inscription pour créer votre espace partenaire gratuit.");
+    : "Votre connexion est réussie, mais ce compte n’est rattaché à aucune entreprise. Complétez votre inscription pour créer votre espace partenaire gratuit.",
+    data?.length ? undefined : "PARTNER_REGISTRATION_REQUIRED");
   const row = active[0] as any;
   const company = Array.isArray(row.partners) ? row.partners[0] : row.partners;
   const partner: AuthenticatedPartner = { ...company, role: row.role ?? "owner", leads_paid: company.leads_paid !== false };

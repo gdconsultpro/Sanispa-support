@@ -2,12 +2,13 @@ import { z } from "zod";
 import { HttpError } from "./http";
 
 export const appointmentSchema = z.object({ action: z.literal("schedule"), start: z.string().datetime({ offset: true }), end: z.string().datetime({ offset: true }) }).strict();
+const cancelAppointmentSchema = appointmentSchema.extend({ action: z.literal("cancel_appointment") });
 export const reportSchema = z.object({
   action: z.literal("report"), id: z.string().uuid(), performedAt: z.string().datetime({ offset: true }),
   findings: z.string().trim().min(20).max(5000), actions: z.string().trim().min(20).max(5000),
   nextSteps: z.string().trim().min(5).max(3000), onSite: z.literal(true),
 }).strict();
-export const interventionActionSchema = z.discriminatedUnion("action", [appointmentSchema, reportSchema]);
+export const interventionActionSchema = z.discriminatedUnion("action", [appointmentSchema, cancelAppointmentSchema, reportSchema]);
 export const reviewSchema = z.object({ reportId: z.string().uuid(), outcome: z.enum(["repaired", "quote_pending", "abandoned"]),
   responsiveness: z.number().int().min(1).max(5), professionalism: z.number().int().min(1).max(5), pricing: z.number().int().min(1).max(5),
 }).strict();
@@ -33,7 +34,9 @@ export function interventionError(error: { message?: string }) {
   const code = error.message || "";
   if (code.includes("INVOICE_REQUIRED")) return new HttpError(409, "Le partenaire doit d’abord déposer sa facture dans ce dossier pour confirmer le spa réparé. Votre saisie est conservée.");
   if (/ASSIGNED_PARTNER_REQUIRED|CLIENT_REQUIRED/.test(code)) return new HttpError(403, "Ce dossier n’est pas accessible à votre compte.");
-  if (/ON_SITE_REPORT_REQUIRED|APPOINTMENT_IN_PAST/.test(code)) return new HttpError(400, "Vérifiez la date et confirmez que le rapport est rempli sur place.");
+  if (code.includes("APPOINTMENT_CHANGED")) return new HttpError(409, "Le rendez-vous a changé ou a déjà commencé. Actualisez le dossier.");
+  if (code.includes("APPOINTMENT_IN_PAST")) return new HttpError(400, "Choisissez un horaire de rendez-vous à venir.");
+  if (code.includes("ON_SITE_REPORT_REQUIRED")) return new HttpError(400, "Vérifiez la date et confirmez que le rapport est rempli sur place.");
   if (/CLIENT_ACCOUNT_REQUIRED/.test(code)) return new HttpError(409, "SANISPA doit rattacher ce dossier au compte du client avant le rapport.");
   if (/APPOINTMENT_REQUIRED/.test(code)) return new HttpError(409, "Enregistrez d’abord le rendez-vous correspondant à cette visite, puis vérifiez la date du compte rendu.");
   if (/ALREADY_VALIDATED|CASE_CLOSED|REPORT_CONFLICT|one_pending_intervention_report/.test(code)) return new HttpError(409, "Le dossier a évolué. Actualisez avant de poursuivre ; un seul rapport peut être en attente de validation.");

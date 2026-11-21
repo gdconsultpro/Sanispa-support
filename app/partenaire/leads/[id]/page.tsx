@@ -5,11 +5,13 @@ import { PrivateFile } from "@/components/PrivateFile";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PartnerNavigation } from "@/components/PartnerNavigation";
+import { Button, ButtonLink } from "@/components/Button";
 import { AppShell } from "@/components/AppShell";
 import { StepHeader } from "@/components/StepHeader";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
-import { partnerLoginPath, withPartnerTimeout } from "@/lib/partner-navigation";
+import { partnerCharterPath, partnerLoginPath, withPartnerTimeout } from "@/lib/partner-navigation";
 import type { PartnerLeadPreview, PartnerLeadFull } from "@/lib/partner-leads";
 
 type PartnerLead = PartnerLeadPreview | PartnerLeadFull;
@@ -21,6 +23,9 @@ export default function PartnerLeadDetailPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [unlocking, setUnlocking] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [confirmingDecline, setConfirmingDecline] = useState(false);
+  const [declined, setDeclined] = useState(false);
   const [unlockError, setUnlockError] = useState("");
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [acquisitionConfirmed, setAcquisitionConfirmed] = useState(false);
@@ -78,6 +83,8 @@ export default function PartnerLeadDetailPage() {
     setUnlockError("");
     setAwaitingConfirmation(false);
     setAcquisitionConfirmed(false);
+    setDeclined(false);
+    setConfirmingDecline(false);
     if (params.id) void loadLead();
     return () => currentRequest.current?.abort();
   }, [params.id, loadLead]);
@@ -87,6 +94,7 @@ export default function PartnerLeadDetailPage() {
       unlockPending.current ||
       !lead ||
       lead.access !== "preview" ||
+      lead.charterRequired ||
       !lead.canUnlock ||
       !lead.billing.available
     )
@@ -145,6 +153,33 @@ export default function PartnerLeadDetailPage() {
     }
   }
 
+  async function declineLead() {
+    if (unlockPending.current || lead?.access !== "preview" || !lead.offeredAt) return;
+    unlockPending.current = true;
+    setDeclining(true);
+    setUnlockError("");
+    try {
+      const next = "/partenaire/leads/" + params.id;
+      const token = await partnerToken(next);
+      if (!token) return;
+      const response = await fetch("/api/partner/leads/" + params.id + "/decline", {
+        method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ offeredAt: lead.offeredAt }),
+      });
+      if (redirectPartnerAccess(response, next)) return;
+      const body = await response.json();
+      if (!response.ok || !body.declined) throw new Error(body.error || "L’indisponibilité n’a pas pu être enregistrée.");
+      setLead(null);
+      setConfirmingDecline(false);
+      setDeclined(true);
+    } catch (cause) {
+      setUnlockError(cause instanceof Error ? cause.message : "Enregistrement impossible. Réessayez.");
+    } finally {
+      setDeclining(false);
+      unlockPending.current = false;
+    }
+  }
+
   const unlockStatus = searchParams.get("unlock");
   const amountLabel = lead
     ? formatAmount(lead.billing.amount, lead.billing.currency)
@@ -154,38 +189,22 @@ export default function PartnerLeadDetailPage() {
 
   return (
     <AppShell compact>
-      <p className="mb-4 text-sm">
-        <Link
-          href="/partenaire"
-          className="font-bold text-sanispa-blue underline"
-        >
-          Mon espace partenaire et mon mot de passe
-        </Link>
-      </p>
-      <div className="mb-5">
-        <Link
-          href="/partenaire/leads"
-          className="text-sm font-bold text-sanispa-blue"
-        >
-          ← Retour aux leads
-        </Link>
-      </div>
-
-      <Link
-        href="/partenaire/abonnement"
-        className="mb-4 inline-block font-bold text-sanispa-blue underline"
-      >
-        Mon abonnement
-      </Link>
+    <PartnerNavigation current="Demandes" />
+      <Link href="/partenaire/leads" className="mb-4 inline-block text-sm font-bold text-sanispa-blue underline">← Demandes proposées</Link>
       <StepHeader
         eyebrow={lead?.access === "full" ? "Dossier débloqué" : "Aperçu limité"}
-        title="Détail du lead technique"
+        title={lead?.access === "full" ? "Demande prise en charge" : "Demande proposée"}
         description={
           lead?.access === "full"
             ? "Vous avez accès aux coordonnées client et aux éléments complets de ce dossier."
             : "Les coordonnées et les éléments complets du dossier sont masqués tant que le lead n'est pas débloqué."
         }
       />
+
+      {declined ? <DetailCard>
+        <p role="status" className="mb-4 font-bold">Votre indisponibilité a été enregistrée. SANISPA peut proposer le dossier à un autre partenaire.</p>
+        <ButtonLink href="/partenaire/leads">Retour aux demandes proposées</ButtonLink>
+      </DetailCard> : null}
 
       {confirmationRequested && !loading && lead?.access === "full" ? (
         <div
@@ -327,7 +346,11 @@ export default function PartnerLeadDetailPage() {
             </section>
           ) : null}
           {lead.access === "preview" ? (
-            <div className="mt-6">
+            <div id="decision" className="mt-6 scroll-mt-4 border-t border-sanispa-line pt-5">
+              {lead.charterRequired ? <div className="mb-4 rounded-xl bg-amber-50 p-4">
+                <p className="mb-3">Le responsable du compte doit accepter la charte pour prendre en charge ce dossier.</p>
+                <ButtonLink href={partnerCharterPath("/partenaire/leads/" + lead.id)}>Lire et accepter la charte</ButtonLink>
+              </div> : null}
               {!paymentsPaused() && lead.billing.reserved ? (
                 <p className="mb-3 text-sm text-sanispa-steel">
                   Conditions réservées{amountLabel ? ` : ${amountLabel}` : ""}.
@@ -337,10 +360,11 @@ export default function PartnerLeadDetailPage() {
               <button
                 type="button"
                 disabled={
+                  lead.charterRequired ||
                   !lead.canUnlock ||
                   !lead.billing.available ||
                   (!paymentsPaused() && lead.billing.paymentRequired && !amountLabel) ||
-                  unlocking
+                  unlocking || declining || confirmingDecline
                 }
                 onClick={unlockLead}
                 className="inline-flex min-h-12 items-center justify-center rounded-md bg-sanispa-navy px-5 py-3 text-sm font-bold text-white focus-ring disabled:cursor-not-allowed disabled:bg-sanispa-steel/30 disabled:text-sanispa-navy"
@@ -354,7 +378,7 @@ export default function PartnerLeadDetailPage() {
               {!lead.billing.available ||
               (!paymentsPaused() && lead.billing.paymentRequired && !amountLabel) ? (
                 <p className="mt-3 text-sm font-semibold text-sanispa-steel">
-                  {paymentsPaused() ? "Une offre validée par SANISPA et l’acceptation de la charte sont nécessaires. Consultez Mon accès et la charte." : "Un abonnement actif et une offre validée sont nécessaires. Consultez Mon abonnement ou contactez SANISPA."}
+                  {paymentsPaused() ? "Cette proposition ne peut pas être acceptée pour le moment." : "Un abonnement actif et une offre validée sont nécessaires. Consultez Mon abonnement ou contactez SANISPA."}
                 </p>
               ) : !lead.canUnlock ? (
                 <p className="mt-3 text-sm font-semibold text-sanispa-steel">
@@ -372,10 +396,26 @@ export default function PartnerLeadDetailPage() {
                   Actualiser le dossier
                 </button>
               ) : null}
+              {paymentsPaused() && lead.offeredAt && !lead.billing.reserved ? <div className="mt-3">
+                {confirmingDecline ? <div className="grid gap-3 rounded-xl bg-sanispa-ice p-4">
+                  <p>Cette proposition quittera votre liste et SANISPA pourra la réattribuer.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" disabled={declining} onClick={() => void declineLead()}>{declining ? "Enregistrement…" : "Confirmer mon indisponibilité"}</Button>
+                    <Button variant="secondary" type="button" disabled={declining} onClick={() => setConfirmingDecline(false)}>Garder la proposition</Button>
+                  </div>
+                </div> : <Button variant="secondary" type="button" disabled={unlocking || declining} onClick={() => setConfirmingDecline(true)}>Je suis indisponible</Button>}
+              </div> : null}
             </div>
           ) : null}
 
-          {lead.access === "full" ? <><Link href={`/partenaire/interventions/${lead.id}`} className="my-5 block rounded-xl bg-sanispa-blue p-4 font-bold text-white">Planifier, remplir le rapport et déposer la facture →</Link><p className="font-bold">Dossier n°{lead.dossierReference || "Référence en cours"}</p><FullLead lead={lead} /></> : null}
+          {lead.access === "full" ? <>
+            <div className="my-5 flex flex-wrap gap-3">
+              {lead.customer.phone ? <a href={"tel:" + lead.customer.phone.replace(/[^+0-9]/g, "")} className="focus-ring inline-flex min-h-12 items-center rounded-full border border-sanispa-line bg-white px-5 py-3 text-sm font-bold">Appeler le client</a> : null}
+              <ButtonLink href={"/partenaire/interventions/" + lead.id}>Planifier et suivre l’intervention</ButtonLink>
+            </div>
+            <p className="font-bold">Dossier {lead.dossierReference || "Référence en cours"}</p>
+            <FullLead lead={lead} />
+          </> : null}
         </DetailCard>
       ) : null}
     </AppShell>

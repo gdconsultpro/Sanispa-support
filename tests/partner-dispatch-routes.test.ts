@@ -84,6 +84,7 @@ async function fixture(run: (state: any) => Promise<void>) {
           },
         },
       ]);
+    if (url.pathname.endsWith("/partner_charter_acceptances")) return Response.json(null);
     if (url.pathname.endsWith("/diagnostics"))
       return Response.json(
         url.searchParams.get("id")?.startsWith("eq.") ? s.row : [s.row],

@@ -1,6 +1,17 @@
 /** Only known partner screens may be used as post-authentication destinations. */
 export function partnerReturnPath(value: string | null | undefined) {
-  return value && /^\/partenaire(?:\/(?:visio|abonnement|leads(?:\/[a-f0-9-]{36})?|interventions(?:\/[a-f0-9-]{36})?))?$/i.test(value) ? value : "/partenaire/leads";
+  if (!value) return "/partenaire";
+  if (value.startsWith("/partenaire/abonnement?retour=")) {
+    const offer = partnerOfferReturn(new URLSearchParams(value.slice(value.indexOf("?"))).get("retour"));
+    if (offer) return partnerCharterPath(offer);
+  }
+  return /^\/partenaire(?:\/(?:visio|abonnement|leads(?:\/[a-f0-9-]{36})?|interventions(?:\/[a-f0-9-]{36})?))?$/i.test(value) ? value : "/partenaire/leads";
+}
+export function partnerOfferReturn(value: string | null) {
+  return value && /^\/partenaire\/leads\/[a-f0-9-]{36}$/i.test(value) ? value : null;
+}
+export function partnerCharterPath(offer: string) {
+  return "/partenaire/abonnement?retour=" + encodeURIComponent(offer);
 }
 export function partnerLoginPath(next?: string | null) {
   return `/partenaire/connexion?next=${encodeURIComponent(partnerReturnPath(next))}`;

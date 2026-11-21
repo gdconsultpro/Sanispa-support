@@ -24,7 +24,7 @@ export default function PartnerPasswordPage() {
     let cancelled = false;
     void (async () => {
       try { const token = await partnerToken(next()); if (!token) return;
-        const session = await loadPartnerSession(token); if (!cancelled) setRequired(session.passwordChangeRequired);
+        const session = await loadPartnerSession(token); if (!cancelled && session) setRequired(session.passwordChangeRequired);
       } catch (cause) { if (!cancelled) setError(partnerAuthError(cause)); }
     })();
     return () => { cancelled = true; };
@@ -38,11 +38,12 @@ export default function PartnerPasswordPage() {
     try {
       const supabase = getSupabaseBrowser();
       const token = await partnerToken(next()); if (!token) return;
-      await loadPartnerSession(token);
+      if (!await loadPartnerSession(token)) return;
       const { error: changeError } = await withPartnerTimeout(supabase.auth.updateUser({ password }));
       if (changeError) throw changeError;
       const freshToken = await partnerToken(next()); if (!freshToken) return;
       const session = await loadPartnerSession(freshToken);
+      if (!session) return;
       if (session.passwordChangeRequired) throw new Error("Le changement a été reçu, mais l’accès aux dossiers reste bloqué. Contactez SANISPA pour vérifier votre compte.");
       setPassword(""); setConfirmation(""); setSaved(true);
       if (required) router.replace(next());

@@ -210,3 +210,32 @@ test("preview text rejects obvious contact details; an actual intervention is an
     await db.close();
   }
 });
+
+
+test("declining an exact proposal returns it to manual dispatch and queues only one notification", async () => {
+  const db = await fixture();
+  try {
+    await db.exec("update private.commercial_configuration set payments_paused=true");
+    await publish(db);
+    const { offered_at } = (await db.query<{ offered_at: string }>("select partner_released_at::text as offered_at from diagnostics")).rows[0];
+    const decline = "select decline_partner_offer($1,$2,$3,$4) as job";
+    await assert.rejects(db.query(decline, [ids.d, ids.b, ids.otherUser, offered_at]), /OFFER_UNAVAILABLE/);
+    await db.exec("set role service_role");
+    const params = [ids.d, ids.a, ids.user, offered_at];
+    const first = await db.query(decline, params);
+    assert.deepEqual((await db.query(decline, params)).rows, first.rows);
+    const dossier = (await db.query<{ matched_partner_ids: string[]; assigned_partner_id: string | null; partner_released_at: string | null }>(
+      "select matched_partner_ids, assigned_partner_id, partner_released_at from diagnostics",
+    )).rows[0];
+    assert.deepEqual(dossier, { matched_partner_ids: [], assigned_partner_id: null, partner_released_at: null });
+    assert.equal((await db.query("select * from lead_purchases")).rows.length, 0);
+    const jobs = (await db.query("select kind,state from notification_jobs order by kind")).rows;
+    assert.deepEqual(jobs, [{ kind: "partner", state: "cancelled" }, { kind: "partner_declined", state: "pending" }]);
+    await db.exec("reset role");
+    await publish(db);
+    await db.query(decline, params);
+    assert.equal((await db.query("select * from diagnostics where partner_released_at is not null")).rows.length, 1);
+  } finally {
+    await db.close();
+  }
+});
