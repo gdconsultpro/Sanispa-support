@@ -11,7 +11,7 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
   const element = useRef<HTMLDivElement>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
-    if (!element.current || !points.length) return;
+    if (!element.current) return;
     const instance = map(element.current, { scrollWheelZoom: false, minZoom: 3 });
     const groups = new Map<string, PartnerMapPoint[]>();
     for (const point of points) {
@@ -20,8 +20,12 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
       if (group) group.push(point);
       else groups.set(key, [point]);
     }
-    const bounds = latLngBounds(points.map(point => [point.latitude, point.longitude]));
-    instance.fitBounds(bounds, { maxZoom: 16, padding: [36, 36] });
+    if (points.length) {
+      const bounds = latLngBounds(points.map(point => [point.latitude, point.longitude]));
+      instance.fitBounds(bounds, { maxZoom: 16, padding: [36, 36] });
+    } else {
+      instance.setView([46.6, 2.45], 5);
+    }
     let loaded = false;
     tileLayer(tiles, {
       maxZoom: 19,
@@ -74,6 +78,6 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
 
   return <>
     <div ref={element} role="region" aria-label={label} className="isolate h-72 w-full rounded-xl bg-sanispa-ice sm:h-96" />
-    {available === false ? <p role="status" className="mt-2 text-sm">Le fond de carte est indisponible. L’adresse et l’itinéraire restent accessibles ci-dessous.</p> : null}
+    {available === false ? <p role="status" className="mt-2 text-sm">Le fond de carte est temporairement indisponible.</p> : null}
   </>;
 }

@@ -347,9 +347,9 @@ export default function PartnerPlanningPage() {
         setMapped(null);
         setDay(plannerDate(new Date()));
       }}>Aujourd’hui</button> : null}
-      {view === "map" && entries && entries.length > 0 ? <div className="mb-4">
-        {points.length ? <PartnerPrivateMap points={points} label="Carte des interventions du jour" /> : null}
-        {entries.length > points.length ? <p className="mt-2 text-sm text-sanispa-steel">
+      {view === "map" ? <div className="mb-4">
+        <PartnerPrivateMap points={points} label="Carte des interventions du jour" />
+        {entries && entries.length > points.length ? <p className="mt-2 text-sm text-sanispa-steel">
           {entries.length - points.length} {entries.length - points.length === 1 ? "intervention sans adresse localisée" : "interventions sans adresse localisée"}. Retrouvez-les dans la liste ci-dessous.
         </p> : null}
       </div> : null}
