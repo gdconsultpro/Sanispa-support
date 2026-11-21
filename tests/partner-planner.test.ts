@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fullDatabase } from "./helpers/full-database";
-import { plannerDate, plannerRange, visitsOverlap } from "../lib/partner-planner";
+import { partnerMapPath, partnerNewClientPath, partnerVisitAddress, plannerDate, plannerRange, visitsOverlap } from "../lib/partner-planner";
 import { partnerReturnPath } from "../lib/partner-navigation";
 
 test("private visits can only reference a client in the same partner company", async () => {
@@ -39,6 +39,10 @@ test("adjacent visits do not overlap and the planner is a valid return after sig
   assert.equal(visitsOverlap(visit, { starts_at: "2026-11-23T10:00Z", ends_at: "2026-11-23T11:00Z" }), false);
   assert.equal(visitsOverlap(visit, { starts_at: "2026-11-23T09:30Z", ends_at: "2026-11-23T10:30Z" }), true);
   assert.equal(partnerReturnPath("/partenaire/planning"), "/partenaire/planning");
+  assert.equal(partnerReturnPath(partnerNewClientPath), partnerNewClientPath);
+  assert.equal(partnerReturnPath(partnerMapPath), partnerMapPath);
+  assert.deepEqual(partnerVisitAddress("5 avenue Anatole France - 75007 - Paris"), { street: "5 avenue Anatole France", postal_code: "75007", city: "Paris" });
+  assert.equal(partnerVisitAddress("Secteur 75"), null);
   const week = plannerRange("2026-11-22", "week");
   assert.deepEqual([plannerDate(week.from), plannerDate(week.to)], ["2026-11-16", "2026-11-23"]);
   const month = plannerRange("2026-12-21", "month");

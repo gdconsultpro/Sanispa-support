@@ -1,6 +1,9 @@
+import { partnerClientsPath, partnerMapPath, partnerNewClientPath } from "./partner-planner";
+
 /** Only known partner screens may be used as post-authentication destinations. */
 export function partnerReturnPath(value: string | null | undefined) {
   if (!value) return "/partenaire";
+  if (value === partnerClientsPath || value === partnerNewClientPath || value === partnerMapPath) return value;
   if (value.startsWith("/partenaire/abonnement?retour=")) {
     const offer = partnerOfferReturn(new URLSearchParams(value.slice(value.indexOf("?"))).get("retour"));
     if (offer) return partnerCharterPath(offer);

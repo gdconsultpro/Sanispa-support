@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { partnerClientsPath, partnerMapPath, partnerNewClientPath } from "@/lib/partner-planner";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ButtonLink } from "@/components/Button";
@@ -90,6 +91,11 @@ export default function PartnerHomePage() {
         <div className="mt-4 flex flex-wrap gap-3"><ButtonLink href="/partenaire/visio" variant="secondary">Demander une visio technique</ButtonLink></div>
       </section> : null}
       {dashboard && !dashboard.pending ? <div className="grid gap-4">
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink href={partnerNewClientPath}>Ajouter un client</ButtonLink>
+          <ButtonLink href={partnerClientsPath} variant="secondary">Mes clients</ButtonLink>
+          <ButtonLink href={partnerMapPath} variant="secondary">Carte des interventions</ButtonLink>
+        </div>
         {!dashboard.charterAccepted ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <h2 className="text-lg font-bold">Charte à accepter</h2>
           <p className="my-2">Votre accès est prêt. Le responsable du compte doit accepter la charte pour prendre en charge une demande.</p>

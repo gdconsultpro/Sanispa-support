@@ -3,7 +3,7 @@ import { z } from "zod";
 import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
-import { partnerClientAddress, type PrivatePartnerClient } from "@/lib/partner-planner";
+import { partnerClientAddress, partnerVisitAddress, type PrivatePartnerClient, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
 const privateClientColumns = "id,name,phone,email,street,postal_code,city,intervention_type,description,latitude,longitude,source_diagnostic_id";
 const stockColumns = "id,category,label,reference,quantity,updated_at";
@@ -13,9 +13,9 @@ const privateClientInput = z.object({
   name: z.string().trim().min(1).max(140),
   phone: z.string().trim().max(35),
   email: z.string().trim().max(254).refine(email => !email || z.string().email().safeParse(email).success),
-  street: z.string().trim().min(3).max(160),
-  postal_code: z.string().trim().regex(/^\d{5}$/),
-  city: z.string().trim().min(2).max(100),
+  street: z.string().trim().max(160),
+  postal_code: z.string().trim().regex(/^(?:\d{5})?$/),
+  city: z.string().trim().max(100),
   intervention_type: z.string().trim().min(1).max(140),
   description: z.string().trim().max(2500),
 }).strict();
@@ -118,6 +118,18 @@ export async function GET(request: Request) {
     ]);
     if (privateVisits.error) throw privateVisits.error;
     if (sanispaVisits.error) throw sanispaVisits.error;
+    if (params.get("map") === "1" && duration <= 26 * 3600000) {
+      const visits = sanispaVisits.data as unknown as SanispaPartnerVisit[];
+      const addresses = new Map<string, ReturnType<typeof locateAddress>>();
+      const located = await Promise.all(visits.map(async visit => {
+        const address = partnerVisitAddress(visit.diagnostic.customer?.address);
+        if (!address?.street) return visit;
+        const key = partnerClientAddress(address);
+        if (!addresses.has(key) && addresses.size < 25) addresses.set(key, locateAddress(address));
+        return { ...visit, ...await addresses.get(key) };
+      }));
+      return NextResponse.json({ visits: privateVisits.data, sanispa: located });
+    }
     return NextResponse.json({ visits: privateVisits.data, sanispa: sanispaVisits.data });
   } catch (error) {
     return apiError(error);

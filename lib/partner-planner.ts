@@ -23,9 +23,23 @@ export type PrivatePartnerVisit = Times & {
 export type SanispaPartnerVisit = Times & {
   diagnostic_id: string;
   diagnostic: { problem_type: string; customer: { name: string | null; address: string | null } | null };
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export const interventionTypes = ["Intervention SAV", "Mise en service", "Installation", "Entretien / révision"];
+export const partnerClientsPath = "/partenaire/planning?view=clients";
+export const partnerNewClientPath = partnerClientsPath + "&ajouter=1";
+export const partnerMapPath = "/partenaire/planning?view=carte";
+
+export type PartnerMapPoint = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  title: string;
+  detail?: string;
+  address?: string;
+};
 
 export type PrivatePartnerStock = {
   id: string;
@@ -64,6 +78,11 @@ export function plannerTime(date: string) {
 
 export function partnerClientAddress({ street, postal_code, city }: Pick<PrivatePartnerClient, "street" | "postal_code" | "city">) {
   return [street, [postal_code, city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+}
+
+export function partnerVisitAddress(address?: string | null) {
+  const parts = address?.match(/^(?:(.*?) - )?(\d{5}) - (.+)$/);
+  return parts ? { street: parts[1] ?? "", postal_code: parts[2], city: parts[3] } : null;
 }
 
 export function partnerDirections(address: string) {
