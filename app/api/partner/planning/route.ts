@@ -118,7 +118,7 @@ async function locateAddress(address: Address, budget?: AbortSignal, municipalit
   }
 }
 
-async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: Array<Address | null>, pendingAddresses: Array<Address | null>) {
+async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: Array<Address | null>) {
   function addressKey(address: Address) {
     return partnerClientAddress(address).toLowerCase();
   }
@@ -151,17 +151,17 @@ async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: A
   }
   await locateBatch(lookup, false);
   const municipalityKey = (address: Address) => addressKey({ ...address, street: "" });
-  const pendingMunicipalities = new Map<string, Address>();
-  for (const address of pendingAddresses) {
+  const incompleteMunicipalities = new Map<string, Address>();
+  for (const address of [...clients, ...sanispaAddresses]) {
     if (address?.city && located.get(addressKey(address))?.latitude == null) {
-      pendingMunicipalities.set(municipalityKey(address), address);
+      incompleteMunicipalities.set(municipalityKey(address), address);
     }
   }
-  await locateBatch(pendingMunicipalities, true);
-  return (address: Address | null, allowApproximate = false): MapLocation | undefined => {
+  await locateBatch(incompleteMunicipalities, true);
+  return (address: Address | null): MapLocation | undefined => {
     if (!address) return undefined;
     const precise = located.get(addressKey(address));
-    if (precise?.latitude != null || !allowApproximate) return precise;
+    if (precise?.latitude != null) return precise;
     const approximate = municipalities.get(municipalityKey(address));
     return approximate?.latitude == null ? precise : { ...approximate, approximateLocation: true };
   };
@@ -238,11 +238,10 @@ export async function GET(request: Request) {
       const location = await mapLocations(
         [...visits, ...pendingVisits].map(visit => visit.client),
         [...sanispa.map(visit => dossierAddress(visit.diagnostic)), ...pendingDossierAddresses],
-        [...pendingVisits.map(visit => visit.client), ...pendingDossierAddresses],
       );
       function locateVisit<T extends (PrivatePartnerVisit | PendingPrivatePartnerVisit)>(visit: T) {
         const point = visit.client.latitude === null || visit.client.longitude === null
-          ? location(visit.client, visit.starts_at === null) : undefined;
+          ? location(visit.client) : undefined;
         return { ...visit, latitude: point?.latitude ?? visit.client.latitude, longitude: point?.longitude ?? visit.client.longitude,
           approximateLocation: point?.approximateLocation };
       }
@@ -250,7 +249,7 @@ export async function GET(request: Request) {
         visits: visits.map(locateVisit),
         sanispa: sanispa.map(visit => ({ ...visit, ...location(dossierAddress(visit.diagnostic)) })),
         pendingVisits: pendingVisits.map(locateVisit),
-        pendingDossiers: pendingDossiers.map((dossier, index) => ({ ...dossier, ...location(pendingDossierAddresses[index], true) })),
+        pendingDossiers: pendingDossiers.map((dossier, index) => ({ ...dossier, ...location(pendingDossierAddresses[index]) })),
         technicians: team,
       });
     }

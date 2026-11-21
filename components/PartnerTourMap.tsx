@@ -140,6 +140,7 @@ function NearbyInterventions({ anchor, items, team, busy, confirmation, onClose,
         <h3 id={headingId} ref={heading} tabIndex={-1} className="scroll-mt-4 text-lg font-bold">Interventions à planifier à proximité</h3>
         <p className="break-words text-sm font-bold">{anchor.title}</p>
         <p className="text-sm">{dateLabel.format(new Date(anchor.startsAt!))} à {plannerTime(anchor.startsAt!)} · {technician?.name ?? "À affecter"}</p>
+        {anchor.approximateLocation ? <p className="text-sm text-sanispa-steel">Position approximative (commune)</p> : null}
         {anchor.address ? <a href={partnerDirections(anchor.address)} target="_blank" rel="noreferrer" className={linkClass + " break-words text-sm"}>
           {anchor.address} · Itinéraire
         </a> : null}

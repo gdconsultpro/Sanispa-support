@@ -26,11 +26,9 @@ export type PendingPrivatePartnerVisit = Omit<PrivatePartnerVisit, "starts_at" |
   starts_at: null;
   ends_at: null;
 };
-export type SanispaPartnerVisit = ScheduledVisit & {
+export type SanispaPartnerVisit = ScheduledVisit & MapPosition & {
   diagnostic_id: string;
   diagnostic: { problem_type: string; status: string; customer: { name: string | null; address: string | null } | null };
-  latitude?: number | null;
-  longitude?: number | null;
 };
 
 export type PlannerTechnician = { id: string; name: string };

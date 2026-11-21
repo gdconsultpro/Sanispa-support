@@ -327,6 +327,7 @@ export default function PartnerPlanningPage() {
       id: "sanispa:" + visit.diagnostic_id, dossierId: visit.diagnostic_id, startsAt: visit.starts_at, endsAt: visit.ends_at, technicianId: visit.technician_id,
       title: `${problemLabel(visit.diagnostic.problem_type)} · ${visit.diagnostic.customer?.name || "Client"}`,
       address: visit.diagnostic.customer?.address ?? "", latitude: visit.latitude ?? null, longitude: visit.longitude ?? null,
+      approximateLocation: visit.approximateLocation,
     }));
     const pending = (agenda.pendingDossiers ?? []).map(dossier => ({
       id: "sanispa:" + dossier.id, dossierId: dossier.id, startsAt: null, technicianId: null,
