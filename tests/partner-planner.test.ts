@@ -37,7 +37,7 @@ test("private visits can only reference a client in the same partner company", a
   }
 });
 
-test("map filters combine status and technician, including visits without a date or technician", () => {
+test("map filters keep interventions without a date separate from scheduled appointments", () => {
   const dated = { startsAt: "2026-11-23T09:00Z", technicianId: "camille" };
   const awaiting = { startsAt: null, technicianId: "camille" };
   const unassigned = { startsAt: null, technicianId: null };
@@ -46,9 +46,10 @@ test("map filters combine status and technician, including visits without a date
   assert.equal(matchesPlannerMapFilters(awaiting, "pending", "camille"), true);
   assert.equal(matchesPlannerMapFilters(awaiting, "pending", ""), false);
   assert.equal(matchesPlannerMapFilters(unassigned, "pending", ""), true);
-  assert.equal(matchesPlannerMapFilters(unassigned, "upcoming", "all"), true);
-  assert.equal(matchesPlannerMapFilters(dated, "upcoming", "all"), true);
+  assert.equal(matchesPlannerMapFilters(unassigned, "pending", "all"), true);
+  assert.equal(matchesPlannerMapFilters(dated, "pending", "other-technician"), false);
   assert.equal(matchesPlannerMapFilters(dated, "pending", "all"), false);
+  assert.equal(matchesPlannerMapFilters(unassigned, "scheduled", "all"), false);
 });
 
 test("tour suggestions rank nearby pending visits and keep another technician's work out of the tour", () => {

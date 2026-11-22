@@ -89,16 +89,12 @@ function normalizeMapItems(agenda: Agenda): PlannerMapIntervention[] {
     (left.startsAt ? Date.parse(left.startsAt) : Infinity) - (right.startsAt ? Date.parse(right.startsAt) : Infinity));
 }
 
-async function loadUpcomingMap(signal: AbortSignal) {
-  const result = await plannerRequest(endpoint + "?map=1&scope=upcoming", { signal });
-  return result ? normalizeMapItems(result) : [];
-}
-
 export default function PartnerPlanningPage() {
   const [view, setView] = useState<"agenda" | "map" | "clients" | "stock">("agenda");
   const [period, setPeriod] = useState<PlannerPeriod>("day");
   const [mapPeriod, setMapPeriod] = useState<"day" | "week">("week");
-  const [mapStatus, setMapStatus] = useState<PlannerMapStatus>("scheduled");
+  const [mapStatus, setMapStatus] = useState<PlannerMapStatus>("pending");
+  const [agendaDatePicked, setAgendaDatePicked] = useState(false);
   const [mapVisitId, setMapVisitId] = useState<string | null>(null);
   const [day, setDay] = useState("");
   const [search, setSearch] = useState("");
@@ -134,6 +130,7 @@ export default function PartnerPlanningPage() {
       if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(+plannerDay(date)) && plannerDate(plannerDay(date)) === date) {
         initialDay = date;
         setMapPeriod("day");
+        setMapStatus("scheduled");
       }
       if (query.get("statut") === "pending") setMapStatus("pending");
     }
@@ -201,7 +198,11 @@ export default function PartnerPlanningPage() {
     setOffset(0);
     setView(next);
     setMapVisitId(null);
-    if (next === "map") setMapStatus("scheduled");
+    if (next === "map") {
+      const useAgendaDate = view === "agenda" && agendaDatePicked;
+      setMapStatus(useAgendaDate ? "scheduled" : "pending");
+      if (useAgendaDate) setMapPeriod(period === "day" ? "day" : "week");
+    }
     window.history.replaceState(null, "", next === "clients" ? partnerClientsPath : next === "map" ? partnerMapPath : path);
   }
 
@@ -211,10 +212,28 @@ export default function PartnerPlanningPage() {
     if (visit.startsAt) {
       setDay(plannerDate(new Date(visit.startsAt)));
       setMapPeriod("day");
+      setMapStatus("scheduled");
     } else {
       setMapStatus("pending");
     }
     window.history.replaceState(null, "", partnerVisitMapPath(visit.id, visit.startsAt));
+  }
+
+  function selectPlanningDate(date: string) {
+    setMapped(null);
+    setMapVisitId(null);
+    setDay(date);
+    if (view === "agenda") setAgendaDatePicked(true);
+  }
+
+  async function goToNextAppointment(technician: string) {
+    const result = await plannerRequest(endpoint + "?" + new URLSearchParams({ section: "next-appointment", technician }));
+    if (!result?.startsAt) return false;
+    selectPlanningDate(plannerDate(new Date(result.startsAt)));
+    setMapPeriod("day");
+    setMapStatus("scheduled");
+    window.history.replaceState(null, "", partnerMapPath);
+    return true;
   }
 
   async function saveFromGrid(payload: object, success: string, date?: Date) {
@@ -226,7 +245,7 @@ export default function PartnerPlanningPage() {
     try {
       const result = await plannerRequest(endpoint, { payload });
       if (!result) return false;
-      if (date) setDay(plannerDate(date));
+      if (date) selectPlanningDate(plannerDate(date));
       setNotice(success);
       setRevision(value => value + 1);
       return true;
@@ -284,8 +303,7 @@ export default function PartnerPlanningPage() {
     const anchor = plannerRange(day, current).from;
     if (current === "month") anchor.setMonth(anchor.getMonth() + direction);
     else anchor.setDate(anchor.getDate() + direction * (current === "week" ? 7 : 1));
-    setMapped(null);
-    setDay(plannerDate(anchor));
+    selectPlanningDate(plannerDate(anchor));
   }
 
   function edit(next: Editor) {
@@ -359,6 +377,7 @@ export default function PartnerPlanningPage() {
         if (start && slot) {
           const date = plannerDate(start);
           setDay(date);
+          setAgendaDatePicked(true);
           setPeriod("day");
           setView("agenda");
           window.history.replaceState(null, "", path);
@@ -523,24 +542,23 @@ export default function PartnerPlanningPage() {
         <Button type="button" variant="secondary" aria-label="Période précédente" disabled={saving} onClick={() => stepAgenda(-1)}>‹</Button>
         <label className="min-w-0 text-sm font-bold">Date du planning
           <input type="date" min="1900-01-01" max="2099-12-31" value={day} className={inputClass + " mt-1"} disabled={saving} onChange={event => {
-            if (event.target.value) { setMapped(null); setDay(event.target.value); }
+            if (event.target.value) selectPlanningDate(event.target.value);
           }} />
         </label>
         <Button type="button" variant="secondary" aria-label="Période suivante" disabled={saving} onClick={() => stepAgenda(1)}>›</Button>
       </div>
       {day !== plannerDate(new Date()) ? <button type="button" className={actionClass + " mb-2"} disabled={saving} onClick={() => {
-        setMapped(null);
-        setDay(plannerDate(new Date()));
+        selectPlanningDate(plannerDate(new Date()));
       }}>Aujourd’hui</button> : null}
       {view === "agenda" && period === "day" && entries ? <PartnerScheduleGrid key={day} day={day} appointments={appointments}
         team={team} busy={saving} onMove={moveFromGrid}
         onCreate={slot => edit({ type: "pickClient", id: crypto.randomUUID(), slot })}
         onAdd={(id, name) => saveFromGrid({ action: "addTechnician", id, name }, "Technicien ajouté au planning.")} /> : null}
       {view === "map" ? <>
-        {mapWeek ? <p className="mb-3 font-bold">Semaine du {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" })
+        {mapWeek && mapStatus === "scheduled" ? <p className="mb-3 font-bold">Semaine du {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" })
           .formatRange(mapWeek, plannerDay(plannerDate(mapWeek), 6))}</p> : null}
         <PartnerTourMap items={mapItems} team={team} period={mapPeriod} scope={day} busy={saving} onBook={saveTourVisit} loadRoute={loadDrivingTour}
-          applyTour={applyDrivingTour} reloadTour={() => setRevision(current => current + 1)} loadUpcoming={loadUpcomingMap} version={revision}
+          applyTour={applyDrivingTour} reloadTour={() => setRevision(current => current + 1)} onNextAppointment={goToNextAppointment}
           status={mapStatus} highlightId={mapVisitId} onStatus={status => { setMapStatus(status); setMapVisitId(null); }}
           onVisit={visit => edit({ type: "visit", id: visit.id, client: visit.client, visit })}
           onAddress={client => edit({ type: "client", id: client.id, client, returnToMap: true })} />
@@ -557,7 +575,7 @@ export default function PartnerPlanningPage() {
             const count = entries.filter(entry => visitsOverlap(entry, window)).length;
             return <button type="button" key={localDate} aria-label={`${date.toLocaleDateString("fr-FR", { dateStyle: "long" })}, ${count} rendez-vous`}
               className={`focus-ring min-h-11 min-w-0 rounded-lg border px-0.5 py-1 text-xs sm:text-sm ${count ? "border-sanispa-blue bg-sanispa-ice font-bold" : "border-sanispa-line bg-white"}`}
-              onClick={() => { setMapped(null); setDay(localDate); setPeriod("day"); }}>
+              onClick={() => { selectPlanningDate(localDate); setPeriod("day"); }}>
               <span className="block">{index + 1}</span>
               {count ? <span className="block text-sanispa-blue">{count} RDV</span> : null}
             </button>;

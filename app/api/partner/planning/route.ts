@@ -215,6 +215,31 @@ export async function GET(request: Request) {
       return data;
     }
     if (!upcoming && !params.has("from") && !params.has("to")) {
+      if (params.get("section") === "next-appointment") {
+        const technician = z.union([z.literal("all"), z.literal(""), z.string().uuid()]).parse(params.get("technician") ?? "all");
+        const now = new Date().toISOString();
+        let privateAppointments = supabase.from("partner_private_visits").select("starts_at")
+          .eq("partner_id", partner.id).gte("starts_at", now);
+        let sanispaAppointments = supabase.from("partner_appointments")
+          .select("starts_at,diagnostic:diagnostics!inner(assigned_partner_id)")
+          .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id)
+          .is("diagnostic.archived_at", null).not("diagnostic.status", "in", "(CLOSED,terminé)").gte("starts_at", now);
+        if (!technician) {
+          privateAppointments = privateAppointments.is("technician_id", null);
+          sanispaAppointments = sanispaAppointments.is("technician_id", null);
+        } else if (technician !== "all") {
+          privateAppointments = privateAppointments.eq("technician_id", technician);
+          sanispaAppointments = sanispaAppointments.eq("technician_id", technician);
+        }
+        const [own, assigned] = await Promise.all([
+          privateAppointments.order("starts_at").limit(1).maybeSingle(),
+          sanispaAppointments.order("starts_at").limit(1).maybeSingle(),
+        ]);
+        if (own.error || assigned.error) throw own.error || assigned.error;
+        const next = [own.data?.starts_at, assigned.data?.starts_at].filter((date): date is string => Boolean(date))
+          .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
+        return NextResponse.json({ startsAt: next ?? null }, { headers: { "Cache-Control": "private, no-store" } });
+      }
       const offset = z.coerce.number().int().min(0).max(1000000).parse(params.get("offset") ?? 0);
       if (params.get("section") === "stock") {
         const { data, error } = await supabase.from("partner_private_stock").select(stockColumns).eq("partner_id", partner.id)
@@ -266,7 +291,7 @@ export async function GET(request: Request) {
       forMap ? allRows((from, to) => supabase.from("diagnostics")
         .select("id,problem_type,status,customer:customers(name,address),partner_appointments(),intervention_reports()")
         .eq("assigned_partner_id", partner.id).is("archived_at", null).not("status", "in", "(CLOSED,terminé)")
-        .is("partner_appointments", null).is("intervention_reports", null)
+        .eq("partner_appointments.partner_id", partner.id).is("partner_appointments", null).is("intervention_reports", null)
         .order("created_at", { ascending: false }).order("id").range(from, to)) : null,
     ]);
     if (forMap) {

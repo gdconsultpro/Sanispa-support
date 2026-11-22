@@ -17,7 +17,7 @@ const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
 const filterClass = "focus-ring mt-1 min-h-12 w-full rounded-lg border border-sanispa-line bg-white px-3 text-base";
 const linkClass = "focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline";
 
-export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, loadUpcoming, version, status, highlightId, onStatus }: {
+export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, onNextAppointment, status, highlightId, onStatus }: {
   items: PlannerMapIntervention[] | null;
   team: PlannerTechnician[];
   period: "day" | "week";
@@ -29,8 +29,7 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
   loadRoute: LoadDrivingTour;
   applyTour: ApplyDrivingTour;
   reloadTour: () => void;
-  loadUpcoming: (signal: AbortSignal) => Promise<PlannerMapIntervention[]>;
-  version: number;
+  onNextAppointment: (technician: string) => Promise<boolean>;
   status: PlannerMapStatus;
   highlightId: string | null;
   onStatus: (status: PlannerMapStatus) => void;
@@ -38,30 +37,28 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
   const [technician, setTechnician] = useState("all");
   const [showTour, setShowTour] = useState(false);
   const [lastMap, setLastMap] = useState<{ waiting: PlannerMapIntervention[]; team: PlannerTechnician[] } | null>(null);
-  const [upcoming, setUpcoming] = useState<PlannerMapIntervention[] | null>(null);
-  const [upcomingError, setUpcomingError] = useState("");
-  const [upcomingAttempt, setUpcomingAttempt] = useState(0);
+  const [nextPending, setNextPending] = useState(false);
+  const [nextMessage, setNextMessage] = useState("");
   const [selected, setSelected] = useState<{ id: string; scope: string } | null>(null);
   const [confirmation, setConfirmation] = useState<{ id: string; message: string } | null>(null);
   const filterId = useId();
   const visibleTeam = items ? team : lastMap?.team ?? team;
   const tourTechnician = visibleTeam.find(member => member.id === technician) ?? (visibleTeam.length === 1 ? visibleTeam[0] : undefined);
-  const displayItems = status === "upcoming" ? upcoming : items ?? (status === "pending" ? lastMap?.waiting ?? null : null);
-  const showUpcoming = status === "upcoming" && !showTour;
+  const displayItems = items ?? (status === "pending" ? lastMap?.waiting ?? null : null);
   useEffect(() => {
     if (items) setLastMap({ waiting: items.filter(item => !item.startsAt), team });
   }, [items, team]);
-  useEffect(() => {
-    if (!showUpcoming) return;
-    const controller = new AbortController();
-    setUpcomingError("");
-    void loadUpcoming(controller.signal).then(result => {
-      if (!controller.signal.aborted) setUpcoming(result);
-    }).catch(error => {
-      if (!controller.signal.aborted) setUpcomingError(error instanceof Error ? error.message : "Les interventions à venir sont temporairement indisponibles.");
-    });
-    return () => controller.abort();
-  }, [loadUpcoming, showUpcoming, upcomingAttempt, version]);
+  async function findNextAppointment() {
+    setNextMessage("");
+    setNextPending(true);
+    try {
+      if (!await onNextAppointment(technician)) setNextMessage("Aucun rendez-vous à venir pour cette sélection.");
+    } catch (error) {
+      setNextMessage(error instanceof Error ? error.message : "Le prochain rendez-vous est temporairement indisponible.");
+    } finally {
+      setNextPending(false);
+    }
+  }
   const panelScope = period + ":" + scope;
   const chooseAppointment = useCallback((id: string) => {
     setConfirmation(null);
@@ -73,10 +70,11 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
     const names = new Map(visibleTeam.map(member => [member.id, member.name]));
     const entries = (displayItems ?? []).filter(item => matchesPlannerMapFilters(item, status, technician)).map(item => {
       const time = item.startsAt ? plannerTime(item.startsAt) : "À planifier · Sans date";
-      const day = item.startsAt && (status === "upcoming" || period === "week")
+      const day = item.startsAt && period === "week"
         ? new Date(item.startsAt).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })
         : "";
       const detail = [[day, time].filter(Boolean).join(" "), (item.technicianId && names.get(item.technicianId)) || "À affecter",
+        item.dossierId ? "Dossier SANISPA" : "Mon entreprise",
         item.approximateLocation ? "Position approximative (commune)" : ""].filter(Boolean).join(" · ");
       return { ...item, detail };
     });
@@ -88,14 +86,13 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
     return { entries, points };
   }, [displayItems, highlightId, period, status, technician, visibleTeam]);
   const mappedIds = new Set(points.map(point => point.id));
-  const waitingCount = entries.filter(item => !item.startsAt).length;
 
   return <>
     <div className="mb-3 grid gap-3 sm:grid-cols-2">
       <div>
         <label htmlFor={filterId + "-technician"} className="text-sm font-bold">Technicien</label>
-        <select id={filterId + "-technician"} className={filterClass} value={showTour ? tourTechnician?.id ?? "all" : technician} disabled={busy}
-          onChange={event => setTechnician(event.target.value)}>
+        <select id={filterId + "-technician"} className={filterClass} value={showTour ? tourTechnician?.id ?? "all" : technician} disabled={busy || nextPending}
+          onChange={event => { setNextMessage(""); setTechnician(event.target.value); }}>
           <option value="all">{showTour ? "Choisir un technicien" : "Toute l’équipe"}</option>
           {!showTour ? <option value="">À affecter</option> : null}
           {visibleTeam.map(member => <option value={member.id} key={member.id}>{member.name}</option>)}
@@ -103,35 +100,37 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
       </div>
       <div>
         <label htmlFor={filterId + "-status"} className="text-sm font-bold">Statut</label>
-        <select id={filterId + "-status"} className={filterClass} value={showTour ? "scheduled" : status} disabled={showTour}
-          onChange={event => { setSelected(null); onStatus(event.target.value as PlannerMapStatus); }}>
-          <option value="scheduled">Planifiées</option>
+        <select id={filterId + "-status"} className={filterClass} value={showTour ? "scheduled" : status} disabled={showTour || nextPending}
+          onChange={event => { setNextMessage(""); setSelected(null); onStatus(event.target.value as PlannerMapStatus); }}>
           <option value="pending">À planifier</option>
-          <option value="upcoming">À venir</option>
+          <option value="scheduled">Planifiées</option>
         </select>
       </div>
     </div>
     <label className="mb-3 flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm font-bold">
-      <input type="checkbox" className="h-5 w-5 accent-sanispa-blue" checked={showTour} disabled={busy}
+      <input type="checkbox" className="h-5 w-5 accent-sanispa-blue" checked={showTour} disabled={busy || nextPending}
         onChange={event => setShowTour(event.target.checked)} />
       Afficher la tournée
     </label>
     {showTour ? <PartnerDrivingTour items={items} technician={tourTechnician} scope={scope} loadRoute={loadRoute}
       applyTour={applyTour} reloadTour={reloadTour} saving={busy} /> : <>
-    {status === "pending" ? <p className="mb-2 text-sm">Interventions sans créneau, toutes dates confondues.</p>
-      : status === "upcoming" ? <p className="mb-2 text-sm">Interventions sans créneau et rendez-vous futurs, toutes dates confondues.</p> : null}
-    {displayItems && status !== "scheduled" ? <p className="mb-2 text-sm font-bold">
-      {waitingCount} {waitingCount === 1 ? "intervention à planifier" : "interventions à planifier"}
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4">
+      <p className="text-sm">{status === "pending" ? "Interventions sans créneau, toutes dates confondues." : "Rendez-vous de la période sélectionnée."}</p>
+      <button type="button" className={linkClass + " text-sm"} disabled={busy || nextPending} onClick={() => void findNextAppointment()}>
+        {nextPending ? "Recherche du prochain rendez-vous…" : "Aller au prochain rendez-vous"}
+      </button>
+    </div>
+    {nextMessage ? <p role="status" className="mb-2 text-sm">{nextMessage}</p> : null}
+    {displayItems ? <p className="mb-2 text-sm font-bold">
+      {entries.length} {status === "scheduled" ? "rendez-vous planifié" + (entries.length === 1 ? "" : "s")
+        : entries.length === 1 ? "intervention à planifier" : "interventions à planifier"}
     </p> : null}
-    {showUpcoming && upcomingError ? <p role="alert" className="mb-2 text-sm">
-      {upcomingError} <button type="button" className={linkClass} onClick={() => setUpcomingAttempt(value => value + 1)}>Réessayer</button>
-    </p> : showUpcoming && !displayItems ? <p role="status" className="mb-2 text-sm">Chargement des interventions à venir…</p> : null}
     <PrivateMap points={points} onAppointment={chooseAppointment}
-      label={status === "pending" ? "Carte des interventions à planifier" : status === "upcoming" ? "Carte des interventions à venir"
+      label={status === "pending" ? "Carte des interventions à planifier"
         : period === "week" ? "Carte des interventions de la semaine" : "Carte des interventions du jour"} />
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
-      {status !== "pending" ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Planifiées</span> : null}
-      {status !== "scheduled" ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-600" /> À planifier, sans date</span> : null}
+      {status === "scheduled" ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Planifiées</span>
+        : <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-600" /> À planifier, sans date</span>}
     </div>
     {displayItems && entries.length > points.length ? <p className="mt-2 text-sm text-sanispa-steel">
       {entries.length - points.length} {entries.length - points.length === 1 ? "intervention sans adresse localisée" : "interventions sans adresse localisée"}. Retrouvez-les dans la liste ci-dessous.
