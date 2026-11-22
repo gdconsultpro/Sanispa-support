@@ -144,11 +144,29 @@ export function PartnerAdmin({
   }
 
   async function verifyPartner(partner: PartnerAdminItem) {
-    if (saving || !checked) return;
+    if (saving || !checked || !partner.siret) return;
     setSaving(true);
     setMessage("");
-    try { const response=await fetch(`/api/admin/partners/${partner.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({verify:true})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"Vérification impossible.");setPartners(current=>current.map(p=>p.id===partner.id?payload.partner:p));setReviewId(null);setChecked(false);setMessage("Entreprise vérifiée. Vous pouvez désormais la sélectionner pour un dossier."); }
-    catch(e){setMessage(e instanceof Error?e.message:"Vérification impossible.");}finally{setSaving(false);}
+    try {
+      const response = await fetch(`/api/admin/partners/${partner.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verify: true, expectedSiret: partner.siret }),
+      });
+      const payload = await response.json();
+      if (payload.partner) setPartners(current => current.map(item => item.id === partner.id ? payload.partner : item));
+      if (!response.ok) {
+        setChecked(false);
+        throw new Error(payload.error || "Vérification impossible.");
+      }
+      setReviewId(null);
+      setChecked(false);
+      setMessage("Entreprise vérifiée. Vous pouvez désormais la sélectionner pour un dossier.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Vérification impossible.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (

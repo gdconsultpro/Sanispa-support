@@ -5,7 +5,7 @@ export class PlannerRequestError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) { super(message); }
 }
 
-export async function plannerRequest(url: string, options: { signal?: AbortSignal; payload?: object; photo?: Blob; method?: "DELETE" } = {}) {
+export async function plannerRequest(url: string, options: { signal?: AbortSignal; payload?: object; photo?: Blob; method?: "DELETE" | "PATCH" } = {}) {
   const next = partnerReturnPath(window.location.pathname + window.location.search);
   const token = await partnerToken(next);
   if (!token || options.signal?.aborted) return null;

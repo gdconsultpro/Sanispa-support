@@ -10,6 +10,7 @@ import { PartnerClientFile } from "@/components/PartnerClientFile";
 import { PartnerSpaOptions } from "@/components/PartnerClientSpas";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { PartnerScheduleGrid, PlannerTechnicianSelect } from "@/components/PartnerScheduleGrid";
+import { PartnerStockImport } from "@/components/PartnerStockImport";
 import { PartnerTourMap } from "@/components/PartnerTourMap";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
@@ -20,7 +21,7 @@ import {
   hasCompletePartnerAddress, interventionTypes, partnerClientAddress, partnerClientIdPattern, partnerClientPath, partnerClientVisitTiming, partnerDirections,
   partnerClientsPath, partnerMapPath, partnerPrivateVisitPath, partnerVisitMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
   type MapCoordinate, type PartnerMapContacts, type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention, type PlannerMapStatus,
-  type PartnerClientHistory, type PartnerClientSpa, type PartnerPrivateVisitFile, type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
+  type PartnerClientHistory, type PartnerClientSpa, type PartnerPrivateVisitFile, type PlannerPeriod, type PlannerQueueEntry, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
 import type { TourApplyResult, TourDrivingRoute, TourReschedule } from "@/lib/partner-tour-routing";
@@ -84,6 +85,7 @@ export default function PartnerPlanningPage() {
   const [mapContacts, setMapContacts] = useState<PartnerMapContacts | null>(null);
   const [mapContactError, setMapContactError] = useState("");
   const [agendaDatePicked, setAgendaDatePicked] = useState(false);
+  const [appointmentToOpen, setAppointmentToOpen] = useState<PlannerAppointment | null>(null);
   const [mapVisitId, setMapVisitId] = useState<string | null>(null);
   const [day, setDay] = useState("");
   const [search, setSearch] = useState("");
@@ -126,6 +128,7 @@ export default function PartnerPlanningPage() {
       const id = query.get("fiche");
       if (id && partnerClientIdPattern.test(id)) setClientId(id.toLowerCase());
     }
+    if (query.get("view") === "stock") setView("stock");
     if (query.get("view") === "carte") {
       setView("map");
       const visit = query.get("visite");
@@ -165,7 +168,8 @@ export default function PartnerPlanningPage() {
     const controller = new AbortController();
     const { from, to } = plannerRange(day, activePeriod);
     const query = view === "agenda" || view === "map" ? new URLSearchParams({
-      from: from.toISOString(), to: to.toISOString(), ...(view === "map" ? { map: "1" } : {}),
+      from: from.toISOString(), to: to.toISOString(),
+      ...(view === "map" ? { map: "1" } : activePeriod === "day" ? { queue: "1" } : {}),
     })
       : view === "clients" && clientId
         ? new URLSearchParams({ section: "client", id: clientId, offset: String(historyOffset) })
@@ -257,13 +261,14 @@ export default function PartnerPlanningPage() {
     setShowDeleted(false);
     setView(next);
     setMapVisitId(null);
+    setAppointmentToOpen(null);
     if (next === "map") {
       const useAgendaDate = view === "agenda" && agendaDatePicked;
       setMapDatePicked(useAgendaDate);
       setMapStatus(useAgendaDate ? "scheduled" : "pending");
       if (useAgendaDate) setMapPeriod(period === "day" ? "day" : "week");
     }
-    window.history.replaceState(null, "", next === "clients" ? partnerClientsPath : next === "map" ? partnerMapPath : path);
+    window.history.replaceState(null, "", next === "clients" ? partnerClientsPath : next === "map" ? partnerMapPath : next === "stock" ? path + "?view=stock" : path);
   }
 
   function openVisitOnMap(visit: VisitLocation) {
@@ -284,6 +289,7 @@ export default function PartnerPlanningPage() {
     mapDateVersion.current += 1;
     setMapped(null);
     setMapVisitId(null);
+    setAppointmentToOpen(null);
     setDay(date);
     if (view === "agenda") setAgendaDatePicked(true);
     if (view === "map") setMapDatePicked(true);
@@ -363,6 +369,17 @@ export default function PartnerPlanningPage() {
     }, "Rendez-vous déplacé.", start);
   }
 
+  function scheduleFromGrid(item: PlannerQueueEntry, start: Date, technician: string | null, duration: number) {
+    if (!Number.isFinite(+start) || !Number.isInteger(duration) || duration < 1 || duration > 720) {
+      setGridError("Choisissez un créneau et une durée entre 1 et 720 minutes.");
+      return Promise.resolve(false);
+    }
+    return saveFromGrid({
+      action: "schedulePendingVisit", source: item.source, id: item.id, expected_at: item.expectedAt,
+      starts_at: start.toISOString(), ends_at: new Date(+start + duration * 60000).toISOString(), technician_id: technician,
+    }, "Intervention planifiée.", start);
+  }
+
   function stepAgenda(direction: number) {
     const current = activePeriod;
     const anchor = plannerRange(day, current).from;
@@ -429,6 +446,12 @@ export default function PartnerPlanningPage() {
 
   function unplanVisit(visit: Pick<PrivatePartnerVisit, "id" | "updated_at">) {
     return applyUnplan(endpoint, { action: "unplanVisit", id: visit.id, expected_at: visit.updated_at }, { id: visit.id, startsAt: null });
+  }
+
+  function unplanAppointment(appointment: PlannerAppointment) {
+    return appointment.source === "private" ? unplanVisit(appointment)
+      : applyUnplan(`/api/partner/interventions/${appointment.id}`,
+        { action: "cancel_appointment", start: appointment.starts_at, end: appointment.ends_at });
   }
 
   async function changeClientStatus(id: string, action: "deleteClient" | "restoreClient") {
@@ -546,12 +569,24 @@ export default function PartnerPlanningPage() {
   const team = (directVisitId ? directVisit?.technicians : view === "clients" ? clientId ? clientFile?.technicians : page?.technicians : agenda?.technicians) ?? [];
   const currentBooking = editor?.type === "client" || editor?.type === "visit" ? editor.booking : undefined;
   const appointments: PlannerAppointment[] = (entries ?? []).map(entry => entry.source === "private" ? {
-    ...entry, title: entry.title + " · " + entry.client.name, movable: true,
+    ...entry, title: entry.title + " · " + entry.client.name, movable: true, address: partnerClientAddress(entry.client),
   } : {
     ...entry, id: entry.diagnostic_id,
     title: problemLabel(entry.diagnostic.problem_type) + " · " + (entry.diagnostic.customer?.name || "Client"),
+    address: entry.diagnostic.customer?.address ?? undefined,
     movable: entry.diagnostic.status !== "CLOSED" && entry.diagnostic.status !== "terminé",
   });
+  const queue: PlannerQueueEntry[] = [
+    ...(agenda?.pendingVisits ?? []).map(visit => ({
+      id: visit.id, source: "private" as const, expectedAt: visit.updated_at, technicianId: visit.technician_id,
+      title: visit.title, customer: visit.client.name, address: partnerClientAddress(visit.client), description: visit.description,
+    })),
+    ...(agenda?.pendingDossiers ?? []).map(dossier => ({
+      id: dossier.id, source: "sanispa" as const, expectedAt: null, technicianId: null,
+      title: problemLabel(dossier.problem_type), customer: dossier.customer?.name || "Client", address: dossier.customer?.address ?? "",
+      reference: dossier.public_reference, description: dossier.preview_description,
+    })),
+  ];
   const month = day && view === "agenda" && period === "month" ? plannerRange(day, "month") : null;
   const mapWeek = day && view === "map" && mapPeriod === "week" ? plannerRange(day, "week").from : null;
   const monthDays = month ? new Date(month.to.getFullYear(), month.to.getMonth(), 0).getDate() : 0;
@@ -580,7 +615,7 @@ export default function PartnerPlanningPage() {
 
   return <AppShell compact>
     <PartnerNavigation current="Planning" />
-    <h1 className="text-3xl font-bold">{editingFromContact ? "Nouvelle intervention" : view === "clients" ? "Mes clients" : "Mon planning"}</h1>
+    <h1 className="text-3xl font-bold">{editingFromContact ? "Nouvelle intervention" : { agenda: "Mon planning", map: "Carte", clients: "Mes clients", stock: "Mon stock" }[view]}</h1>
     <div className="mb-4 mt-4 flex flex-wrap gap-2" aria-label="Rubriques du planning">
       <Button type="button" variant={view === "agenda" ? "primary" : "secondary"} aria-pressed={view === "agenda"} disabled={saving} onClick={() => changeView("agenda")}>Agenda</Button>
       <Button type="button" variant={view === "map" ? "primary" : "secondary"} aria-pressed={view === "map"} disabled={saving} onClick={() => changeView("map")}>Carte</Button>
@@ -687,6 +722,11 @@ export default function PartnerPlanningPage() {
         <h2 className="text-xl font-bold">Pièces détachées et spas</h2>
         <Button type="button" disabled={saving} onClick={() => edit({ type: "stock", id: crypto.randomUUID() })}>Ajouter un article</Button>
       </div>
+      <PartnerStockImport onImported={(imported, skipped) => {
+        setNotice(`${imported} ${imported === 1 ? "article ajouté" : "articles ajoutés"}${skipped ? ` · ${skipped} ${skipped === 1 ? "doublon ignoré" : "doublons ignorés"}` : ""}.`);
+        setOffset(0);
+        setRevision(value => value + 1);
+      }} />
       {inventory.stock.length ? <ul className="mt-3 divide-y divide-sanispa-line">
         {inventory.stock.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-x-4 py-3">
           <div className="min-w-0">
@@ -729,8 +769,9 @@ export default function PartnerPlanningPage() {
       {day !== plannerDate(new Date()) ? <button type="button" className={actionClass + " mb-2"} disabled={saving} onClick={() => {
         selectPlanningDate(plannerDate(new Date()));
       }}>Aujourd’hui</button> : null}
-      {view === "agenda" && period === "day" && entries ? <PartnerScheduleGrid key={day} day={day} appointments={appointments}
-        team={team} busy={saving} onMove={moveFromGrid}
+      {view === "agenda" && period === "day" && agenda?.pendingVisits ? <PartnerScheduleGrid key={day} day={day} appointments={appointments}
+        queue={queue} initialAppointment={appointmentToOpen} team={team} busy={saving} onMove={moveFromGrid}
+        onSchedule={scheduleFromGrid} onUnplan={unplanAppointment}
         onCreate={slot => edit({ type: "pickClient", id: crypto.randomUUID(), slot })}
         onAdd={(id, name) => saveFromGrid({ action: "addTechnician", id, name }, "Technicien ajouté au planning.")} /> : null}
       {view === "map" ? <>
@@ -783,7 +824,17 @@ export default function PartnerPlanningPage() {
           </> : <>
             <h3 className="break-words text-lg font-bold">{problemLabel(entry.diagnostic.problem_type)} · {entry.diagnostic.customer?.name || "Client"}</h3>
             {entry.diagnostic.customer?.address ? <p className="break-words text-sm">{entry.diagnostic.customer.address}</p> : null}
-            <Link className={actionClass} href={"/partenaire/interventions/" + entry.diagnostic_id}>Ouvrir le dossier SANISPA</Link>
+            <div className="flex flex-wrap gap-x-4">
+              <Link className={actionClass} href={"/partenaire/interventions/" + entry.diagnostic_id}>Ouvrir le dossier SANISPA</Link>
+              {appointments[index].movable ? <>
+                {period === "week" ? <button type="button" className={actionClass} disabled={saving} onClick={() => {
+                  selectPlanningDate(plannerDate(new Date(entry.starts_at)));
+                  setAppointmentToOpen(appointments[index]);
+                  setPeriod("day");
+                }}>Modifier le rendez-vous</button> : null}
+                {Date.parse(entry.starts_at) > Date.now() ? <PartnerVisitUnplan disabled={saving} onUnplan={() => unplanAppointment(appointments[index])} /> : null}
+              </> : null}
+            </div>
           </>}
         </li>)}
       </ul> : view === "agenda" && !month && entries ? <p>Aucune intervention prévue sur cette période.</p> : null}

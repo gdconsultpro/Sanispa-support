@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { Button } from "@/components/Button";
+import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import {
-  plannerDate, plannerDay, plannerTime, timelineDropTime, timelineQuarter, visitsOverlap,
-  type PlannerAppointment, type PlannerSlot, type PlannerTechnician,
+  partnerPrivateVisitPath, plannerDate, plannerDay, plannerTime, timelineDropTime, timelineQuarter, visitsOverlap,
+  type PlannerAppointment, type PlannerQueueEntry, type PlannerSlot, type PlannerTechnician,
 } from "@/lib/partner-planner";
 
 const hour = 3600000;
@@ -21,21 +23,30 @@ export function PlannerTechnicianSelect({ team, selected }: { team: PlannerTechn
   </div>;
 }
 
-export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMove, onCreate }: {
+const searchable = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const defaultDuration = 60;
+
+export function PartnerScheduleGrid({ day, appointments, queue, team, busy, initialAppointment, onAdd, onMove, onCreate, onSchedule, onUnplan }: {
   day: string;
   appointments: PlannerAppointment[];
+  queue: PlannerQueueEntry[];
   team: PlannerTechnician[];
   busy: boolean;
+  initialAppointment?: PlannerAppointment | null;
   onAdd: (id: string, name: string) => Promise<boolean>;
   onMove: (appointment: PlannerAppointment, start: Date, technician: string | null) => Promise<boolean>;
   onCreate: (slot: PlannerSlot) => void;
+  onSchedule: (item: PlannerQueueEntry, start: Date, technician: string | null, duration: number) => Promise<boolean>;
+  onUnplan: (appointment: PlannerAppointment) => Promise<void>;
 }) {
-  const [selected, setSelected] = useState<PlannerAppointment | null>(null);
+  const [selected, setSelected] = useState(initialAppointment ?? null);
+  const [booking, setBooking] = useState<{ item: PlannerQueueEntry; slot: PlannerSlot } | null>(null);
+  const [query, setQuery] = useState("");
   const [newTechnician, setNewTechnician] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const drag = useRef<{ appointment: PlannerAppointment; offset: number } | null>(null);
+  const drag = useRef<{ appointment: PlannerAppointment; offset: number } | { item: PlannerQueueEntry } | null>(null);
   const start = +plannerDay(day);
   const end = +plannerDay(day, 1);
   const elapsed = end - start;
@@ -44,16 +55,27 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
   const firstVisit = appointments[0]?.starts_at;
   const firstVisible = firstVisit ? Math.max(start, Date.parse(firstVisit) - hour) : +new Date(day + "T08:00");
   const columnWidth = 96;
+  const terms = searchable(query).trim().split(/\s+/).filter(Boolean);
+  const visibleQueue = terms.length ? queue.filter(item => {
+    const text = searchable([item.customer, item.title, item.reference, item.address, item.description].join(" "));
+    return terms.every(term => text.includes(term));
+  }) : queue;
 
   useEffect(() => {
     if (scroll.current) scroll.current.scrollLeft = (firstVisible - start) / hour * columnWidth;
   }, [firstVisible, start]);
 
-  useEffect(() => { if (selected || newTechnician) heading.current?.focus(); }, [selected, newTechnician]);
+  useEffect(() => { if (selected || booking || newTechnician) heading.current?.focus(); }, [selected, booking, newTechnician]);
 
   function finishDrag() {
     drag.current = null;
     setOver(null);
+  }
+
+  function selectBooking(item: PlannerQueueEntry, slot: PlannerSlot) {
+    setSelected(null);
+    setNewTechnician(null);
+    setBooking({ item, slot });
   }
 
   function drop(event: DragEvent<HTMLDivElement>, technician: string) {
@@ -61,11 +83,16 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
     if (!current || busy) return;
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
-    const time = start + ((event.clientX - rect.left) / rect.width) * elapsed - current.offset;
-    const duration = Date.parse(current.appointment.ends_at) - Date.parse(current.appointment.starts_at);
+    const time = start + ((event.clientX - rect.left) / rect.width) * elapsed - ("offset" in current ? current.offset : 0);
+    const duration = "appointment" in current
+      ? Date.parse(current.appointment.ends_at) - Date.parse(current.appointment.starts_at) : defaultDuration * 60000;
     const next = timelineDropTime(start, end, time, duration);
     finishDrag();
-    void onMove(current.appointment, new Date(next), technician || null);
+    if ("appointment" in current) {
+      void onMove(current.appointment, new Date(next), technician || null).then(saved => { if (saved) setSelected(null); });
+    } else {
+      void onSchedule(current.item, new Date(next), technician || null, defaultDuration).then(saved => { if (saved) setBooking(null); });
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -75,43 +102,95 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
     if (newTechnician) {
       const name = String(fields.get("name") ?? "").trim();
       if (name && await onAdd(newTechnician, name)) setNewTechnician(null);
-    } else if (selected) {
+    } else if (selected || booking) {
       const date = new Date(`${fields.get("date")}T${fields.get("time")}`);
-      if (await onMove(selected, date, String(fields.get("technician_id") || "") || null)) setSelected(null);
+      const technician = String(fields.get("technician_id") || "") || null;
+      if (selected && await onMove(selected, date, technician)) setSelected(null);
+      if (booking && await onSchedule(booking.item, date, technician, Number(fields.get("duration")))) setBooking(null);
     }
   }
 
   return <div className="mb-5 min-w-0">
     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
       <h3 className="text-base font-bold">Grille par technicien</h3>
-      <Button type="button" disabled={busy} variant="secondary" onClick={() => { setSelected(null); setNewTechnician(crypto.randomUUID()); }}>
+      <Button type="button" disabled={busy} variant="secondary" onClick={() => { setSelected(null); setBooking(null); setNewTechnician(crypto.randomUUID()); }}>
         Ajouter un technicien
       </Button>
     </div>
-    <p className="mb-3 text-sm text-sanispa-steel">Choisissez un créneau vide pour créer un rendez-vous. Touchez un rendez-vous pour le déplacer, ou glissez-le sur ordinateur.</p>
-    {selected || newTechnician ? <section className="mb-3 rounded-xl bg-sanispa-ice p-4">
-      <h4 ref={heading} tabIndex={-1} className="font-bold">{selected ? "Déplacer le rendez-vous" : "Ajouter un technicien au planning"}</h4>
-      {selected ? <p className="mt-1 break-words text-sm">{selected.title} · {plannerTime(selected.starts_at)}–{plannerTime(selected.ends_at)}</p> : null}
-      <form onSubmit={submit} key={selected?.source + ":" + selected?.id + ":" + newTechnician}>
-        <fieldset disabled={busy} className="mt-3 grid gap-3 sm:grid-cols-3">
-          {selected ? <>
-            <label className="min-w-0 text-sm font-bold">Nouvelle date
-              <input name="date" type="date" required min="1900-01-01" max="2099-12-31" defaultValue={plannerDate(new Date(selected.starts_at))} className={inputClass + " mt-1"} />
+    <p className="mb-3 text-sm text-sanispa-steel">Glissez une intervention sur un créneau ou sélectionnez-la pour choisir l’heure. Ouvrez un rendez-vous pour le modifier ou le déplanifier.</p>
+    {selected || booking || newTechnician ? <section className="mb-3 rounded-xl bg-sanispa-ice p-4">
+      <h4 ref={heading} tabIndex={-1} className="font-bold">{selected ? "Rendez-vous planifié" : booking ? "Planifier l’intervention" : "Ajouter un technicien au planning"}</h4>
+      {selected ? <>
+        <p className="mt-1 break-words font-semibold">{selected.title}</p>
+        <p className="text-sm">{plannerTime(selected.starts_at)}–{plannerTime(selected.ends_at)} · {team.find(member => member.id === selected.technician_id)?.name ?? "À affecter"}</p>
+        {selected.address ? <p className="break-words text-sm">{selected.address}</p> : null}
+        {selected.description ? <p className="mt-1 whitespace-pre-wrap break-words text-sm">{selected.description}</p> : null}
+      </> : booking ? <p className="mt-1 break-words text-sm">{booking.item.customer} · {booking.item.title}</p> : null}
+      {!selected || selected.movable ? <form onSubmit={submit} key={booking ? booking.item.id + booking.slot.startsAt + booking.slot.technicianId : selected?.id ?? newTechnician}>
+        <fieldset disabled={busy} className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {selected || booking ? <>
+            <label className="min-w-0 text-sm font-bold">Date
+              <input name="date" type="date" required min="1900-01-01" max="2099-12-31" defaultValue={plannerDate(new Date(selected?.starts_at ?? booking!.slot.startsAt))} className={inputClass + " mt-1"} />
             </label>
-            <label className="min-w-0 text-sm font-bold">Nouvelle heure
-              <input name="time" type="time" required defaultValue={plannerTime(selected.starts_at)} className={inputClass + " mt-1"} />
+            <label className="min-w-0 text-sm font-bold">Heure de début
+              <input name="time" type="time" required defaultValue={plannerTime(selected?.starts_at ?? booking!.slot.startsAt)} className={inputClass + " mt-1"} />
             </label>
-            <PlannerTechnicianSelect team={team} selected={selected.technician_id} />
+            {booking ? <label className="min-w-0 text-sm font-bold">Durée en minutes
+              <input name="duration" type="number" required min={1} max={720} defaultValue={defaultDuration} className={inputClass + " mt-1"} />
+            </label> : null}
+            <PlannerTechnicianSelect team={team} selected={selected?.technician_id ?? booking?.slot.technicianId} />
           </> : <label className="min-w-0 text-sm font-bold sm:col-span-2">Nom du technicien
             <input name="name" required maxLength={100} className={inputClass + " mt-1"} />
           </label>}
-          <div className="flex flex-wrap gap-2 sm:col-span-3">
-            <Button type="submit">{busy ? "Enregistrement…" : selected ? "Confirmer le déplacement" : "Enregistrer le technicien"}</Button>
-            <Button type="button" variant="secondary" onClick={() => { setSelected(null); setNewTechnician(null); }}>Annuler</Button>
+          <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-4">
+            <Button type="submit">{busy ? "Enregistrement…" : selected ? "Enregistrer le rendez-vous" : booking ? "Planifier" : "Enregistrer le technicien"}</Button>
+            {!selected ? <Button type="button" variant="secondary" onClick={() => { setBooking(null); setNewTechnician(null); }}>Annuler</Button> : null}
           </div>
         </fieldset>
-      </form>
+      </form> : null}
+      {selected ? <div className="mt-2 flex flex-wrap items-center gap-x-4">
+        <Link className="focus-ring inline-flex min-h-11 items-center text-sm font-bold underline" href={selected.source === "private" ? partnerPrivateVisitPath(selected.id) : "/partenaire/interventions/" + selected.id}>Ouvrir la fiche</Link>
+        {selected.movable && Date.parse(selected.starts_at) > Date.now() ? <PartnerVisitUnplan key={selected.source + selected.id} disabled={busy} onUnplan={async () => {
+          await onUnplan(selected);
+          setSelected(null);
+        }} /> : null}
+        <button type="button" className="focus-ring min-h-11 text-sm font-bold underline" disabled={busy} onClick={() => setSelected(null)}>Fermer</button>
+      </div> : null}
     </section> : null}
+    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(14rem,19rem)_minmax(0,1fr)]">
+    <section aria-labelledby="queue-heading" className="min-w-0 rounded-xl border border-sanispa-line bg-sanispa-ice p-3">
+      <h4 id="queue-heading" className="font-bold">À planifier <span className="text-sanispa-blue">({queue.length})</span></h4>
+      <label className="mt-2 block text-sm font-bold">Rechercher une intervention
+        <input type="search" value={query} maxLength={140} onChange={event => setQuery(event.target.value)} className={inputClass + " mt-1"}
+          placeholder="Client, ville, panne…" />
+      </label>
+      <ul className="mt-2 max-h-52 space-y-2 overflow-y-auto lg:max-h-[30rem]">
+        {visibleQueue.map(item => <li key={item.source + item.id}>
+          <button type="button" disabled={busy} draggable={!busy}
+            aria-pressed={booking?.item.id === item.id && booking.item.source === item.source}
+            onClick={() => {
+              const today = new Date();
+              const defaultStart = new Date(day + "T08:00");
+              const nextQuarter = Math.ceil(+today / (15 * 60000)) * 15 * 60000;
+              const startsAt = (plannerDate(today) === day && nextQuarter > +defaultStart ? new Date(nextQuarter) : defaultStart).toISOString();
+              selectBooking(item, { startsAt, technicianId: item.technicianId });
+            }}
+            onDragStart={event => {
+              if (busy) { event.preventDefault(); return; }
+              drag.current = { item };
+              event.dataTransfer.setData("text/plain", item.id);
+              event.dataTransfer.effectAllowed = "move";
+            }}
+            onDragEnd={finishDrag}
+            className="focus-ring w-full break-words rounded-lg border border-sanispa-line bg-white p-2.5 text-left text-sm aria-pressed:border-sanispa-blue aria-pressed:bg-blue-50 lg:cursor-grab">
+            <span className="block font-bold">{item.customer}</span>
+            <span className="block">{item.title}</span>
+            <span className="block text-xs text-sanispa-steel">{[item.reference ?? (item.source === "sanispa" ? "SANISPA" : ""), item.address].filter(Boolean).join(" · ")}</span>
+          </button>
+        </li>)}
+      </ul>
+      {!visibleQueue.length ? <p role="status" className="mt-2 text-sm">{queue.length ? "Aucun résultat." : "Aucune intervention à planifier."}</p> : null}
+    </section>
     <div ref={scroll} tabIndex={0} role="region" aria-label="Grille horaire des interventions" className="focus-ring isolate max-w-full overflow-x-auto rounded-xl border border-sanispa-line">
       <div className="w-max" role="table" aria-label="Rendez-vous de la journée par technicien">
         <div role="row" className="flex border-b border-sanispa-line bg-sanispa-ice text-sm">
@@ -159,19 +238,23 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
                   const hourStart = start + index * hour;
                   const firstFree = [0, 0.25, 0.5, 0.75].map(fraction => timelineQuarter(hourStart, fraction)).find(free);
                   const label = firstFree === undefined ? undefined
-                    : `Créer un rendez-vous à ${plannerTime(new Date(firstFree).toISOString())} · ${row.name}`;
+                    : `${booking ? "Choisir le créneau de" : "Créer un rendez-vous à"} ${plannerTime(new Date(firstFree).toISOString())} · ${row.name}`;
                   return <button type="button" key={hourStart} aria-label={label} disabled={busy || firstFree === undefined}
                     className="focus-ring flex shrink-0 items-center justify-center text-lg font-bold text-transparent hover:bg-sanispa-ice hover:text-sanispa-blue focus-visible:bg-sanispa-ice focus-visible:text-sanispa-blue disabled:pointer-events-none"
                     style={{ width: columnWidth }}
-                    title={label ? "Créer un rendez-vous" : undefined}
+                    title={label}
                     onClick={event => {
                       if (firstFree === undefined || drag.current) return;
                       const rect = event.currentTarget.getBoundingClientRect();
                       const time = event.detail === 0 ? firstFree : timelineQuarter(hourStart, (event.clientX - rect.left) / rect.width);
                       if (!free(time)) return;
-                      setNewTechnician(null);
-                      setSelected(null);
-                      onCreate({ startsAt: new Date(time).toISOString(), technicianId: row.id || null });
+                      const slot = { startsAt: new Date(time).toISOString(), technicianId: row.id || null };
+                      if (booking) selectBooking(booking.item, slot);
+                      else {
+                        setNewTechnician(null);
+                        setSelected(null);
+                        onCreate(slot);
+                      }
                     }}>
                     <span aria-hidden="true">+</span>
                   </button>;
@@ -182,12 +265,12 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
                 const time = `${plannerTime(appointment.starts_at)}–${plannerTime(appointment.ends_at)}`;
                 const draggable = appointment.movable && !busy && begins === Date.parse(appointment.starts_at);
                 return <button type="button" key={appointment.source + appointment.id}
-                  draggable={draggable} disabled={!appointment.movable || busy}
+                  draggable={draggable} disabled={busy}
                   title={`${appointment.title} · ${time}${overlap ? " · Chevauchement" : ""}`}
-                  aria-label={`${appointment.movable ? "Déplacer" : "Voir"} ${appointment.title}, ${time}${overlap ? ", chevauchement" : ""}`}
+                  aria-label={`Ouvrir le rendez-vous ${appointment.title}, ${time}${overlap ? ", chevauchement" : ""}`}
                   className={`focus-ring absolute z-[1] flex h-12 min-w-0 flex-col justify-center overflow-hidden rounded-lg border px-1.5 text-left text-xs font-bold disabled:opacity-75 ${draggable ? "cursor-grab" : ""} ${overlap ? "border-amber-500" : "border-transparent"} ${appointment.source === "sanispa" ? "bg-emerald-100 text-emerald-950" : "bg-sanispa-blue text-white"}`}
                   style={{ top: 4 + 54 * lane, left: (begins - start) / hour * columnWidth, width: Math.max(2, (ends - begins) / hour * columnWidth - 2) }}
-                  onClick={() => { setNewTechnician(null); setSelected(appointment); }}
+                  onClick={() => { setNewTechnician(null); setBooking(null); setSelected(appointment); }}
                   onDragStart={event => {
                     if (!draggable) { event.preventDefault(); return; }
                     const left = event.currentTarget.getBoundingClientRect().left;
@@ -204,6 +287,7 @@ export function PartnerScheduleGrid({ day, appointments, team, busy, onAdd, onMo
           </div>;
         })}
       </div>
+    </div>
     </div>
     {appointments.some(appointment => appointment.source === "sanispa") ? <div className="mt-2 flex flex-wrap gap-4 text-xs font-semibold">
       <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Clients du partenaire</span>

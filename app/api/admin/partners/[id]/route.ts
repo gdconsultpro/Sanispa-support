@@ -14,7 +14,7 @@ const partnerSchema = z.object({
     active: z.boolean().optional(),
     departments: z.array(z.string()).optional()
 }).strict();
-const commandSchema=z.union([z.object({verify:z.literal(true)}).strict(),partnerSchema]);
+const commandSchema=z.union([z.object({verify:z.literal(true),expectedSiret:z.string().regex(/^\d{14}$/)}).strict(),partnerSchema]);
 export async function PATCH(request: Request, { params }: {
     params: Promise<{
         id: string;
@@ -26,7 +26,11 @@ export async function PATCH(request: Request, { params }: {
         const id = z.string().uuid().parse((await params).id);
         const payload = commandSchema.parse(await request.json());
         if ("verify" in payload) {
-            const result=await supabase.rpc("verify_partner_registration",{p_partner:id,p_actor:user.id});
+            const result=await supabase.rpc("verify_partner_registration",{
+                p_partner:id,p_actor:user.id,p_expected_siret:payload.expectedSiret
+            });
+            if(result.error?.message==="SIRET_CHANGED")
+                return NextResponse.json({error:"Le SIRET a changé. Examinez le nouveau numéro avant de le valider.",partner:await loadPartner(supabase,id)},{status:409});
             if(result.error) return NextResponse.json({error:"Vérification impossible. Renseignez le SIRET, le contact et l’adresse complète de l’entreprise active."},{status:409});
             return NextResponse.json({partner:await loadPartner(supabase,id)});
         }

@@ -81,6 +81,19 @@ export type PlannerAppointment = ScheduledVisit & {
   title: string;
   source: "private" | "sanispa";
   movable: boolean;
+  address?: string;
+  description?: string;
+};
+export type PlannerQueueEntry = {
+  id: string;
+  source: PlannerAppointment["source"];
+  expectedAt: string | null;
+  technicianId: string | null;
+  title: string;
+  customer: string;
+  address: string;
+  description?: string | null;
+  reference?: string | null;
 };
 
 export const interventionTypes = ["Intervention SAV", "Mise en service", "Installation", "Entretien / révision"];
@@ -127,6 +140,8 @@ export type PendingPartnerDossier = MapPosition & {
   id: string;
   problem_type: string;
   status: string;
+  public_reference?: string | null;
+  preview_description?: string | null;
   customer: { name: string | null; address: string | null } | null;
 };
 

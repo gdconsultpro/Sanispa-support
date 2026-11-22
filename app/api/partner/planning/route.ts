@@ -84,6 +84,7 @@ const tourInput = z.object({
   action: z.literal("bookTourVisit"), source: z.enum(["private", "sanispa"]), id: z.string().uuid(),
   expected_at: timestamp.nullable(), starts_at: timestamp, ends_at: timestamp, technician_id: z.string().uuid(),
 }).strict();
+const schedulePendingInput = tourInput.extend({ action: z.literal("schedulePendingVisit"), technician_id: technicianId });
 const coordinateInput = z.object({
   latitude: z.number().finite().min(-85).max(85), longitude: z.number().finite().min(-180).max(180),
 }).strict();
@@ -100,7 +101,7 @@ const applyTourInput = z.object({
   }).strict()).min(1).max(maximumTourRouteStops),
 }).strict();
 const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, visitWithContactInput, deleteVisitInput, unplanVisitInput, deleteClientInput,
-  restoreClientInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, tourRouteInput, applyTourInput]);
+  restoreClientInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, schedulePendingInput, tourRouteInput, applyTourInput]);
 const rangeInput = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
@@ -225,6 +226,7 @@ export async function GET(request: Request) {
     const { partner, supabase } = await requirePartnerPlanner(request);
     const params = new URL(request.url).searchParams;
     const forMap = params.get("map") === "1";
+    const withPending = forMap || params.get("queue") === "1";
     const upcoming = forMap && params.get("scope") === "upcoming";
     async function technicians() {
       const { data, error } = await supabase.from("partner_planning_technicians").select("id,name")
@@ -371,10 +373,10 @@ export async function GET(request: Request) {
         : sanispaQuery().gte("starts_at", now).not("diagnostic.status", "in", "(CLOSED,terminé)"))
         .order("starts_at").order("diagnostic_id").range(from, to)),
       technicians(),
-      forMap ? allRows((from, to) => privateQuery().is("starts_at", null)
+      withPending ? allRows((from, to) => privateQuery().is("starts_at", null).is("client.deleted_at", null)
         .order("updated_at", { ascending: false }).order("id").range(from, to)) : null,
-      forMap ? allRows((from, to) => supabase.from("diagnostics")
-        .select("id,problem_type,status,customer:customers(name,address),partner_appointments(),intervention_reports()")
+      withPending ? allRows((from, to) => supabase.from("diagnostics")
+        .select("id,problem_type,status,public_reference,preview_description,customer:customers(name,address),partner_appointments(),intervention_reports()")
         .eq("assigned_partner_id", partner.id).is("archived_at", null).not("status", "in", "(CLOSED,terminé)")
         .eq("partner_appointments.partner_id", partner.id).is("partner_appointments", null).is("intervention_reports", null)
         .order("created_at", { ascending: false }).order("id").range(from, to)) : null,
@@ -405,7 +407,9 @@ export async function GET(request: Request) {
         technicians: team,
       });
     }
-    return NextResponse.json({ visits: privateVisits, sanispa: sanispaVisits, technicians: team });
+    return NextResponse.json({ visits: privateVisits, sanispa: sanispaVisits, technicians: team,
+      ...(withPending ? { pendingVisits: waitingPrivate, pendingDossiers: waitingSanispa } : {}),
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return apiError(error);
   }
@@ -514,13 +518,14 @@ export async function POST(request: Request) {
       if (error) throw interventionError(error);
       return NextResponse.json({ saved: true });
     }
-    if (command.action === "bookTourVisit") {
+    if (command.action === "bookTourVisit" || command.action === "schedulePendingVisit") {
       const { error } = await supabase.rpc("book_partner_tour_visit", {
         p_partner: partner.id, p_actor: user.id, p_source: command.source, p_id: command.id,
         p_expected: command.expected_at, p_start: command.starts_at, p_end: command.ends_at, p_technician: command.technician_id,
+        ...(command.action === "schedulePendingVisit" ? { p_from_grid: true } : {}),
       });
       if (error?.message.includes("TECHNICIAN_SLOT_OCCUPIED")) throw new HttpError(409, "Ce technicien a déjà un rendez-vous sur ce créneau. Choisissez un autre horaire.");
-      if (error?.message.includes("APPOINTMENT_CHANGED")) throw new HttpError(409, "Cette intervention a déjà été modifiée ou planifiée. Actualisez la carte.");
+      if (error?.message.includes("APPOINTMENT_CHANGED")) throw new HttpError(409, "Cette intervention a déjà été modifiée ou planifiée.");
       if (error?.message.includes("TECHNICIAN_NOT_FOUND")) throw new HttpError(400, "Choisissez un technicien de votre équipe.");
       if (error?.message.includes("INVALID_APPOINTMENT_DURATION")) throw new HttpError(400, "Choisissez une durée comprise entre 1 minute et 12 heures.");
       if (error) throw interventionError(error);
