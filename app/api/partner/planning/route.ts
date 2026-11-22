@@ -319,6 +319,23 @@ export async function GET(request: Request) {
         if (error) throw error;
         return NextResponse.json({ stock: data.slice(0, 30), more: data.length > 30 });
       }
+      if (params.get("section") === "stock-movements") {
+        let history = supabase.from("partner_stock_movements")
+          .select("id,stock_id,category,label,reference,delta,quantity_after,kind,created_at,field_source,field_visit_id")
+          .eq("partner_id", partner.id);
+        const article = z.string().uuid().nullable().parse(params.get("article"));
+        if (article) history = history.eq("stock_id", article);
+        if (params.has("before")) {
+          const before = timestamp.parse(params.get("before"));
+          const cursorId = z.string().uuid().parse(params.get("cursor"));
+          // Preserve PostgreSQL's fractional seconds for rows sharing a millisecond.
+          history = history.or(`created_at.lt.${before},and(created_at.eq.${before},id.lt.${cursorId})`);
+        }
+        const { data, error } = await history.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(31);
+        if (error) throw error;
+        return NextResponse.json({ movements: data.slice(0, 30), more: data.length > 30 },
+          { headers: { "Cache-Control": "private, no-store" } });
+      }
       const name = z.string().trim().max(140).parse(params.get("name") ?? "");
       const namePattern = `%${name.replace(/[\\%_]/g, "\\$&")}%`;
       if (params.get("section") === "visits") {
@@ -539,17 +556,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ saved: true });
     }
     if (command.action === "saveStock") {
-      const { action: _action, expected_at, ...input } = command;
-      const table = supabase.from("partner_private_stock");
-      if (expected_at) {
-        const { data, error } = await table.update({ ...input, updated_at }).eq("partner_id", partner.id)
-          .eq("id", input.id).eq("updated_at", expected_at).select("id").maybeSingle();
-        if (error) throw error;
-        if (!data) throw new HttpError(409, "Ce stock a été modifié entre-temps. Rouvrez la fiche pour voir la quantité actuelle.");
-      } else {
-        const { error } = await table.upsert({ ...input, partner_id: partner.id, updated_at }, { onConflict: "partner_id,id", ignoreDuplicates: true });
-        if (error) throw error;
-      }
+      const { error } = await supabase.rpc("save_partner_inventory_item", {
+        p_partner: partner.id, p_actor: user.id, p_stock: command.id, p_category: command.category, p_label: command.label,
+        p_reference: command.reference, p_quantity: command.quantity, p_expected: command.expected_at,
+      });
+      if (error?.message === "STOCK_CHANGED")
+        throw new HttpError(409, "Ce stock a été modifié entre-temps. Rouvrez la fiche pour voir la quantité actuelle.");
+      if (error?.message === "STOCK_CATEGORY_IN_USE")
+        throw new HttpError(409, "Conservez la catégorie Pièce détachée pour cet article utilisé lors d’une intervention.");
+      if (error) throw error;
       return NextResponse.json({ saved: true });
     }
     if (command.action === "locateClient") {

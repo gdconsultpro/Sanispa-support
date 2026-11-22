@@ -1,5 +1,7 @@
 "use client";
 
+import { PartnerFieldStock } from "@/components/PartnerFieldStock";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Camera, ClipboardCheck, Download, Mail, MapPin, Phone, Play } from "lucide-react";
@@ -49,7 +51,9 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [draftNote, setDraftNote] = useState("");
   const [spaId, setSpaId] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [fieldBusy, setBusy] = useState(false);
+  const [stockBusy, setStockBusy] = useState(false);
+  const busy = fieldBusy || stockBusy;
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
@@ -86,7 +90,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   useEffect(() => {
     if (!available) return;
     const hash = window.location.hash.slice(1);
-    if (["rapport", "rendez-vous", "photos"].includes(hash)) document.getElementById(hash)?.scrollIntoView({ block: "start" });
+    if (["rapport", "rendez-vous", "photos", "pieces"].includes(hash)) document.getElementById(hash)?.scrollIntoView({ block: "start" });
   }, [available]);
 
   function editDraft(changes: Partial<Draft>) {
@@ -100,7 +104,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   }
 
   async function action(run: () => Promise<unknown>, message: string, after?: () => void) {
-    if (working.current) return;
+    if (working.current || stockBusy) return;
     working.current = true;
     setBusy(true);
     setError("");
@@ -272,6 +276,8 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
         void action(() => plannerRequest(base, { payload: { action: "start" } }), "Intervention démarrée.");
       }}><Play aria-hidden="true" size={18} /> Démarrer l’intervention</Button> : null}
       {active && !session && data.appointment && !data.canStart ? <p className="text-sm text-sanispa-steel">Le démarrage est disponible à l’heure du rendez-vous.</p> : null}
+      {session ? <PartnerFieldStock key={session.id} endpoint={base} session={session.id} editable={Boolean(draftOpen && active)}
+        busy={busy} onSaving={setStockBusy} /> : null}
       {draftOpen || data.photos.length ? <section className={card} id="photos" aria-labelledby="field-photos">
         <h2 id="field-photos" className="text-lg font-bold">Photos d’intervention</h2>
         {draftOpen ? <>

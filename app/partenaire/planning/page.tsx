@@ -13,6 +13,7 @@ import { PartnerPlanningResources } from "@/components/PartnerPlanningResources"
 import { PartnerScheduleGrid, PlannerTechnicianSelect } from "@/components/PartnerScheduleGrid";
 import { fillPlannerSlot, PartnerSlotSuggestions } from "@/components/PartnerSlotSuggestions";
 import { PartnerStockImport } from "@/components/PartnerStockImport";
+import { PartnerStockHistory } from "@/components/PartnerStockHistory";
 import { PartnerTourMap } from "@/components/PartnerTourMap";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
@@ -73,6 +74,7 @@ export default function PartnerPlanningPage() {
   const [directError, setDirectError] = useState("");
   const [fileLoading, setFileLoading] = useState(false);
   const [inventory, setInventory] = useState<StockPage | null>(null);
+  const [stockHistoryArticle, setStockHistoryArticle] = useState<Pick<PrivatePartnerStock, "id" | "label"> | null>(null);
   const [agenda, setAgenda] = useState<PartnerWorkspaceData | null>(null);
   const [resources, setResources] = useState<PlanningResources | null>(null);
   const [resourceError, setResourceError] = useState("");
@@ -685,7 +687,10 @@ export default function PartnerPlanningPage() {
     {view === "stock" && inventory ? <section className={panelClass}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-bold">Pièces détachées et spas</h2>
-        <Button type="button" disabled={saving} onClick={() => edit({ type: "stock", id: crypto.randomUUID() })}>Ajouter un article</Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <a className={actionClass} href="#stock-movements" onClick={() => setStockHistoryArticle(null)}>Historique des mouvements</a>
+          <Button type="button" disabled={saving} onClick={() => edit({ type: "stock", id: crypto.randomUUID() })}>Ajouter un article</Button>
+        </div>
       </div>
       <PartnerStockImport onImported={(imported, skipped) => {
         setNotice(`${imported} ${imported === 1 ? "article ajouté" : "articles ajoutés"}${skipped ? ` · ${skipped} ${skipped === 1 ? "doublon ignoré" : "doublons ignorés"}` : ""}.`);
@@ -699,7 +704,12 @@ export default function PartnerPlanningPage() {
             <p className="break-words text-sm">{stockLabels[item.category]}{item.reference ? " · " + item.reference : ""}</p>
             <p className="text-sm font-bold">{item.quantity} en stock</p>
           </div>
-          <button type="button" className={actionClass} disabled={saving} onClick={() => edit({ type: "stock", id: item.id, item })}>Modifier l’article</button>
+          <div className="flex flex-wrap items-center gap-x-3">
+            <button type="button" className={actionClass} disabled={saving} onClick={() => edit({ type: "stock", id: item.id, item })}>Modifier l’article</button>
+            <a className={actionClass} href="#stock-movements" onClick={() => setStockHistoryArticle({ id: item.id, label: item.label })}>
+              Voir les mouvements
+            </a>
+          </div>
         </li>)}
       </ul> : <p className="mt-3">Aucun article en stock pour le moment.</p>}
       {offset || inventory.more ? <div className="mt-3 flex gap-3">
@@ -707,6 +717,8 @@ export default function PartnerPlanningPage() {
         <Button type="button" variant="secondary" disabled={!inventory.more} onClick={() => setOffset(value => value + 30)}>Suivant</Button>
       </div> : null}
     </section> : null}
+    {view === "stock" ? <PartnerStockHistory key={(stockHistoryArticle?.id ?? "all") + ":" + revision}
+      article={stockHistoryArticle} clear={() => setStockHistoryArticle(null)} /> : null}
 
     {(view === "agenda" || view === "map") && day && !loadError ? <section className={panelClass}>
       <div className="flex flex-wrap items-center justify-between gap-2">

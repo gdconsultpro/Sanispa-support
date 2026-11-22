@@ -15,6 +15,7 @@ import { fieldPhotoBucket, fieldPhotoPath, loadFieldPhotos } from "@/lib/partner
 import { buildFieldReportPdf, customerSignature } from "@/lib/partner-field-pdf";
 import { partnerClientAddress, partnerSpaOption } from "@/lib/partner-planner";
 import { privateWorkStatus, sanispaWorkStatus } from "@/lib/partner-workspace";
+import { stockSearchFilter } from "@/lib/partner-stock-movements";
 
 type Context = { params: Promise<{ source: string; id: string }> };
 const uuid = z.string().uuid();
@@ -28,6 +29,8 @@ const fieldCommands = z.discriminatedUnion("action", [
   z.object({ action: z.literal("validate"), version: timestamp }).strict(),
   z.object({ action: z.literal("followup"), reportId: uuid }).strict(),
   z.object({ action: z.literal("sendPdf"), reportId: uuid, expectedEmail: emailAddress }).strict(),
+  z.object({ action: z.literal("stockUsage"), session: uuid, stockId: uuid, operation: uuid,
+    quantity: z.number().int().min(0).max(1000000), expected: z.number().int().min(0).max(1000000) }).strict(),
   z.object({ action: z.literal("spa"), spaId: uuid.nullable(), version: timestamp }).strict(),
 ]);
 const spaFields = "id,brand,model,serial_number,updated_at";
@@ -60,6 +63,11 @@ function fieldError(error: { message?: string }) {
     case "FIELD_APPOINTMENT_REQUIRED": return new HttpError(409, "Planifiez d’abord le rendez-vous.");
     case "FIELD_TOO_EARLY": return new HttpError(409, "Le démarrage sera disponible à l’heure prévue du rendez-vous.");
     case "FIELD_ALREADY_FINISHED": return new HttpError(409, "Cette intervention est déjà terminée. Actualisez la fiche.");
+    case "STOCK_NOT_FOUND": return new HttpError(404, "Cette pièce est introuvable dans votre stock.");
+    case "STOCK_INSUFFICIENT": return new HttpError(409, "La quantité demandée dépasse le stock disponible.");
+    case "STOCK_USAGE_CHANGED":
+    case "STOCK_CHANGED": return new HttpError(409, "La quantité a changé. Vérifiez les pièces utilisées et réessayez.");
+    case "STOCK_INVALID_QUANTITY": return new HttpError(400, "Indiquez une quantité compatible avec le stock.");
     case "FIELD_PHOTO_LIMIT": return new HttpError(409, "Vous pouvez joindre jusqu’à 12 photos par intervention.");
     case "FIELD_RECEIPT_EXISTS": return new HttpError(409, "Retirez le justificatif actuel avant de le remplacer.");
     case "FIELD_REQUIRED_PHOTOS": return new HttpError(400, "Ajoutez les photos obligatoires avant de valider le compte rendu.");
@@ -193,7 +201,21 @@ async function buildFieldVisitPdf(field: FieldCase, result: FieldVisit, report: 
 export async function GET(request: Request, context: Context) {
   try {
     const field = await fieldCase(request, context);
-    const reportParam = new URL(request.url).searchParams.get("rapport");
+    const params = new URL(request.url).searchParams;
+    if (params.get("stock") === "1") {
+      const { supabase, partner, source, id } = field;
+      const search = z.string().trim().max(100).parse(params.get("search") ?? "");
+      const catalog = supabase.from("partner_private_stock").select("id,label,reference,quantity")
+        .eq("partner_id", partner.id).eq("category", "piece").gt("quantity", 0);
+      const [usage, pieces] = await Promise.all([
+        supabase.rpc("get_partner_field_stock_usage", { p_partner: partner.id, p_source: source, p_visit: id }),
+        params.get("history") === "1" ? null : (search ? catalog.or(stockSearchFilter(search)) : catalog).order("label").order("id").limit(21),
+      ]);
+      if (usage.error || pieces?.error) throw usage.error || pieces?.error;
+      return NextResponse.json({ usage: usage.data ?? [], pieces: pieces?.data?.slice(0, 20) ?? [],
+        more: (pieces?.data?.length ?? 0) > 20 }, { headers });
+    }
+    const reportParam = params.get("rapport");
     const pdfReport = reportParam === null ? null : uuid.parse(reportParam);
     const result = await loadFieldVisit(field, !pdfReport);
     if (pdfReport) {
@@ -228,6 +250,13 @@ export async function POST(request: Request, context: Context) {
     await rateLimit(supabase, `partner-field:${partner.id}`, 30);
     if (command.action === "start") {
       const { error } = await supabase.rpc("start_partner_field_visit", { ...actor, p_source: source, p_id: id });
+      if (error) throw fieldError(error);
+    } else if (command.action === "stockUsage") {
+      const { error } = await supabase.rpc("set_partner_field_stock_usage", {
+        ...actor, p_source: source, p_visit: id, p_session: command.session, p_stock: command.stockId,
+        p_quantity: command.quantity, p_expected: command.expected, p_operation: command.operation,
+      });
+      if (error?.code === "23505") throw fieldError({ message: "STOCK_CHANGED" });
       if (error) throw fieldError(error);
     } else if (command.action === "report") {
       await ownSession(field, command.session);
