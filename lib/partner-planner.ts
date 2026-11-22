@@ -90,6 +90,7 @@ export type PlannerAppointment = ScheduledVisit & {
   workStatus?: PartnerWorkStatus;
 };
 export type PlannerQueueEntry = {
+  durationMinutes?: number;
   id: string;
   source: PlannerAppointment["source"];
   expectedAt: string | null;
@@ -101,7 +102,6 @@ export type PlannerQueueEntry = {
   reference?: string | null;
 };
 
-export const interventionTypes = ["Intervention SAV", "Mise en service", "Installation", "Entretien / révision"];
 export const partnerClientsPath = "/partenaire/planning?view=clients";
 export const partnerStockPath = "/partenaire/planning?view=stock";
 export const partnerNewClientPath = partnerClientsPath + "&ajouter=1";
@@ -170,6 +170,7 @@ export type PlannerMapIntervention = {
   client?: PrivatePartnerClient;
   visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit;
   dossierId?: string;
+  problemType?: string;
   workStatus?: PartnerWorkStatus;
   activityAt?: string | null;
   reference?: string | null;

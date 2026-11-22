@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { Button, ButtonLink } from "@/components/Button";
+import { fillPlannerSlot, PartnerSlotSuggestions } from "@/components/PartnerSlotSuggestions";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import {
   plannerDate, plannerDay, plannerRange, plannerTime, timelineDropTime, timelineQuarter, visitsOverlap,
@@ -59,6 +60,7 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
   const [focusedDay, setFocusedDay] = useState(day);
   const scroll = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const bookingForm = useRef<HTMLFormElement>(null);
   const drag = useRef<ActiveDrag | null>(null);
   const range = plannerRange(day, period);
   const start = +range.from;
@@ -123,13 +125,13 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
     const rect = event.currentTarget.getBoundingClientRect();
     const time = start + ((event.clientX - rect.left) / rect.width) * elapsed - ("offset" in current ? current.offset : 0);
     const duration = "appointment" in current
-      ? Date.parse(current.appointment.ends_at) - Date.parse(current.appointment.starts_at) : defaultDuration * 60000;
+      ? Date.parse(current.appointment.ends_at) - Date.parse(current.appointment.starts_at) : (current.item.durationMinutes ?? defaultDuration) * 60000;
     const next = timelineDropTime(start, end, time, duration);
     finishDrag();
     if ("appointment" in current) {
       void onMove(current.appointment, new Date(next), technician || null).then(saved => { if (saved) setSelected(null); });
     } else {
-      void onSchedule(current.item, new Date(next), technician || null, defaultDuration).then(saved => { if (saved) setBooking(null); });
+      void onSchedule(current.item, new Date(next), technician || null, duration / 60000).then(saved => { if (saved) setBooking(null); });
     }
   }
 
@@ -173,7 +175,7 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
           </ButtonLink>
         </div>
       </> : booking ? <p className="mt-1 break-words text-sm">{booking.item.customer} · {booking.item.title}</p> : null}
-      {!selected || selected.movable ? <form onSubmit={submit} key={booking ? booking.item.id + booking.slot.startsAt + booking.slot.technicianId : selected?.id ?? newTechnician}>
+      {!selected || selected.movable ? <form ref={bookingForm} onSubmit={submit} key={booking ? booking.item.id + booking.slot.startsAt + booking.slot.technicianId : selected?.id ?? newTechnician}>
         <fieldset disabled={busy} className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {selected || booking ? <>
             <label className="min-w-0 text-sm font-bold">Date
@@ -183,9 +185,16 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
               <input name="time" type="time" required defaultValue={plannerTime(selected?.starts_at ?? booking!.slot.startsAt)} className={inputClass + " mt-1"} />
             </label>
             {booking ? <label className="min-w-0 text-sm font-bold">Durée en minutes
-              <input name="duration" type="number" required min={1} max={720} defaultValue={defaultDuration} className={inputClass + " mt-1"} />
+              <input name="duration" type="number" required min={1} max={720} defaultValue={booking.item.durationMinutes ?? defaultDuration} className={inputClass + " mt-1"} />
             </label> : null}
             <PlannerTechnicianSelect team={team} selected={selected?.technician_id ?? booking?.slot.technicianId} />
+            {booking ? <div className="sm:col-span-2 xl:col-span-4">
+              <PartnerSlotSuggestions search={() => {
+                if (!bookingForm.current) return null;
+                const form = new FormData(bookingForm.current);
+                return { day: String(form.get("date")), duration: Number(form.get("duration")), technician: String(form.get("technician_id") || "") };
+              }} select={slot => fillPlannerSlot(bookingForm.current, slot, { day: "date", time: "time", technician: "technician_id" })} />
+            </div> : null}
           </> : <label className="min-w-0 text-sm font-bold sm:col-span-2">Nom du technicien
             <input name="name" required maxLength={100} className={inputClass + " mt-1"} />
           </label>}
@@ -228,7 +237,7 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
             }}
             className="focus-ring w-full break-words rounded-lg border border-sanispa-line bg-white p-2.5 text-left text-sm aria-pressed:border-sanispa-blue aria-pressed:bg-blue-50 lg:cursor-grab">
             <span className="block font-bold">{item.customer}</span>
-            <span className="block">{item.title}</span>
+            <span className="block">{item.title} · {item.durationMinutes ?? defaultDuration} min</span>
             <span className="block text-xs text-sanispa-steel">{[item.reference ?? (item.source === "sanispa" ? "SANISPA" : ""), item.address].filter(Boolean).join(" · ")}</span>
           </button>
           <Link draggable={false} className="focus-ring inline-flex min-h-11 items-center px-2.5 text-sm font-bold text-sanispa-blue underline"

@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/Button";
 import { PartnerDrivingTour, type ApplyDrivingTour, type LoadDrivingTour } from "@/components/PartnerDrivingTour";
+import { fillPlannerSlot, PartnerSlotSuggestions } from "@/components/PartnerSlotSuggestions";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
+import { sanispaSchedulingType, schedulingDuration, type InterventionDuration } from "@/lib/partner-availability";
 import { nearbyPendingVisits, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
   type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
   type PlannerPeriod, type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
@@ -19,9 +21,10 @@ const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
 const filterClass = "focus-ring mt-1 min-h-12 w-full rounded-lg border border-sanispa-line bg-white px-3 text-base";
 const linkClass = "focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline";
 
-export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, onNextAppointment, status, technician, highlightId, onUnplan }: {
+export function PartnerTourMap({ items, team, durations, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, onNextAppointment, status, technician, highlightId, onUnplan }: {
   items: PlannerMapIntervention[] | null;
   team: PlannerTechnician[];
+  durations: InterventionDuration[];
   period: PlannerPeriod;
   scope: string;
   busy: boolean;
@@ -124,7 +127,7 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
       {entries.length - points.length} {entries.length - points.length === 1 ? "intervention sans adresse localisée" : "interventions sans adresse localisée"}. Retrouvez-les dans la liste ci-dessous.
     </p> : null}
     {anchor && displayItems ? <NearbyInterventions key={anchor.id} anchor={anchor} items={displayItems}
-      team={visibleTeam} busy={busy} confirmation={confirmation?.id === anchor.id ? confirmation.message : ""} onClose={() => setSelected(null)}
+      team={visibleTeam} durations={durations} busy={busy} confirmation={confirmation?.id === anchor.id ? confirmation.message : ""} onClose={() => setSelected(null)}
       onBook={async (booking, message) => {
         await onBook(booking);
         setConfirmation({ id: anchor.id, message });
@@ -158,8 +161,9 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
 const distanceLabel = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1, style: "unit", unit: "kilometer" });
 const dateLabel = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
 
-function NearbyInterventions({ anchor, items, team, busy, confirmation, onClose, onBook }: {
+function NearbyInterventions({ anchor, items, team, durations, busy, confirmation, onClose, onBook }: {
   anchor: PlannerMapIntervention; items: PlannerMapIntervention[]; team: PlannerTechnician[]; busy: boolean;
+  durations: InterventionDuration[];
   confirmation: string; onClose: () => void; onBook: (booking: TourBooking, message: string) => Promise<void>;
 }) {
   const [radius, setRadius] = useState(25);
@@ -200,6 +204,7 @@ function NearbyInterventions({ anchor, items, team, busy, confirmation, onClose,
         {item.approximateLocation ? <p className="text-sm text-sanispa-steel">Position approximative (commune)</p> : null}
         {choosing === item.id
           ? <TourBookingForm item={item} anchor={anchor} items={items} team={team} busy={busy} onCancel={() => setChoosing(null)}
+            duration={schedulingDuration(item.visit?.title ?? sanispaSchedulingType(item.problemType ?? ""), durations)}
             onBook={async (booking, message) => { await onBook(booking, message); setChoosing(null); }} />
           : <button type="button" disabled={busy} className={linkClass + " text-sm"} onClick={() => setChoosing(item.id)}>Ajouter à la tournée</button>}
       </li>)}
@@ -207,8 +212,9 @@ function NearbyInterventions({ anchor, items, team, busy, confirmation, onClose,
   </section>;
 }
 
-function TourBookingForm({ item, anchor, items, team, busy, onBook, onCancel }: {
+function TourBookingForm({ item, anchor, items, team, duration, busy, onBook, onCancel }: {
   item: PlannerMapIntervention; anchor: PlannerMapIntervention; items: PlannerMapIntervention[]; team: PlannerTechnician[]; busy: boolean;
+  duration: number;
   onBook: (booking: TourBooking, message: string) => Promise<void>; onCancel: () => void;
 }) {
   const fixedTechnician = team.find(member => member.id === (anchor.technicianId ?? item.technicianId));
@@ -217,6 +223,7 @@ function TourBookingForm({ item, anchor, items, team, busy, onBook, onCancel }: 
       ? [{ startsAt: visit.startsAt, endsAt: visit.endsAt }] : [])));
   const [error, setError] = useState("");
   const pending = useRef(false);
+  const bookingForm = useRef<HTMLFormElement>(null);
   const dayInput = useRef<HTMLInputElement>(null);
   useEffect(() => { dayInput.current?.focus(); }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -244,7 +251,7 @@ function TourBookingForm({ item, anchor, items, team, busy, onBook, onCancel }: 
       pending.current = false;
     }
   }
-  return <form onSubmit={submit} className="mt-2 min-w-0 rounded-lg border border-sanispa-line p-3">
+  return <form ref={bookingForm} onSubmit={submit} className="mt-2 min-w-0 rounded-lg border border-sanispa-line p-3">
     <fieldset disabled={busy} className="grid min-w-0 gap-2 sm:grid-cols-3">
       <label className="min-w-0 text-sm font-bold">Jour du rendez-vous
         <input ref={dayInput} type="date" name="date" defaultValue={plannerDate(suggested)} required className={filterClass + " min-w-0"} />
@@ -253,7 +260,7 @@ function TourBookingForm({ item, anchor, items, team, busy, onBook, onCancel }: 
         <input type="time" name="start" defaultValue={plannerTime(suggested.toISOString())} required className={filterClass + " min-w-0"} />
       </label>
       <label className="min-w-0 text-sm font-bold">Durée en minutes
-        <input type="number" name="duration" min={1} max={720} defaultValue={60} required className={filterClass + " min-w-0"} />
+        <input type="number" name="duration" min={1} max={720} defaultValue={duration} required className={filterClass + " min-w-0"} />
       </label>
       {fixedTechnician ? <p className="text-sm font-bold sm:col-span-3">Technicien · {fixedTechnician.name}</p>
         : <label className="min-w-0 text-sm font-bold sm:col-span-3">Technicien de la tournée
@@ -262,6 +269,12 @@ function TourBookingForm({ item, anchor, items, team, busy, onBook, onCancel }: 
             {team.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
           </select>
         </label>}
+      <div className="sm:col-span-3"><PartnerSlotSuggestions search={() => {
+        if (!bookingForm.current) return null;
+        const values = new FormData(bookingForm.current);
+        return { day: String(values.get("date") || ""), duration: Number(values.get("duration")),
+          technician: fixedTechnician?.id ?? String(values.get("technician") || ""), after: anchor.endsAt };
+      }} select={slot => fillPlannerSlot(bookingForm.current, slot, { day: "date", time: "start", technician: "technician" })} /></div>
       {error ? <p role="alert" className="text-sm font-bold text-red-700 sm:col-span-3">{error}</p> : null}
       <div className="mt-1 flex flex-wrap gap-2 sm:col-span-3">
         <Button type="submit" disabled={!team.length}>{busy ? "Enregistrement…" : "Confirmer le rendez-vous"}</Button>

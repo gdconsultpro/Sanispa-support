@@ -102,7 +102,7 @@ export function workspaceWorkItems(data: PartnerWorkspaceData, now: number): Pla
   function assigned(id: string, dossier: Omit<PendingPartnerDossier, "id">, visit?: SanispaPartnerVisit): PlannerMapIntervention {
     const { workStatus, activityAt } = sanispaWorkStatus(dossier, visit, now);
     return {
-      id: "sanispa:" + id, dossierId: id, startsAt: visit?.starts_at ?? null, endsAt: visit?.ends_at, activityAt,
+      id: "sanispa:" + id, dossierId: id, problemType: dossier.problem_type, startsAt: visit?.starts_at ?? null, endsAt: visit?.ends_at, activityAt,
       technicianId: visit?.technician_id ?? null, workStatus,
       title: `${problemLabel(dossier.problem_type)} · ${dossier.customer?.name || "Client"}`, address: dossier.customer?.address ?? "",
       latitude: visit?.latitude ?? dossier.latitude ?? null, longitude: visit?.longitude ?? dossier.longitude ?? null,

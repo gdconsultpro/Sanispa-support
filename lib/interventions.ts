@@ -32,6 +32,9 @@ export async function loadIntervention(supabase: any, id: string) {
 }
 export function interventionError(error: { message?: string }) {
   const code = error.message || "";
+  if (code.includes("TECHNICIAN_SLOT_OCCUPIED")) return new HttpError(409, "Ce technicien a déjà un rendez-vous sur ce créneau.");
+  if (code.includes("TECHNICIAN_ABSENT")) return new HttpError(409, "Ce technicien est absent sur ce créneau.");
+  if (code.includes("TECHNICIAN_OUTSIDE_HOURS")) return new HttpError(409, "Le rendez-vous doit tenir dans les horaires de travail du technicien, en dehors des pauses.");
   if (code.includes("INVOICE_REQUIRED")) return new HttpError(409, "Le partenaire doit d’abord déposer sa facture dans ce dossier pour confirmer le spa réparé. Votre saisie est conservée.");
   if (/ASSIGNED_PARTNER_REQUIRED|CLIENT_REQUIRED/.test(code)) return new HttpError(403, "Ce dossier n’est pas accessible à votre compte.");
   if (code.includes("APPOINTMENT_CHANGED")) return new HttpError(409, "Le rendez-vous a changé ou a déjà commencé. Actualisez le dossier.");
