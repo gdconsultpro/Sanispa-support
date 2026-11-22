@@ -1,3 +1,4 @@
+import type { AppointmentUnplanning } from "./partner-unplanning";
 import type { PartnerClientSpa } from "./partner-planner";
 import type { FieldPhotoKind, FieldReportDetails, FieldTemplate } from "./partner-field-forms";
 import type { PartnerWorkStatus } from "./partner-workspace";
@@ -34,6 +35,7 @@ export type FieldVisit = {
   reportRecipient?: string | null;
   reportTemplate?: FieldTemplate | null;
   previousReport?: PreviousFieldReport | null;
+  unplannedAppointments?: AppointmentUnplanning[];
   canManage?: boolean;
   canStart: boolean;
   canValidate: boolean;

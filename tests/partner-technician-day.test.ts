@@ -96,3 +96,60 @@ test("a reassigned field visit follows its new technician and stale mutations lo
     await assert.rejects(addPhoto(next), /FIELD_NOT_FOUND/);
   } finally { await db.close(); }
 });
+
+test("technicians release their own slot once and preserve both private and SANISPA appointment history", async () => {
+  const db = await fullDatabase();
+  const [partner, owner, technician, colleague, line, otherLine, client, visit, started, customer, dossier, startedDossier] =
+    Array.from({ length: 12 }, () => randomUUID());
+  try {
+    for (const id of [owner, technician, colleague])
+      await db.query("insert into auth.users(id,email) values($1,$2)", [id, id + "@example.invalid"]);
+    await db.query("insert into partners(id,company_name,email) values($1,'Entreprise fictive','test@example.invalid')", [partner]);
+    await db.query("insert into partner_planning_technicians(partner_id,id,name) values($1,$2,'Alice'),($1,$3,'Bob')", [partner, line, otherLine]);
+    await db.query(`insert into partner_users(partner_id,user_id,role,technician_id)
+      values($1,$2,'owner',null),($1,$3,'technician',$4),($1,$5,'technician',$6)`, [partner, owner, technician, line, colleague, otherLine]);
+    await db.query("insert into partner_private_clients(partner_id,id,name,street,postal_code,city) values($1,$2,'Client fictif','Place Rapp','68000','Colmar')", [partner, client]);
+    await db.query(`insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at,technician_id,field_started_at)
+      values($1,$2,$3,'Privée',now()+interval '1 day',now()+interval '25 hours',$4,null),
+            ($1,$5,$3,'Démarrée',now()-interval '1 hour',now()+interval '1 hour',$4,now())`, [partner, visit, client, line, started]);
+    await db.query(`insert into customers(id,name,phone,email,address,spa_brand,spa_year,installation_type,power_supply)
+      values($1,'Client SANISPA fictif','0600000000','test@example.invalid','Place Rapp - 68000 - Colmar','Test','2020','exterieur','230V')`, [customer]);
+    await db.query(`insert into diagnostics(id,customer_id,problem_type,status,assigned_partner_id)
+      values($1,$2,'fuite','ASSIGNED',$3),($4,$2,'pompe','ASSIGNED',$3)`, [dossier, customer, partner, startedDossier]);
+    await db.query(`insert into partner_appointments(diagnostic_id,partner_id,starts_at,ends_at,technician_id)
+      values($1,$2,now()-interval '2 days',now()-interval '47 hours',$3),
+            ($4,$2,now()-interval '3 hours',now()-interval '2 hours',$3)`, [dossier, partner, line, startedDossier]);
+    await db.exec("set role service_role");
+    await db.query("select start_partner_field_visit($1,$2,'sanispa',$3)", [partner, technician, startedDossier]);
+    const version = async (source: "private" | "sanispa", id: string) => (await db.query<{ version: string }>(source === "private"
+      ? "select updated_at::text version from partner_private_visits where id=$1"
+      : "select updated_at::text version from partner_appointments where diagnostic_id=$1", [id])).rows[0].version;
+    const unplan = (actor: string, source: "private" | "sanispa", id: string, expected: string, reason = "client_absent") => db.query(
+      "select unplan_partner_technician_appointment($1,$2,$3,$4,$5,$6,'Note fictive')", [partner, actor, source, id, expected, reason]);
+    const privateVersion = await version("private", visit);
+    const sanispaVersion = await version("sanispa", dossier);
+    await assert.rejects(unplan(colleague, "private", visit, privateVersion), /FIELD_NOT_FOUND/);
+    await assert.rejects(unplan(colleague, "sanispa", dossier, sanispaVersion), /FIELD_NOT_FOUND/);
+    await assert.rejects(unplan(technician, "private", started, await version("private", started)), /APPOINTMENT_ALREADY_STARTED/);
+    await assert.rejects(unplan(technician, "sanispa", startedDossier, await version("sanispa", startedDossier)), /APPOINTMENT_ALREADY_STARTED/);
+    await assert.rejects(unplan(technician, "private", visit, "2024-01-01"), /APPOINTMENT_CHANGED/);
+    await assert.rejects(unplan(technician, "private", visit, privateVersion, "invalid"), /INVALID_UNPLAN_REASON/);
+    await unplan(technician, "private", visit, privateVersion);
+    await unplan(technician, "private", visit, privateVersion);
+    await unplan(technician, "sanispa", dossier, sanispaVersion, "no_access");
+    await unplan(technician, "sanispa", dossier, sanispaVersion, "no_access");
+    const privateChange = (await db.query(`select starts_at,client_id,jsonb_array_length(unplanned_appointments) as count,
+      unplanned_appointments->0->>'reason' as reason from partner_private_visits where id=$1`, [visit])).rows[0];
+    assert.deepEqual(privateChange,{ starts_at: null, client_id: client, count: 1, reason: "client_absent" });
+    const sanispaChanges = (await db.query(`select metadata->>'reason' as reason, metadata->>'note' as note
+      from diagnostic_activity where diagnostic_id=$1 and event_type='appointment_cancelled'`, [dossier])).rows;
+    assert.deepEqual(sanispaChanges,[{ reason: "no_access", note: "Note fictive" }]);
+    assert.deepEqual((await db.query(`select assigned_partner_id,status,(select count(*)::int from partner_appointments where diagnostic_id=$1) as slots
+      from diagnostics where id=$1`, [dossier])).rows[0],{ assigned_partner_id: partner, status: "ASSIGNED", slots: 0 });
+    await db.query(`select book_partner_tour_visit($1,$2,'private',$3,updated_at,now()+interval '3 days',now()+interval '73 hours',$4,true)
+      from partner_private_visits where id=$3`, [partner, owner, visit, line]);
+    await assert.rejects(unplan(technician, "private", visit, privateVersion), /APPOINTMENT_CHANGED/);
+    await db.exec("set role authenticated");
+    await assert.rejects(unplan(technician, "sanispa", dossier, sanispaVersion), /permission denied/);
+  } finally { await db.close(); }
+});

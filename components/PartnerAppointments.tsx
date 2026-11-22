@@ -4,6 +4,7 @@ import { MapPin, Phone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button, ButtonLink } from "@/components/Button";
+import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { partnerAuthError } from "@/lib/partner-browser";
 import type { PartnerDay } from "@/lib/partner-day";
@@ -27,6 +28,7 @@ export function PartnerAppointments({ personalSchedule = false }: { personalSche
   const [cursor, setCursor] = useState<Pick<PartnerDay["appointments"][number], "starts_at" | "id"> | null>(null);
   const [workspace, setWorkspace] = useState<PartnerDay | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -67,6 +69,7 @@ export function PartnerAppointments({ personalSchedule = false }: { personalSche
       <Button type="button" variant={view === "upcoming" ? "primary" : "secondary"} aria-pressed={view === "upcoming"} onClick={() => refresh("upcoming")}>À venir</Button>
       <Button type="button" variant={view === "history" ? "primary" : "secondary"} aria-pressed={view === "history"} onClick={() => refresh("history")}>Historique</Button>
     </div> : null}
+    {notice ? <p role="status" className="mb-3 rounded-lg bg-emerald-50 p-3 text-sm font-bold text-emerald-900">{notice}</p> : null}
     {!workspace && !error ? <p role="status">Chargement des rendez-vous…</p> : null}
     {error ? <div className="rounded-lg bg-red-50 p-3">
       <p role="alert" className="text-red-800">{error}</p>
@@ -104,6 +107,15 @@ export function PartnerAppointments({ personalSchedule = false }: { personalSche
                 <MapPin size={16} aria-hidden="true" />Itinéraire
               </a> : null}
               <ButtonLink href={field}>Ouvrir la fiche terrain</ButtonLink>
+              {item.canUnplan ? <PartnerVisitUnplan requireReason onUnplan={async details => {
+                const result = await plannerRequest("/api/partner/day/unplan", {
+                  payload: { source: item.source, id: item.id, expected_at: item.version, ...details },
+                });
+                if (result?.saved) {
+                  setNotice("Créneau libéré. L’intervention est de nouveau à planifier.");
+                  refresh();
+                }
+              }} /> : null}
             </div>
           </li>;
         })}

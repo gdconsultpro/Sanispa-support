@@ -553,6 +553,7 @@ export default function PartnerPlanningPage() {
       id: visit.id, source: "private" as const, expectedAt: visit.updated_at, technicianId: visit.technician_id,
       title: visit.title, customer: visit.client.name, address: partnerClientAddress(visit.client), description: visit.description,
       durationMinutes: schedulingDuration(visit.title, durations),
+      unplanReason: workById.get("private:" + visit.id)?.unplanReason,
       maintenanceDueOn: visit.maintenance_due_on,
     })),
     ...(agenda?.pendingDossiers ?? []).map(dossier => ({
@@ -560,6 +561,7 @@ export default function PartnerPlanningPage() {
       title: problemLabel(dossier.problem_type), customer: dossier.customer?.name || "Client", address: dossier.customer?.address ?? "",
       reference: dossier.public_reference, description: dossier.preview_description,
       durationMinutes: schedulingDuration(sanispaSchedulingType(dossier.problem_type), durations),
+      unplanReason: workById.get("sanispa:" + dossier.id)?.unplanReason,
     })),
   ].filter(item => visibleIds.has(item.source + ":" + item.id));
   const unslotted = visibleItems.filter(item => !item.startsAt && (period === "month" || item.workStatus !== "pending"));

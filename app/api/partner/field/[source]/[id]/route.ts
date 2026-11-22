@@ -15,6 +15,7 @@ import { fieldPhotoBucket, fieldPhotoPath, loadFieldPhotos } from "@/lib/partner
 import { buildFieldReportPdf, customerSignature } from "@/lib/partner-field-pdf";
 import { partnerClientAddress, partnerSpaOption } from "@/lib/partner-planner";
 import { privateWorkStatus, sanispaWorkStatus } from "@/lib/partner-workspace";
+import type { AppointmentUnplanning } from "@/lib/partner-unplanning";
 import { stockSearchFilter } from "@/lib/partner-stock-movements";
 
 type Context = { params: Promise<{ source: string; id: string }> };
@@ -41,7 +42,7 @@ async function fieldCase(request: Request, context: Context) {
   const { source, id } = z.object({ source: z.enum(["private", "sanispa"]), id: uuid }).parse(await context.params);
   if (source === "private") {
     let query = supabase.from("partner_private_visits")
-      .select("id,client_id,title,description,spa_id,starts_at,ends_at,field_started_at,completed_at,validated_at,updated_at,previous_report,client:partner_private_clients!inner(name,email,phone,street,postal_code,city,deleted_at)")
+      .select("id,client_id,title,description,spa_id,starts_at,ends_at,field_started_at,completed_at,validated_at,updated_at,previous_report,unplanned_appointments,client:partner_private_clients!inner(name,email,phone,street,postal_code,city,deleted_at)")
       .eq("partner_id", partner.id).eq("id", id);
     if (partner.role !== "owner") {
       if (!technicianId) throw fieldError({ message: "FIELD_NOT_FOUND" });
@@ -151,13 +152,14 @@ async function loadFieldVisit(field: FieldCase, includePhotos: boolean): Promise
       session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
       photos: session && includePhotos ? await loadFieldPhotos(supabase, partner.id, session.id, true, fieldPhotoEndpoint(field, session.id)) : [], reports, previousReport: visit.previous_report,
       spaId: visit.spa_id, spas: equipment.data,
+      unplannedAppointments: partner.role === "owner" ? visit.unplanned_appointments as AppointmentUnplanning[] : undefined,
       canStart: !session && !visit.completed_at && Boolean(visit.starts_at && Date.parse(visit.starts_at) <= now),
       canValidate: workStatus === "review" && (partner.role === "owner" || Boolean(session?.submitted_at && session.started_by === field.user.id)),
       canEditSpa: !visit.completed_at,
     };
   } else {
     const { dossier } = field;
-    const [last, appointmentResult, reportResult, contact, reportDetails] = await Promise.all([
+    const [last, appointmentResult, reportResult, contact, reportDetails, unplanning] = await Promise.all([
       sessionResult,
       supabase.from("partner_appointments").select("diagnostic_id,starts_at,ends_at,technician_id,updated_at")
         .eq("diagnostic_id", id).eq("partner_id", partner.id).maybeSingle(),
@@ -167,9 +169,11 @@ async function loadFieldVisit(field: FieldCase, includePhotos: boolean): Promise
         .eq("source_diagnostic_id", id).is("deleted_at", null).maybeSingle(),
       supabase.from("partner_field_sessions").select("report_id,report_details,customer_signer:customer_signature->>name").eq("partner_id", partner.id)
         .eq("diagnostic_id", id).not("report_details", "is", null),
+      partner.role === "owner" ? supabase.from("diagnostic_activity").select("metadata").eq("diagnostic_id", id)
+        .eq("event_type", "appointment_cancelled").eq("metadata->>partner_id", partner.id).order("created_at") : null,
     ]);
-    if (last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error)
-      throw last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error;
+    if (last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error || unplanning?.error)
+      throw last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error || unplanning?.error;
     const appointment = appointmentResult.data ?? undefined;
     if (partner.role !== "owner" && appointment?.technician_id !== field.technicianId)
       throw fieldError({ message: "FIELD_NOT_FOUND" });
@@ -194,6 +198,7 @@ async function loadFieldVisit(field: FieldCase, includePhotos: boolean): Promise
       appointment: appointment ?? null, session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
       photos: session && includePhotos ? await loadFieldPhotos(supabase, partner.id, session.id, true, fieldPhotoEndpoint(field, session.id)) : [],
       workStatus, reports, spaId: link?.data?.spa_id ?? null, spas: equipment?.data ?? [],
+      unplannedAppointments: unplanning?.data?.map(entry => entry.metadata as AppointmentUnplanning),
       declaredSpa: [customer?.spa_brand, customer?.spa_model].filter(Boolean).join(" "),
       canStart: !session && Boolean(appointment && Date.parse(appointment.starts_at) <= now) && (workStatus === "scheduled" || workStatus === "due"),
       canValidate: false, canEditSpa: partner.role === "owner" && Boolean(clientId) && (["pending", "scheduled", "due", "in_progress"].includes(workStatus)),

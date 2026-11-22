@@ -1,4 +1,5 @@
 import { statusLabel } from "@/lib/display-labels";
+import { appointmentUnplanLabel } from "@/lib/partner-unplanning";
 import type { AdminActivity } from "@/lib/admin-dossier";
 
 function dateLabel(value: string) {
@@ -22,7 +23,7 @@ function eventLabel(item: AdminActivity) {
     partner_intervention_confirmed: "Intervention réalisée · confirmation du partenaire",
     partner_declined: typeof item.metadata?.company_name === "string" ? item.metadata.company_name + " a indiqué son indisponibilité" : "Partenaire indisponible · dossier à réattribuer",
     appointment_scheduled: "Rendez-vous enregistré ou déplacé",
-    appointment_cancelled: "Rendez-vous annulé",
+    appointment_cancelled: appointmentUnplanLabel(item.metadata) ? "Rendez-vous déplanifié par le technicien" : "Rendez-vous annulé",
     intervention_report_submitted: "Compte rendu transmis au client",
     client_intervention_validated: "Compte rendu validé par le client",
     notes_updated: "Notes internes modifiées",
@@ -85,6 +86,10 @@ export function AdminDossierHistory({ activity, error }: {
             <div className="min-w-0">
               <p className="font-bold text-sanispa-navy">{eventLabel(item)}</p>
               <p className="mt-0.5 break-words text-xs">{actorLabel(item)}</p>
+              {item.event_type === "appointment_cancelled" && appointmentUnplanLabel(item.metadata) ? <div className="mt-2 text-sm">
+                {typeof item.metadata?.starts_at === "string" ? <p>Ancien créneau · {dateLabel(item.metadata.starts_at)}</p> : null}
+                <p className="break-words">{appointmentUnplanLabel(item.metadata)}</p>
+              </div> : null}
             </div>
           </div>
           {before || after ? <details className="mt-2 min-w-0 sm:ml-44">

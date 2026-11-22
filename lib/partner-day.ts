@@ -15,6 +15,8 @@ export type PartnerDayAppointment = {
   ends_at: string;
   technician: string | null;
   status: PartnerWorkStatus;
+  version: string;
+  canUnplan: boolean;
 };
 export type PartnerDay = {
   day: string;

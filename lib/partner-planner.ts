@@ -1,3 +1,5 @@
+import type { AppointmentUnplanning } from "./partner-unplanning";
+
 export type PrivatePartnerClient = {
   id: string;
   name: string;
@@ -24,6 +26,7 @@ export type PrivatePartnerVisit = ScheduledVisit & {
   completed_at?: string | null;
   validated_at?: string | null;
   field_started_at?: string | null;
+  unplanned_appointments?: AppointmentUnplanning[];
   client: PrivatePartnerClient;
 } & MapPosition;
 export type PendingPrivatePartnerVisit = Omit<PrivatePartnerVisit, "starts_at" | "ends_at"> & {
@@ -92,6 +95,7 @@ export type PlannerAppointment = ScheduledVisit & {
 };
 export type PlannerQueueEntry = {
   durationMinutes?: number;
+  unplanReason?: string;
   maintenanceDueOn?: string | null;
   id: string;
   source: PlannerAppointment["source"];
@@ -156,10 +160,12 @@ export type PendingPartnerDossier = MapPosition & {
     performed_at: string; submitted_at: string; client_validated_at: string | null; client_outcome: string | null;
   }[];
   partner_field_sessions?: { appointment_start: string; submitted_at: string | null }[];
+  unplanning?: { metadata: AppointmentUnplanning }[];
   customer: { name: string | null; address: string | null } | null;
 };
 
 export type PlannerMapIntervention = {
+  unplanReason?: string;
   id: string;
   title: string;
   address: string;

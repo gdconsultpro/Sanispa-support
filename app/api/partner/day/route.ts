@@ -29,10 +29,10 @@ export async function GET(request: Request) {
     const cursor = params.has("start") || params.has("id")
       ? scheduleCursor.parse({ start: params.get("start"), id: params.get("id") }) : null;
     let privateVisits = supabase.from("partner_private_visits")
-      .select("id,title,starts_at,ends_at,technician_id,completed_at,validated_at,field_started_at,client:partner_private_clients!inner(name,phone,street,postal_code,city)")
+      .select("id,title,starts_at,ends_at,technician_id,updated_at,completed_at,validated_at,field_started_at,client:partner_private_clients!inner(name,phone,street,postal_code,city)")
       .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
     let sanispaVisits = supabase.from("partner_appointments")
-      .select("diagnostic_id,starts_at,ends_at,technician_id,diagnostic:diagnostics!inner(problem_type,status,intervened_at,created_at,customer:customers(name,address,phone),intervention_reports(performed_at,submitted_at,client_validated_at,client_outcome),partner_field_sessions(appointment_start,submitted_at))")
+      .select("diagnostic_id,starts_at,ends_at,technician_id,updated_at,diagnostic:diagnostics!inner(problem_type,status,intervened_at,created_at,customer:customers(name,address,phone),intervention_reports(performed_at,submitted_at,client_validated_at,client_outcome),partner_field_sessions(appointment_start,submitted_at))")
       .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id).is("diagnostic.archived_at", null)
       .eq("diagnostic.intervention_reports.partner_id", partner.id).eq("diagnostic.partner_field_sessions.partner_id", partner.id);
     if (personal && technicianId) {
@@ -65,7 +65,8 @@ export async function GET(request: Request) {
         return {
           id: row.id, source: "private" as const, title: row.title, customer: customer.name, phone: customer.phone,
           address: partnerClientAddress(customer), starts_at: row.starts_at, ends_at: row.ends_at,
-          technician: names.get(row.technician_id) ?? null, status: privateWorkStatus(row, +now),
+          technician: names.get(row.technician_id) ?? null, status: privateWorkStatus(row, +now), version: row.updated_at,
+          canUnplan: personal && !row.completed_at && !row.field_started_at,
         };
       }),
       ...sanispaRows.data!.map(row => {
@@ -73,10 +74,14 @@ export async function GET(request: Request) {
         const dossier = related(row.diagnostic) as unknown as Omit<SanispaPartnerVisit["diagnostic"], "customer"> & { customer: Customer | Customer[] | null };
         const customer = related(dossier.customer);
         const visit = { ...row, diagnostic: { ...dossier, customer } } as SanispaPartnerVisit;
+        const { workStatus } = sanispaWorkStatus(visit.diagnostic, visit, +now);
         return {
           id: row.diagnostic_id, source: "sanispa" as const, title: problemLabel(dossier.problem_type), customer: customer?.name || "Client",
           phone: customer?.phone ?? null, address: customer?.address ?? "", starts_at: row.starts_at, ends_at: row.ends_at,
-          technician: names.get(row.technician_id) ?? null, status: sanispaWorkStatus(visit.diagnostic, visit, +now).workStatus,
+          technician: names.get(row.technician_id) ?? null, status: workStatus, version: row.updated_at,
+          canUnplan: personal && (workStatus === "scheduled" || workStatus === "due") &&
+            !dossier.intervened_at && !dossier.intervention_reports?.length &&
+            !dossier.partner_field_sessions?.some(session => session.submitted_at === null),
         };
       }),
     ].sort((a, b) => (ascending ? 1 : -1) * (Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id)));

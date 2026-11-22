@@ -1,5 +1,6 @@
 import { partnerClientAddress, partnerMapPath, partnerPrivateVisitPath, plannerDate, plannerDay, type PendingPartnerDossier, type PendingPrivatePartnerVisit,
   type PlannerMapIntervention, type PlannerPeriod, type PlannerTechnician, type PrivatePartnerVisit, type SanispaPartnerVisit } from "./partner-planner";
+import { appointmentUnplanLabel } from "./partner-unplanning";
 import { problemLabel } from "./display-labels";
 
 export const workStatusLabels = {
@@ -94,6 +95,7 @@ export function workspaceWorkItems(data: PartnerWorkspaceData, now: number): Pla
       id: "private:" + visit.id, title: `${visit.title} · ${visit.client.name}`,
       startsAt: visit.starts_at, endsAt: visit.ends_at ?? undefined, activityAt: visit.starts_at,
       technicianId: visit.technician_id, address: partnerClientAddress(visit.client), description: visit.description, workStatus,
+      unplanReason: visit.starts_at ? undefined : appointmentUnplanLabel(visit.unplanned_appointments?.at(-1)),
       latitude: visit.latitude ?? visit.client.latitude, longitude: visit.longitude ?? visit.client.longitude,
       approximateLocation: visit.approximateLocation, client: visit.client, visit,
       reschedule: { source: "private" as const, id: visit.id, version: visit.updated_at, closed: Boolean(visit.completed_at || visit.field_started_at) },
@@ -108,6 +110,7 @@ export function workspaceWorkItems(data: PartnerWorkspaceData, now: number): Pla
       latitude: visit?.latitude ?? dossier.latitude ?? null, longitude: visit?.longitude ?? dossier.longitude ?? null,
       approximateLocation: visit?.approximateLocation ?? dossier.approximateLocation,
       reference: dossier.public_reference, description: dossier.preview_description,
+      unplanReason: visit ? undefined : appointmentUnplanLabel(dossier.unplanning?.[0]?.metadata),
       reschedule: visit ? { source: "sanispa", id, version: visit.updated_at, closed: workStatus !== "scheduled" && workStatus !== "due" } : undefined,
     };
   }

@@ -246,6 +246,7 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
               <span className="block text-xs font-semibold text-sanispa-blue">Échéance du {maintenanceDate(item.maintenanceDueOn)}</span>
               <span className="block text-xs">{item.description}</span>
             </> : null}
+            {item.unplanReason ? <span className="mt-1 block text-xs font-semibold text-sanispa-blue">À replanifier · {item.unplanReason}</span> : null}
             <span className="block text-xs text-sanispa-steel">{[item.reference ?? (item.source === "sanispa" ? "SANISPA" : ""), item.address].filter(Boolean).join(" · ")}</span>
           </button>
           <Link draggable={false} className="focus-ring inline-flex min-h-11 items-center px-2.5 text-sm font-bold text-sanispa-blue underline"

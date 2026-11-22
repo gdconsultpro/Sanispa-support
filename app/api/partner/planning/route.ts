@@ -368,7 +368,8 @@ export async function GET(request: Request) {
       if (queued.error) console.error("Les échéances d’entretien seront reprises à la prochaine actualisation.");
     }
     const now = new Date().toISOString();
-    const privateQuery = () => supabase.from("partner_private_visits").select(privateVisitColumns)
+    const privateQuery = (withHistory = false) => supabase.from("partner_private_visits")
+      .select(withHistory ? privateVisitColumns + ",unplanned_appointments" : privateVisitColumns)
       .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
     const sanispaQuery = () => supabase.from("partner_appointments")
       .select(`diagnostic_id,starts_at,ends_at,technician_id,updated_at,diagnostic:diagnostics!inner(${dossierFields},${reportStateFields})`)
@@ -381,13 +382,15 @@ export async function GET(request: Request) {
         : sanispaQuery().gte("starts_at", now).not("diagnostic.status", "in", "(CLOSED,terminé)"))
         .order("starts_at").order("diagnostic_id").range(from, to)),
       technicians(),
-      withPending ? allRows((from, to) => privateQuery().is("starts_at", null)
+      withPending ? allRows((from, to) => privateQuery(true).is("starts_at", null)
         .order("updated_at", { ascending: false }).order("id").range(from, to)) : null,
       withPending ? allRows((from, to) => supabase.from("diagnostics")
-        .select(`id,${dossierFields},partner_appointments(),intervention_reports()`)
+        .select(`id,${dossierFields},partner_appointments(),intervention_reports(),unplanning:diagnostic_activity(metadata)`)
         .eq("assigned_partner_id", partner.id).is("archived_at", null).not("status", "in", "(CLOSED,terminé)")
         .is("intervened_at", null)
         .eq("partner_appointments.partner_id", partner.id).is("partner_appointments", null).is("intervention_reports", null)
+        .eq("unplanning.event_type", "appointment_cancelled").eq("unplanning.metadata->>partner_id", partner.id)
+        .order("created_at", { referencedTable: "unplanning", ascending: false }).limit(1, { referencedTable: "unplanning" })
         .order("created_at", { ascending: false }).order("id").range(from, to)) : null,
       range && withPending && !forMap ? allRows((from, to) => supabase.from("diagnostics")
         .select(`id,${dossierFields},${reportStateFields},partner_appointments()`)

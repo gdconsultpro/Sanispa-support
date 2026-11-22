@@ -21,6 +21,7 @@ import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoLabels, fieldR
   type FieldPhotoKind } from "@/lib/partner-field-forms";
 import { partnerClientPath, partnerDirections, partnerEditVisitPath, partnerPrivateVisitPath, partnerSpaOption, plannerDate } from "@/lib/partner-planner";
 import { PlannerRequestError, plannerDownload, plannerRequest } from "@/lib/partner-planner-browser";
+import { appointmentUnplanLabel } from "@/lib/partner-unplanning";
 import { workStatusLabels, workspacePath } from "@/lib/partner-workspace";
 
 const card = "min-w-0 rounded-2xl border border-sanispa-line bg-white p-4 sm:p-5";
@@ -290,6 +291,14 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
         </form> : null}
         {data.canManage && data.customer.clientId ? <Link href={partnerClientPath(data.customer.clientId)} className={link}>Fiche client et équipements</Link> : null}
       </section>
+
+      {data.unplannedAppointments?.length ? <section className={card}>
+        <h2 className="text-lg font-bold">Historique des créneaux</h2>
+        <ul className="mt-2 space-y-2 text-sm">{data.unplannedAppointments.map(change => <li key={change.unplanned_at}>
+          <p className="font-bold">{dateLabel.formatRange(new Date(change.starts_at), new Date(change.ends_at))}</p>
+          <p className="break-words">{appointmentUnplanLabel(change)}</p>
+        </li>)}</ul>
+      </section> : null}
 
       {active && data.appointment && !session ? <Button type="button" disabled={busy} onClick={() => {
         void action(() => plannerRequest(base, { payload: { action: "start" } }), "Intervention démarrée.");
