@@ -11,21 +11,21 @@ export const partnerAccessSchema = z.discriminatedUnion("mode", [
 ]);
 export type PartnerAccessInput = z.infer<typeof partnerAccessSchema>;
 
-async function userByEmail(supabase: SupabaseClient, email: string) {
-  // Admin-only paginated Auth API: never replace a password when an address exists.
-  for (let page = 1; ; page++) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 100 });
-    if (error) throw new HttpError(503, "Impossible de vérifier si cette adresse possède déjà un compte. Aucun accès n’a été créé.");
-    const user = data.users.find(user => user.email?.toLowerCase() === email.toLowerCase());
-    if (user) return user;
-    if (data.users.length < 100) return null;
-  }
+type AccessAccount = Pick<User, "id" | "email_confirmed_at" | "banned_until" | "app_metadata">;
+
+async function userByEmail(supabase: SupabaseClient, actorId: string, email: string): Promise<AccessAccount | null> {
+  const { data, error } = await supabase.rpc("find_admin_partner_account", { p_actor: actorId, p_email: email });
+  if (error?.message === "ACCOUNT_EMAIL_AMBIGUOUS")
+    throw new HttpError(409, "Plusieurs comptes correspondent à cette adresse. Vérifiez l’adresse de votre collaborateur.");
+  if (error?.message === "ADMIN_REQUIRED") throw new HttpError(403, "Accès administrateur requis.");
+  if (error) throw new HttpError(503, "Impossible de vérifier cette adresse. Réessayez dans un instant.");
+  return data;
 }
 export async function createPartnerAccess(supabase: SupabaseClient, partnerId: string, actorId: string, input: PartnerAccessInput) {
   const { data: company, error } = await supabase.from("partners").select("id,active").eq("id", partnerId).maybeSingle();
   if (error) throw error;
   if (!company?.active) throw new HttpError(409, "Activez d’abord l’entreprise partenaire avant de créer son accès.");
-  let user: User | null = await userByEmail(supabase, input.email);
+  let user = await userByEmail(supabase, actorId, input.email);
   let created = false;
   if (input.mode === "lookup") {
     if (!user) throw new HttpError(404, "Aucun compte de connexion ne correspond à cette adresse. Choisissez « Créer un nouveau compte » pour préparer son accès.");

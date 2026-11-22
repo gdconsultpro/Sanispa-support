@@ -29,6 +29,10 @@ test("only the partner owner can link a registered technician to a line of the s
     await db.query("insert into public.partner_planning_technicians(partner_id,id,name) values($1,$2,'Alice'),($1,$3,'Bob'),($4,$5,'Bavarde')", [partner, alice, bob, other, lineOutside]);
     await db.exec("set role service_role");
     const adminLink = "select public.link_partner_account($1,$2,$3,$4,false,$5)";
+    const lookup = "select find_admin_partner_account($1,$2) as account";
+    assert.equal((await db.query<{account: {id: string}}>(lookup, [admin, first + "@EXAMPLE.INVALID"])).rows[0].account.id, first);
+    assert.equal((await db.query<{account: unknown}>(lookup, [admin, "missing@example.invalid"])).rows[0].account, null);
+    await assert.rejects(db.query(lookup, [owner, first + "@example.invalid"]), /ADMIN_REQUIRED/);
     await db.query("select public.link_partner_account($1,$2,$3,'Responsable')", [partner, owner, admin]);
     const firstLink = await db.query(adminLink, [partner, first, admin, "Alice", "technician"]);
     assert.deepEqual((await db.query(adminLink, [partner, first, admin, "Alice", "technician"])).rows, firstLink.rows);

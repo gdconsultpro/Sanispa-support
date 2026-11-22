@@ -14,7 +14,10 @@ async function fixture(run:(s:any)=>Promise<void>){
  const client=createClient("https://test-partner.invalid","mock-only",{auth:{persistSession:false,autoRefreshToken:false},global:{fetch:async(url,options)=>{
   const u=new URL(String(url)); assert.equal(u.origin,"https://test-partner.invalid");
   if(u.pathname==="/rest/v1/partners") return Response.json({id:partnerId,active:true});
-  if(u.pathname==="/auth/v1/admin/users" && (!options?.method || options.method==="GET")) return Response.json({users:state.existing?[user]:[],aud:"authenticated"});
+  if(u.pathname==="/rest/v1/rpc/find_admin_partner_account") {
+   assert.deepEqual(JSON.parse(String(options?.body)),{p_actor:id,p_email:user.email});
+   return Response.json(state.existing?user:null);
+  }
   if(u.pathname==="/auth/v1/admin/users" && options?.method==="POST") {state.created++;state.lastCreate=JSON.parse(String(options.body));return Response.json(user);}
   if(u.pathname==="/rest/v1/rpc/link_partner_account"){state.linked++;const body=JSON.parse(String(options?.body));assert(!JSON.stringify(body).includes(input.password));return state.linkError?Response.json({message:state.linkError,code:"P0001"},{status:400}):Response.json(id);}
   throw new Error(`Unexpected transport ${u.pathname}`);
