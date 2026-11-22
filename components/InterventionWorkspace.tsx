@@ -10,6 +10,7 @@ import { partnerLoginPath } from "@/lib/partner-navigation";
 import { clientCaseLoginPath, clientCaseReturnPath, clientDossierPath } from "@/lib/client-case-navigation";
 import { partnerWorkLabels, partnerWorkState } from "@/lib/partner-work";
 import { fieldReportFilename, type FieldPhoto } from "@/lib/partner-field";
+import { ClientDeclarationDetails } from "./ClientDeclarationDetails";
 type Report = { id: string; performed_at: string; submitted_at: string; findings: string; actions: string; next_steps: string; client_validated_at: string | null;
   client_outcome: "repaired" | "quote_pending" | "abandoned" | null; responsiveness: number | null; professionalism: number | null; pricing: number | null;
   signedPdf?: boolean };
@@ -142,6 +143,7 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
               <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{data.additionalInformation}</p>
             </div>
           ) : null}
+          <ClientDeclarationDetails key={id} load={() => request(`${base}?declaration=1`)} />
           <div className="mt-3 text-sm">
             <p>Résumé de votre déclaration (PDF)</p>
             <PrivateFile url={`/api/client/documents/${id}/pdf`} name={`Résumé SANISPA ${data.dossierReference || ""}.pdf`} />

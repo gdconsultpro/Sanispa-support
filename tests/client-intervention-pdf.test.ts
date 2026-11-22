@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { PDFDocument } from "pdf-lib";
 import { GET } from "../app/api/client/interventions/[id]/route";
 
-test("signed reports and additional information are available to the dossier owner", async context => {
+test("the dossier owner can read the signed report and submitted declaration", async context => {
   const env = { ...process.env };
   const db = "https://client-report.fixture.invalid";
   Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: db, SUPABASE_SERVICE_ROLE_KEY: "fixture" });
@@ -17,7 +17,9 @@ test("signed reports and additional information are available to the dossier own
   let signed = true;
   let pdfLookups = 0;
   let noteLookups = 0;
+  let declarationLookups = 0;
   let note: string | null = "Le débit est faible.\nLa pompe s’arrête après quatre minutes.";
+  const photoPath = `${dossier}/photo fictive`;
   context.mock.method(globalThis, "fetch", async (input: URL | string | Request) => {
     const url = new URL(String(input));
     assert.equal(url.origin, db);
@@ -43,11 +45,20 @@ test("signed reports and additional information are available to the dossier own
       }]);
     }
     if (table === "diagnostic_answers") {
-      noteLookups++;
       assert.equal(param("diagnostic_id"), "eq." + dossier);
+      if (param("question_key") === "neq.additional_information") {
+        declarationLookups++;
+        return Response.json([{ id: id(9), question_label: "Quels jets ?", answer: "Un groupe de jets" }]);
+      }
+      noteLookups++;
       assert.equal(param("question_key"), "eq.additional_information");
       assert.equal(param("select"), "answer");
       return Response.json(note ? [{ answer: note }] : []);
+    }
+    if (table === "diagnostic_photos") {
+      declarationLookups++;
+      assert.equal(param("diagnostic_id"), "eq." + dossier);
+      return Response.json([{ id: id(10), photo_type: "visible_problem", storage_path: photoPath }]);
     }
     if (table === "partner_appointments" || table === "client_documents") return Response.json([]);
     if (table === "partners") {
@@ -89,11 +100,24 @@ test("signed reports and additional information are available to the dossier own
     assert.equal(pdfLookups, 2);
     assert.equal(noteLookups, 0);
     assert.equal((await get()).status, 404);
+    assert.equal((await get("?declaration=1")).status, 404);
     assert.equal(noteLookups, 0);
+    assert.equal(declarationLookups, 0);
     requestUser = owner;
     const workspace = await get();
     assert.equal(workspace.status, 200);
     assert.equal((await workspace.json()).additionalInformation, note);
+    assert.equal(declarationLookups, 0);
+    const declaration = await get("?declaration=1");
+    assert.equal(declaration.status, 200);
+    assert.equal(declaration.headers.get("cache-control"), "private, no-store");
+    assert.deepEqual(await declaration.json(), {
+      answers: [{ id: id(9), label: "Quels jets ?", value: "Un groupe de jets" }],
+      photos: [{
+        id: id(10), label: "Photo du problème visible ou de l’équipement concerné",
+        url: `/api/files/photo?path=${encodeURIComponent(photoPath)}`,
+      }],
+    });
     note = null;
     assert.equal((await (await get()).json()).additionalInformation, null);
   } finally {

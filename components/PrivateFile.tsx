@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { authHeaders } from "@/lib/storage";
 import { downloadBlob } from "@/lib/download";
-export function PrivateFile({url,name,photo=false,label}:{url:string;name:string;photo?:boolean;label?:string}) {
+export function PrivateFile({url,name,photo=false,label,photoFit="cover"}:{url:string;name:string;photo?:boolean;label?:string;photoFit?:"cover"|"contain"}) {
   const [src,setSrc]=useState("");
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
@@ -24,5 +24,5 @@ export function PrivateFile({url,name,photo=false,label}:{url:string;name:string
     }catch{setError("Téléchargement impossible. Reconnectez-vous puis réessayez.");}
     finally{setBusy(false);}
   }
-  return <div>{photo && src && <Image unoptimized src={src} width={400} height={200} alt={name} className="h-36 w-full rounded-md object-cover"/>}<button type="button" onClick={download} disabled={busy} className="focus-ring mt-2 rounded-md border border-sanispa-line px-3 py-2 text-sm font-bold">{busy?'Téléchargement…':label ?? (photo?name:'Télécharger')}</button>{error && <p role="alert" className="text-sm text-red-700">{error}</p>}</div>;
+  return <div>{photo && src && <Image unoptimized src={src} width={400} height={200} alt={name} className={`h-36 w-full rounded-md ${photoFit === "contain" ? "object-contain" : "object-cover"}`}/>}<button type="button" onClick={download} disabled={busy} className="focus-ring mt-2 rounded-md border border-sanispa-line px-3 py-2 text-sm font-bold">{busy?'Téléchargement…':label ?? (photo?name:'Télécharger')}</button>{error && <p role="alert" className="text-sm text-red-700">{error}</p>}</div>;
 }

@@ -5,7 +5,7 @@ import { interventionCase, interventionError, loadIntervention, reviewSchema } f
 import { loadFieldPhotos } from "@/lib/partner-field-photos";
 import { buildFieldReportPdf } from "@/lib/partner-field-pdf";
 import { fieldReportFilename } from "@/lib/partner-field";
-import { problemLabel } from "@/lib/display-labels";
+import { photoLabel, problemLabel } from "@/lib/display-labels";
 import { z } from "zod";
 type Context = { params: Promise<{ id: string }> };
 export async function GET(request: Request, context: Context) {
@@ -49,6 +49,23 @@ export async function GET(request: Request, context: Context) {
         .eq("diagnostic_id", id).eq("partner_id", report.partner_id).eq("report_id", reportId).not("submitted_at", "is", null).maybeSingle();
       if (error) throw error;
       return NextResponse.json({ photos: session ? await loadFieldPhotos(supabase, report.partner_id, session.id) : [] }, { headers });
+    }
+    if (query.has("declaration")) {
+      const [answers, photos] = await Promise.all([
+        supabase.from("diagnostic_answers").select("id,question_label,answer")
+          .eq("diagnostic_id", id).neq("question_key", "additional_information").order("created_at"),
+        supabase.from("diagnostic_photos").select("id,photo_type,storage_path")
+          .eq("diagnostic_id", id).order("created_at"),
+      ]);
+      if (answers.error || photos.error) throw answers.error || photos.error;
+      return NextResponse.json({
+        answers: answers.data.map(row => ({ id: row.id, label: row.question_label, value: row.answer })),
+        photos: photos.data.map(row => ({
+          id: row.id,
+          label: photoLabel(row.photo_type),
+          url: `/api/files/photo?path=${encodeURIComponent(row.storage_path)}`,
+        })),
+      }, { headers });
     }
     const [{ reports, ...workspace }, additionalInformation] = await Promise.all([
       loadIntervention(supabase, id),
