@@ -449,7 +449,7 @@ export default function EspaceClientPage() {
               <button type="button" className="focus-ring mt-2 min-h-11 font-bold underline" onClick={() => selectView("documents")}>Ouvrir mes documents</button>
             </section>
             <div className="flex flex-wrap items-center gap-3">
-              <ButtonLink href="/diagnostic?new=1" variant="secondary">Déclarer une panne</ButtonLink>
+              <ButtonLink href={availableDrafts.length ? "/diagnostic?new=1" : "/diagnostic"} variant="secondary">{availableDrafts.length ? "Nouvelle demande" : "Déclarer une panne"}</ButtonLink>
               <button type="button" className="focus-ring min-h-12 px-2 font-bold underline" onClick={() => selectView("spas")}>Mes spas</button>
             </div>
           </>

@@ -67,7 +67,7 @@ export function VideoAssistance({ audience, diagnosticId }: { audience: "custome
         <label className="block text-sm font-bold">Sur quoi souhaitez-vous être aidé ?<textarea required minLength={10} maxLength={1500} rows={4} value={details} onChange={event => setDetails(event.target.value)} className={input} /></label>
         <label className="block text-sm font-bold">Vos disponibilités<textarea required minLength={3} maxLength={500} rows={2} value={availability} onChange={event => setAvailability(event.target.value)} placeholder="Exemple : mardi ou jeudi, entre 14 h et 17 h" className={input} /></label>
         <Button type="submit" disabled={loading || busy || !paymentsPaused() || (audience === "customer" && !selected)}>{busy ? "Enregistrement…" : "Demander ma visio"}</Button>
-        {audience === "customer" && !loading && !diagnostics.length ? <Link href="/diagnostic?new=1" className="block text-sm font-bold underline">Commencer mon prédiagnostic gratuit →</Link> : null}
+        {audience === "customer" && !loading && !diagnostics.length ? <Link href="/diagnostic" className="block text-sm font-bold underline">Commencer mon prédiagnostic gratuit →</Link> : null}
       </form>
     </section>
     <section className="min-w-0"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-2xl font-bold">Mes demandes de visio</h2><button onClick={() => void load()} className="focus-ring rounded-full px-3 py-2 text-sm font-bold text-sanispa-blue underline">Actualiser</button></div>

@@ -4,6 +4,7 @@ import {
   confirmedClientDestination,
   clientConfirmationUrl,
 } from "../lib/client-access";
+import { publicDeclarationResumePath } from "../lib/client-drafts";
 import { emptyDraft } from "../lib/storage";
 import {
   isQuestionVisible,
@@ -143,6 +144,15 @@ test("confirmation returns to the questionnaire once, or to declaration on a dif
     ).searchParams.get("problemType"),
     null,
   );
+});
+test("a local visitor resumes the relevant stage and can keep the draft when signing into an existing account", () => {
+  assert.equal(publicDeclarationResumePath("/diagnostic"), "/diagnostic");
+  assert.equal(publicDeclarationResumePath("/questionnaire"), "/questionnaire");
+  assert.equal(publicDeclarationResumePath("/upload"), "/acces?next=diagnostic");
+  const anonymous = fixture("fuite", { visible_leak: "Oui" });
+  assert.equal(confirmedClientDestination(anonymous, "client@example.invalid"), "/questionnaire");
+  assert.equal(confirmedClientDestination(anonymous, "client@example.invalid", false), "/espace-client");
+  assert.equal(confirmedClientDestination({ ...anonymous, email: "other@example.invalid" }, "client@example.invalid"), "/diagnostic");
 });
 test("leak questionnaire is focused on water loss and a second fault is explicitly opt-in", () => {
   let draft = fixture("fuite", {});

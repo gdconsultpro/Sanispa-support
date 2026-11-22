@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DraftSave } from "@/components/DraftSave";
+import { useClientSession } from "@/components/SessionPrivacy";
+import { Field, SelectField } from "@/components/Field";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { BackLink } from "@/components/BackLink";
@@ -14,9 +16,10 @@ import {
   validateAnswers,
 } from "@/lib/diagnostic-answers";
 import { DiagnosticDraft } from "@/lib/types";
-import { emptyDraft, readDraft, saveDraft } from "@/lib/storage";
+import { emptyDraft, readDraft, saveDraft, writeDraft } from "@/lib/storage";
 export default function QuestionnairePage() {
   const router = useRouter();
+  const confirmed = Boolean(useClientSession()?.user.email_confirmed_at);
   const [draft, setDraft] = useState<DiagnosticDraft>(emptyDraft);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -34,7 +37,13 @@ export default function QuestionnairePage() {
     setError("");
     try {
       validateAnswers(draft, false);
+      if (!draft.installationType) throw new Error("Indiquez si le spa est installé à l’intérieur ou à l’extérieur.");
       setSaving(true);
+      if (!confirmed) {
+        writeDraft({ ...draft, draftId: draft.draftId || crypto.randomUUID() }, "/upload");
+        router.push("/acces?next=diagnostic");
+        return;
+      }
       await saveDraft(draft, "/upload");
       router.push("/upload");
     } catch (e) {
@@ -52,7 +61,7 @@ export default function QuestionnairePage() {
         title={problemLabel}
         description="Commencez par ce que vous constatez, puis précisez les circonstances. Aucune connaissance technique n’est nécessaire. Seules les réponses marquées d’un * sont obligatoires. Les autres informations sont facultatives ; vous pouvez répondre « Je ne sais pas »."
       />
-      <DraftSave draft={draft} step="/questionnaire" />
+      <DraftSave draft={draft} step="/questionnaire" sync={confirmed} />
       <BackLink href="/diagnostic" />
       <p className="mb-4 rounded-md bg-sanispa-ice p-4 text-sm leading-6 text-sanispa-navy">
         {draft.problemType === "traitement-eau"
@@ -90,6 +99,20 @@ export default function QuestionnairePage() {
               />
             </div>
           ))}
+        {!confirmed || !draft.installationType ? <section aria-labelledby="installation-spa" className="space-y-3 border-t border-sanispa-line pt-5">
+          <h2 id="installation-spa" className="text-lg font-bold">Votre spa</h2>
+          <SelectField label="Type d’installation" name="installationType" value={draft.installationType} required
+            options={[{ value: "interieur", label: "Intérieur" }, { value: "exterieur", label: "Extérieur" }]}
+            onChange={value => setDraft(current => ({ ...current, installationType: value as DiagnosticDraft["installationType"] }))} />
+          {!confirmed ? <details className="rounded-xl border border-sanispa-line p-3">
+            <summary className="cursor-pointer font-bold">Préciser le modèle du spa (facultatif)</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field label="Marque" name="spaBrand" value={draft.spaBrand} onChange={spaBrand => setDraft(current => ({ ...current, spaBrand }))} />
+              <Field label="Modèle" name="spaModel" value={draft.spaModel} onChange={spaModel => setDraft(current => ({ ...current, spaModel }))} />
+              <Field label="Année approximative" name="spaYear" value={draft.spaYear} onChange={spaYear => setDraft(current => ({ ...current, spaYear }))} />
+            </div>
+          </details> : null}
+        </section> : null}
         {error ? (
           <p
             role="alert"
@@ -99,7 +122,7 @@ export default function QuestionnairePage() {
           </p>
         ) : null}
         <Button disabled={saving} type="submit" className="w-full sm:w-auto">
-          {saving ? "Sauvegarde en cours…" : "Continuer vers les photos"}
+          {saving ? "Sauvegarde en cours…" : confirmed ? "Continuer vers les photos" : "Continuer vers mon compte"}
         </Button>
       </form>
     </AppShell>

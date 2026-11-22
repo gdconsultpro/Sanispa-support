@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AuthArrival } from "@/components/AuthArrival";
 import { ClipboardCheck, ImagePlus, ShieldCheck, Wrench } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { DeclarationEntry } from "@/components/DeclarationEntry";
 import { ButtonLink } from "@/components/Button";
 export default function HomePage() {
   return (
@@ -21,7 +22,7 @@ export default function HomePage() {
             demande. Aucune connaissance technique nécessaire.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <ButtonLink href="/diagnostic?new=1">Déclarer une panne</ButtonLink>
+            <DeclarationEntry home />
             <ButtonLink href="/espace-client" variant="secondary">Mon espace spa</ButtonLink>
           </div>
           <p className="mt-4 text-sm"><Link href="/diagnostic?new=1&problemType=demenagement" className="focus-ring font-bold underline">Je souhaite déménager mon spa →</Link></p>

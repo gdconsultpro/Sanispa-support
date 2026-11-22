@@ -37,7 +37,8 @@ export function confirmedClientDestination(
   if (
     draft.problemType &&
     !draft.diagnosticId &&
-    draft.email.trim().toLowerCase() === email.toLowerCase()
+    (draft.email.trim().toLowerCase() === email.toLowerCase() ||
+      (declarationIntent && !draft.email.trim() && !draft.version))
   )
     return draft.problemType === "demenagement" ? "/upload" : "/questionnaire";
   return declarationIntent ? "/diagnostic" : "/espace-client";

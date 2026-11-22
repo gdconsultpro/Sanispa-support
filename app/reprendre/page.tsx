@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { publicDeclarationResumePath } from "@/lib/client-drafts";
 import { readLocalProgress, restoreDraft } from "@/lib/storage";
 
 export default function ResumeDraft() {
@@ -16,11 +17,16 @@ export default function ResumeDraft() {
         const progress = readLocalProgress();
         const { data } = await getSupabaseBrowser().auth.getSession();
         const email = data.session?.user.email?.toLowerCase();
-        if (!progress?.pending || (email && progress.draft.email && email !== progress.draft.email.trim().toLowerCase())) {
+        if (!progress || (email && progress.draft.email && email !== progress.draft.email.trim().toLowerCase())) {
           throw new Error("Aucun brouillon à reprendre sur cet appareil pour ce compte.");
         }
-        // A disconnected user can return to the first step and confirm their account.
-        if (active) window.location.replace(data.session ? progress.step : "/diagnostic");
+        const confirmed = Boolean(data.session?.user.email_confirmed_at);
+        if (confirmed && !progress.pending && progress.draft.draftId) {
+          const result = await restoreDraft(progress.draft.draftId);
+          if (active) window.location.replace(result.step);
+        } else if (active) {
+          window.location.replace(confirmed ? progress.step : publicDeclarationResumePath(progress.step));
+        }
         return;
       }
       const id = params.get("id");

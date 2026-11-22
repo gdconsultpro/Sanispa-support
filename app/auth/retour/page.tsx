@@ -54,7 +54,27 @@ export default function Callback() {
         );
         if (destination === "/questionnaire" || destination === "/upload") {
           const step = progress?.updatedAt ? progress.step : destination;
-          await saveDraft(draft, step);
+          const email = data.session.user.email || "";
+          let nextDraft = { ...draft, email };
+          if (!draft.email.trim()) {
+            try {
+              const response = await fetch("/api/client/profile", {
+                headers: { Authorization: `Bearer ${data.session.access_token}` }, signal: AbortSignal.timeout(5000),
+              });
+              if (response.ok) {
+                const { profile } = await response.json();
+                nextDraft = {
+                  ...nextDraft,
+                  name: draft.name || [profile?.first_name, profile?.last_name].filter(Boolean).join(" "),
+                  phone: draft.phone || profile?.phone || "",
+                  address: draft.address || profile?.address || "",
+                  postalCode: draft.postalCode || profile?.postal_code || "",
+                  city: draft.city || profile?.city || "",
+                };
+              }
+            } catch { /* Les coordonnées manquantes pourront être renseignées dans le résumé. */ }
+          }
+          await saveDraft(nextDraft, step);
           if (active) window.location.replace(step);
         } else if (active && destination === "/diagnostic") {
           const requested = new URLSearchParams(window.location.search).get(

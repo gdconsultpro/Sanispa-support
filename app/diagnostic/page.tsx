@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ProblemPicker } from "@/components/ProblemPicker";
 import { DraftSave } from "@/components/DraftSave";
 import { AppShell } from "@/components/AppShell";
-import { Button } from "@/components/Button";
+import { Button, ButtonLink } from "@/components/Button";
 import { BackLink } from "@/components/BackLink";
 import { Field, SelectField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
@@ -18,6 +18,7 @@ import { DiagnosticDraft } from "@/lib/types";
 import {
   emptyDraft,
   readDraft,
+  readLocalProgress,
   writeDraft,
   saveDraft,
   clearDraft,
@@ -55,6 +56,8 @@ function DiagnosticContent() {
   const [otherSpa, setOtherSpa] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmNew, setConfirmNew] = useState(false);
+  const [reset, setReset] = useState(0);
   useEffect(() => {
     const requestedProblem = problemTypes.find(
       (p) => p.value === searchParams.get("problemType"),
@@ -62,10 +65,15 @@ function DiagnosticContent() {
     let active = true;
     const url = new URL(window.location.href);
     if (url.searchParams.get("new") === "1") {
+      if (readLocalProgress()?.pending) {
+        setConfirmNew(true);
+        return;
+      }
       clearDraft();
       url.searchParams.delete("new");
       window.history.replaceState(null, "", url);
     }
+    setConfirmNew(false);
     const savedDraft = readDraft();
     const initial = normalizeDiagnostic({ ...savedDraft, problemType: savedDraft.problemType || requestedProblem || "" });
     async function prefillFromClientAccount() {
@@ -118,9 +126,10 @@ function DiagnosticContent() {
     }
     prefillFromClientAccount();
     return () => { active = false; };
-  }, [searchParams]);
+  }, [searchParams, reset]);
   const moving = draft.problemType === "demenagement";
-  const showContact = moving || !accountEmail;
+  const publicBreakdown = !moving && !accountEmail;
+  const showContact = moving;
   const selectedSpa = spas.find(spa => spa.id === draft.spaId);
   const manualSpa = otherSpa || (!selectedSpa && hasSpaDetails(draft));
   const showSpaFields = moving || !accountEmail || !spas.length || manualSpa;
@@ -156,7 +165,7 @@ function DiagnosticContent() {
     event.preventDefault();
     if (busy) return;
     setError("");
-    if (!draft.problemType || !draft.installationType || (showContact && missingContactFields(draft).length)) {
+    if (!draft.problemType || (!publicBreakdown && !draft.installationType) || (showContact && missingContactFields(draft).length)) {
       setError(
         "Veuillez renseigner tous les champs obligatoires avant de continuer.",
       );
@@ -177,7 +186,7 @@ function DiagnosticContent() {
       const destination = moving ? "/upload" : "/questionnaire";
       if (!data.session?.user.email_confirmed_at) {
         writeDraft(next, destination);
-        router.push("/acces?next=diagnostic");
+        router.push(moving ? "/acces?next=diagnostic" : destination);
         return;
       }
       await saveDraft(next, destination);
@@ -200,14 +209,28 @@ function DiagnosticContent() {
       <Field label="Année approximative si connue" name="spaYear" value={draft.spaYear} onChange={value => update("spaYear", value)} />
     </div>
   );
+  if (confirmNew) return <AppShell compact>
+    <section className="max-w-xl rounded-2xl border border-sanispa-line bg-white p-5">
+      <h1 className="text-2xl font-bold">Une déclaration est déjà en cours</h1>
+      <p className="my-3">Reprenez votre brouillon ou remplacez-le par une nouvelle demande.</p>
+      <div className="flex flex-wrap gap-3">
+        <ButtonLink href="/reprendre?local=1">Reprendre ma déclaration</ButtonLink>
+        <Button type="button" variant="secondary" onClick={() => {
+          clearDraft();
+          setConfirmNew(false);
+          setReset(value => value + 1);
+        }}>Commencer une nouvelle demande</Button>
+      </div>
+    </section>
+  </AppShell>;
   if (!ready) return <AppShell compact><p role="status">Chargement de votre déclaration…</p></AppShell>;
   return (
     <AppShell compact>
       <StepHeader
         eyebrow="Étape 1"
         labels={moving ? ["Le transport", "Photos et vidéos", "La validation"] : undefined}
-        title={moving ? "Préparer le déménagement de mon spa" : accountEmail ? "Déclarer une panne" : "Informations client et spa"}
-        description={moving ? "Décrivez le spa, le trajet et les accès aux deux adresses. Vos photos et vidéos permettront à SANISPA d’étudier la faisabilité et de préparer un devis. Aucune réservation ni facturation à cette étape." : accountEmail ? "Choisissez la panne et le spa concerné. Vous pourrez vérifier vos coordonnées avant l’envoi." : "Les champs marqués d’un * sont obligatoires. Votre saisie sera conservée pour la reprendre après confirmation de votre compte."}
+        title={moving ? "Préparer le déménagement de mon spa" : "Déclarer une panne"}
+        description={moving ? "Décrivez le spa, le trajet et les accès aux deux adresses. Vos photos et vidéos permettront à SANISPA d’étudier la faisabilité et de préparer un devis. Aucune réservation ni facturation à cette étape." : accountEmail ? "Choisissez la panne et le spa concerné. Vous pourrez vérifier vos coordonnées avant l’envoi." : "Choisissez le symptôme pour commencer. Vous pourrez décrire la panne avant de créer votre compte."}
       />
       <DraftSave draft={draft} step="/diagnostic" sync={Boolean(accountEmail && draft.email === accountEmail)} />
       <BackLink href="/espace-client" label="Retour à mon espace client" />
@@ -220,6 +243,7 @@ function DiagnosticContent() {
           value={draft.problemType}
           onChange={(value) => update("problemType", value)}
         />}
+        {!publicBreakdown ? <>
         <h2 className="border-t border-sanispa-line pt-6 text-xl font-bold">
           {moving ? "Vos coordonnées et le lieu d’enlèvement" : showContact ? "Votre spa et vos coordonnées" : "Le spa concerné"}
         </h2>
@@ -255,13 +279,15 @@ function DiagnosticContent() {
           </div>
         ) : null}
 
+        </> : null}
+
         {moving ? <div className="space-y-5 border-t border-sanispa-line pt-6">{questionSets.demenagement.filter(q => isQuestionVisible(q, draft.answers, questionSets.demenagement)).map(q => <div key={q.id} className="space-y-3">{q.section ? <h2 className="text-xl font-bold">{q.section}</h2> : null}<DiagnosticQuestion question={q} value={draft.answers[q.id]} onChange={value => { setError(""); setDraft(current => ({ ...updateDiagnosticAnswer(current, q.id, value), ...(q.id === "moving_departure" ? { address: String(value) } : {}) })); }} /></div>)}<p className="rounded-xl bg-sanispa-ice p-4 text-sm leading-6">Ne déplacez pas le spa pour répondre. Le poids, les dimensions et les moyens de levage seront confirmés par le professionnel avant le transport.</p></div> : null}
         {error ? (
           <p role="alert" className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">
             {error}
           </p>
         ) : null}
-        {!accountEmail ? <p className="text-sm text-sanispa-steel">
+        {!accountEmail && moving ? <p className="text-sm text-sanispa-steel">
           Vous pourrez créer votre compte avec un mot de passe. L’e-mail de confirmation vous ramènera à votre demande.
         </p> : null}
         <Button type="submit" disabled={busy} className="w-full sm:w-auto">

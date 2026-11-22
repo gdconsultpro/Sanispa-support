@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { paymentsPaused } from "@/lib/commercial-mode";
+import { DeclarationEntry } from "./DeclarationEntry";
 import { ClientAccountLink } from "./ClientAccountLink";
 import { ProfessionalAccountLink } from "./ProfessionalAccountLink";
 
@@ -29,7 +30,7 @@ export function AppShell({
             />
           </Link>
           <nav aria-label="Navigation principale" className="flex flex-wrap items-center justify-end gap-2 text-sm font-bold">
-            <Link href="/diagnostic?new=1" className="focus-ring rounded-full bg-sanispa-blue px-4 py-3 text-white">Déclarer une panne</Link>
+            <DeclarationEntry />
             <ClientAccountLink clientSpace={clientSpace} />
             <ProfessionalAccountLink clientSpace={clientSpace} />
           </nav>

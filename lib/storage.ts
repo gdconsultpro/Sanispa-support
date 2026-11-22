@@ -3,6 +3,13 @@ import { DiagnosticDraft } from "@/lib/types";
 import { getSupabaseBrowser } from "./supabase-browser";
 import { draftSteps, type DraftStep } from "./client-drafts";
 export const draftKey = "sanispa-diagnostic-draft";
+export const localDeclarationChanged = "sanispa-declaration-change";
+export type LocalDeclarationState = { email: string } | null;
+
+function notifyDeclarationChange(draft?: DiagnosticDraft) {
+    const detail: LocalDeclarationState = draft?.problemType && !draft.diagnosticId ? { email: draft.email } : null;
+    window.dispatchEvent(new CustomEvent(localDeclarationChanged, { detail }));
+}
 type LocalProgress = { step: DraftStep; updatedAt: string; pending: boolean };
 export const emptyDraft: DiagnosticDraft = { name: "", phone: "", email: "", address: "", postalCode: "", city: "", spaBrand: "", spaModel: "", spaYear: "", installationType: "", powerSupply: "", problemType: "", answers: {}, photos: {}, choice: "", paymentPlan: "" };
 function readStoredDraft(): DiagnosticDraft & { localProgress?: LocalProgress } {
@@ -36,13 +43,18 @@ export function writeDraft(draft: DiagnosticDraft, step?: DraftStep, pending = t
             ...(localStep ? { localProgress: { step: localStep, updatedAt: new Date().toISOString(), pending } } : {}),
         });
         window.localStorage.setItem(draftKey, value);
+        notifyDeclarationChange(draft);
         return value;
     }
     catch {
         throw new Error("La sauvegarde sur cet appareil est impossible. Réduisez les photos ou libérez de l'espace.");
     }
 }
-export function clearDraft() { window.localStorage.removeItem(draftKey); window.localStorage.removeItem("sanispa-water-session-token"); }
+export function clearDraft() {
+    window.localStorage.removeItem(draftKey);
+    window.localStorage.removeItem("sanispa-water-session-token");
+    notifyDeclarationChange();
+}
 export async function authHeaders() {
     const { data, error } = await getSupabaseBrowser().auth.getSession();
     if (error || !data.session)

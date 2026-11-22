@@ -3,6 +3,10 @@ import type { DiagnosticDraft } from "./types";
 export const draftSteps = ["/diagnostic", "/questionnaire", "/upload", "/resume"] as const;
 export type DraftStep = (typeof draftSteps)[number];
 export type SignupDraft = { id: string; step: DraftStep; payload: DiagnosticDraft };
+export function publicDeclarationResumePath(step: DraftStep) {
+  return step === "/diagnostic" || step === "/questionnaire" ? step : "/acces?next=diagnostic";
+}
+
 export type DraftListItem = {
   id: string;
   step: DraftStep;
