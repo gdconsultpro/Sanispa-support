@@ -37,6 +37,40 @@ test("private visits can only reference a client in the same partner company", a
   }
 });
 
+test("the initial intervention and contact are written atomically, and a removed intervention leaves its contact reusable", async () => {
+  const db = await fullDatabase();
+  const id = (number: number) => `f73170c0-0820-479b-9c89-${String(number).padStart(12, "0")}`;
+  const partner = id(1), outsider = id(2), actor = id(3), otherActor = id(4), foreignTechnician = id(5);
+  const client = { id: id(6), name: "Client à conserver", phone: "0600000000", email: "contact@example.invalid", street: "", postal_code: "", city: "" };
+  const visit = { id: id(7), title: "Entretien", description: "Contrôle du spa", starts_at: null, ends_at: null, technician_id: null };
+  try {
+    await db.exec(`
+      insert into auth.users(id,email) values ('${actor}','actor@example.invalid'),('${otherActor}','other@example.invalid');
+      insert into public.partners(id,company_name,email) values ('${partner}','Entreprise','actor@example.invalid'),('${outsider}','Autre','other@example.invalid');
+      insert into public.partner_users(partner_id,user_id) values ('${partner}','${actor}'),('${outsider}','${otherActor}');
+      insert into public.partner_planning_technicians(partner_id,id,name) values ('${outsider}','${foreignTechnician}','Autre technicien');
+      set role service_role;
+    `);
+    const create = (appointment: object, user = actor) => db.query(
+      "select public.create_partner_visit_with_contact($1,$2,$3::jsonb,$4::jsonb)", [partner, user, JSON.stringify(client), JSON.stringify(appointment)],
+    );
+    await assert.rejects(create(visit, otherActor), /ASSIGNED_PARTNER_REQUIRED/);
+    await assert.rejects(create({ ...visit, technician_id: foreignTechnician }), /partner_private_visits_technician_fk/);
+    assert.equal((await db.query("select id from public.partner_private_clients")).rows.length, 0);
+    await create(visit);
+    await create(visit);
+    assert.equal((await db.query("select id from public.partner_private_visits")).rows.length, 1);
+    await db.query("delete from public.partner_private_visits where partner_id=$1 and id=$2", [partner, visit.id]);
+    await assert.rejects(create(visit), /APPOINTMENT_CHANGED/);
+    const retained = await db.query("select id, name, phone, email from public.partner_private_clients where partner_id=$1", [partner]);
+    assert.deepEqual(retained.rows, [{ id: client.id, name: client.name, phone: client.phone, email: client.email }]);
+    await db.query("insert into public.partner_private_visits(partner_id,id,client_id,title) values($1,$2,$3,'Entretien annuel')", [partner, id(8), client.id]);
+    assert.equal((await db.query("select id from public.partner_private_visits")).rows.length, 1);
+  } finally {
+    await db.close();
+  }
+});
+
 test("map filters keep interventions without a date separate from scheduled appointments", () => {
   const dated = { startsAt: "2026-11-23T09:00Z", technicianId: "camille" };
   const awaiting = { startsAt: null, technicianId: "camille" };

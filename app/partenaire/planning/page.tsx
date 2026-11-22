@@ -8,6 +8,7 @@ import { Button } from "@/components/Button";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { PartnerScheduleGrid, PlannerTechnicianSelect } from "@/components/PartnerScheduleGrid";
 import { PartnerTourMap } from "@/components/PartnerTourMap";
+import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { problemLabel } from "@/lib/display-labels";
 import { partnerAuthError, partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
 import { partnerReturnPath } from "@/lib/partner-navigation";
@@ -319,25 +320,40 @@ export default function PartnerPlanningPage() {
     edit({ type: "visit", id: booking.id, client, booking });
   }
 
+  async function removeVisit(visit: PrivatePartnerVisit | PendingPrivatePartnerVisit) {
+    setSaving(true);
+    try {
+      const result = await plannerRequest(endpoint, { payload: { action: "deleteVisit", id: visit.id, expected_at: visit.updated_at } });
+      if (!result) throw new Error("Reconnectez-vous pour supprimer l’intervention.");
+      setEditor(null);
+      setSavedVisit(null);
+      setMapVisitId(null);
+      setNotice("Intervention supprimée. La fiche client est conservée.");
+      if (view === "map") window.history.replaceState(null, "", partnerMapPath);
+      setRevision(current => current + 1);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editor || editor.type === "pickClient" || saving) return;
     const values = new FormData(event.currentTarget);
     const value = (name: string) => String(values.get(name) ?? "");
+    const contact = () => ({
+      id: editor.id, name: value("name"), phone: value("phone"), email: value("email"),
+      street: value("street"), postal_code: value("postal_code"), city: value("city"),
+    });
     setSaveError("");
     setSaving(true);
     try {
-      if (editor.type === "client") {
+      if (editor.type === "client" && !editor.booking) {
         const result = await plannerRequest(endpoint, {
-          payload: { action: "saveClient", id: editor.id, name: value("name"), phone: value("phone"),
-            email: value("email"), street: value("street"), postal_code: value("postal_code"), city: value("city"),
+          payload: { action: "saveClient", ...contact(),
             intervention_type: value("intervention_type"), description: value("description") },
         });
         if (!result) return;
-        if (editor.booking) {
-          chooseBookingClient(editor.booking, result.client);
-          return;
-        }
         if (editor.client) setNotice("La fiche client a été enregistrée.");
         else setSavedClient(result.client);
         if (!editor.returnToMap) {
@@ -367,13 +383,14 @@ export default function PartnerPlanningPage() {
           if (Number.isNaN(+start) || Number.isNaN(+end) || end <= start)
             throw new Error("L’heure de fin doit être après l’heure de début.");
         }
-        const result = await plannerRequest(endpoint, {
-          payload: { action: "saveVisit", id: editor.id, client_id: editor.client.id, title: value("intervention_type"), description: value("description"),
-            starts_at: start?.toISOString() ?? null, ends_at: end?.toISOString() ?? null, technician_id: value("technician_id") || null,
-            expected_at: editor.visit?.updated_at },
-        });
+        const id = editor.booking?.id ?? editor.id;
+        const visit = { id, title: value("intervention_type"), description: value("description"),
+          starts_at: start?.toISOString() ?? null, ends_at: end?.toISOString() ?? null, technician_id: value("technician_id") || null };
+        const payload = editor.type === "client" ? { action: "createVisitWithClient", client: contact(), visit }
+          : { action: "saveVisit", client_id: editor.client.id, expected_at: editor.visit?.updated_at, ...visit };
+        const result = await plannerRequest(endpoint, { payload });
         if (!result) return;
-        const saved = { id: editor.id, startsAt: start?.toISOString() ?? null };
+        const saved = { id, startsAt: visit.starts_at };
         if (start && slot) {
           const date = plannerDate(start);
           setDay(date);
@@ -386,7 +403,8 @@ export default function PartnerPlanningPage() {
           openVisitOnMap(saved);
         }
         setSavedVisit(saved);
-        setNotice(start ? "Le rendez-vous a été enregistré." : "L’intervention a été ajoutée à la liste « À planifier ».");
+        const confirmation = start ? "Le rendez-vous a été enregistré." : "L’intervention a été ajoutée à la liste « À planifier ».";
+        setNotice(editor.type === "client" ? confirmation + " La fiche client a été ajoutée au carnet." : confirmation);
         setRevision(current => current + 1);
       }
     } catch (error) {
@@ -452,7 +470,8 @@ export default function PartnerPlanningPage() {
       close={() => setEditor(null)} />
       : editor ? <PlannerEditor key={editor.type + editor.id} editor={editor} day={day} team={team}
         save={save} error={saveError} saving={saving} close={() => setEditor(null)}
-        back={currentBooking ? () => edit({ type: "pickClient", ...currentBooking }) : undefined} /> : null}
+        back={currentBooking ? () => edit({ type: "pickClient", ...currentBooking }) : undefined}
+        remove={removeVisit} /> : null}
 
     {mapped ? <section className={panelClass + " mb-4"} aria-labelledby="map-title">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4">
@@ -672,24 +691,28 @@ function SlotClientPicker({ slot, team, choose, add, close }: {
   </section>;
 }
 
-function PlannerEditor({ editor, day, team, save, saving, error, close, back }: {
+function PlannerEditor({ editor, day, team, save, saving, error, close, back, remove }: {
   editor: FormEditor; day: string; team: PlannerTechnician[]; save: (event: FormEvent<HTMLFormElement>) => void;
   saving: boolean; error: string; close: () => void; back?: () => void;
+  remove: (visit: PrivatePartnerVisit | PendingPrivatePartnerVisit) => Promise<void>;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
-  const [withoutDate, setWithoutDate] = useState(editor.type === "visit" && !!editor.booking && !editor.booking.slot);
+  const slot = editor.type === "stock" ? undefined : editor.booking?.slot;
+  const [withoutDate, setWithoutDate] = useState(editor.type !== "stock" && !!editor.booking && !slot);
   useEffect(() => { title.current?.focus(); }, []);
   const visit = editor.type === "visit" ? editor.visit : undefined;
-  const slot = editor.type === "stock" ? undefined : editor.booking?.slot;
+  const newContact = editor.type === "client" && Boolean(editor.booking);
+  const forVisit = editor.type === "visit" || newContact;
   const startsAt = visit?.starts_at ?? slot?.startsAt;
   const startingDay = startsAt ? plannerDate(new Date(startsAt)) : day;
   return <section className={panelClass + " mb-4"}>
     <h2 ref={title} tabIndex={-1} className="break-words text-xl font-bold">
-      {editor.type === "client" ? editor.client ? "Modifier la fiche client" : "Ajouter un client"
+      {editor.type === "client" ? editor.client ? "Modifier la fiche client" : newContact ? "Intervention pour un nouveau client" : "Ajouter un client"
         : editor.type === "stock" ? editor.item ? "Modifier l’article" : "Ajouter un article"
         : `Intervention chez ${editor.client.name}`}
     </h2>
     {editor.type === "client" && slot ? <p className="mt-2 text-sm">{slotSummary(slot, team)}</p> : null}
+    {newContact ? <p className="mt-2 text-sm">Les coordonnées seront enregistrées dans votre carnet avec l’intervention.</p> : null}
     {editor.type === "visit" ? <p className="mt-2 break-words text-sm">{partnerClientAddress(editor.client)}</p> : null}
     <form onSubmit={save}>
       <fieldset disabled={saving} className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
@@ -703,7 +726,7 @@ function PlannerEditor({ editor, day, team, save, saving, error, close, back }: 
               <PlannerField label="Numéro et nom de rue" name="street" maxLength={160} defaultValue={editor.client?.street} />
               <PlannerField label="Code postal" name="postal_code" inputMode="numeric" pattern="[0-9]{5}" maxLength={5} defaultValue={editor.client?.postal_code} />
               <PlannerField label="Ville" name="city" maxLength={100} defaultValue={editor.client?.city} />
-              <InterventionFields type={editor.client?.intervention_type} description={editor.client?.description} />
+              {!newContact ? <InterventionFields type={editor.client?.intervention_type} description={editor.client?.description} /> : null}
             </div>
           </details>
         </> : editor.type === "stock" ? <>
@@ -716,8 +739,9 @@ function PlannerEditor({ editor, day, team, save, saving, error, close, back }: 
           </label>
           <PlannerField label="Référence ou modèle (facultatif)" name="reference" maxLength={100} defaultValue={editor.item?.reference} />
           <PlannerField label="Quantité en stock" name="quantity" type="number" inputMode="numeric" min={0} max={1000000} step={1} defaultValue={editor.item?.quantity ?? 0} required />
-        </> : <>
-          <InterventionFields type={visit?.title ?? editor.client.intervention_type} description={visit?.description ?? editor.client.description} />
+        </> : null}
+        {forVisit ? <>
+          <InterventionFields type={visit?.title ?? editor.client?.intervention_type} description={visit?.description ?? editor.client?.description} />
           {!slot && !visit ? <label className="flex min-h-11 items-center gap-2 text-sm font-bold sm:col-span-2">
             <input type="checkbox" name="without_date" checked={withoutDate} onChange={event => setWithoutDate(event.target.checked)} />
             Ajouter à « À planifier » sans fixer de date
@@ -727,16 +751,17 @@ function PlannerEditor({ editor, day, team, save, saving, error, close, back }: 
           {slot ? <PlannerField label="Durée (en minutes)" name="duration" type="number" min={1} max={720} defaultValue={60} required />
             : <PlannerField label="Heure de fin" name="end" type="time" defaultValue={visit?.ends_at ? plannerTime(visit.ends_at) : "10:00"} required disabled={withoutDate} hidden={withoutDate} />}
           <PlannerTechnicianSelect team={team} selected={visit?.technician_id ?? slot?.technicianId} />
-        </>}
+        </> : null}
         {error ? <p role="alert" className="text-sm font-bold text-red-700 sm:col-span-2">{error}</p> : null}
         <div className="flex flex-wrap gap-2 sm:col-span-2">
-          <Button type="submit">{saving ? "Enregistrement…" : editor.type === "client" ? editor.booking ? "Enregistrer le client et continuer" : "Enregistrer le client"
+          <Button type="submit">{saving ? "Enregistrement…" : editor.type === "client" && !newContact ? "Enregistrer le client"
             : editor.type === "stock" ? "Enregistrer l’article" : withoutDate ? "Ajouter à planifier" : "Enregistrer le rendez-vous"}</Button>
           {back ? <Button type="button" variant="secondary" onClick={back}>Changer de client</Button> : null}
           <Button type="button" variant="secondary" onClick={close}>Annuler</Button>
         </div>
       </fieldset>
     </form>
+    {visit ? <div className="mt-2"><PartnerVisitDelete disabled={saving} onDelete={() => remove(visit)} /></div> : null}
   </section>;
 }
 

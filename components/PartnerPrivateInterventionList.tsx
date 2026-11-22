@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/Button";
+import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { partnerAuthError, partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
 import { partnerClientAddress, partnerVisitMapPath, plannerTime, type PlannerTechnician, type PrivatePartnerClient } from "@/lib/partner-planner";
 
 type VisitListItem = {
-  id: string; title: string; starts_at: string | null; ends_at: string | null; technician_id: string | null;
+  id: string; title: string; starts_at: string | null; ends_at: string | null; technician_id: string | null; updated_at: string;
   client: Pick<PrivatePartnerClient, "name" | "street" | "postal_code" | "city">;
 };
 type VisitPage = { visits: VisitListItem[]; technicians: PlannerTechnician[]; more: boolean };
@@ -20,6 +21,7 @@ export function PartnerPrivateInterventionList() {
   const [attempt, setAttempt] = useState(0);
   const [page, setPage] = useState<VisitPage | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -41,6 +43,23 @@ export function PartnerPrivateInterventionList() {
     return () => controller.abort();
   }, [search, offset, attempt]);
 
+  async function remove(visit: VisitListItem) {
+    setNotice("");
+    const token = await partnerToken(returnPath);
+    if (!token) throw new Error("Reconnectez-vous pour supprimer l’intervention.");
+    const response = await fetch("/api/partner/planning", {
+      method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "deleteVisit", id: visit.id, expected_at: visit.updated_at }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (redirectPartnerAccess(response, returnPath)) return;
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "L’intervention est temporairement indisponible.");
+    setNotice("Intervention supprimée. La fiche client est conservée.");
+    if (page?.visits.length === 1 && offset > 0) setOffset(value => value - 30);
+    else setAttempt(value => value + 1);
+  }
+
   return <section aria-labelledby="private-interventions" className="mt-5 rounded-2xl border border-sanispa-line bg-white p-4 sm:p-5">
     <h2 id="private-interventions" className="text-xl font-bold">Interventions de mon entreprise</h2>
     <form className="my-3 flex flex-wrap items-end gap-2" onSubmit={event => {
@@ -53,6 +72,7 @@ export function PartnerPrivateInterventionList() {
       </label>
       <Button type="submit" variant="secondary">Rechercher</Button>
     </form>
+    {notice ? <p role="status" className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-900">{notice}</p> : null}
     {error ? <div><p role="alert" className="text-sm font-bold text-red-800">{error}</p>
       <button type="button" className="focus-ring min-h-11 font-bold underline" onClick={() => setAttempt(value => value + 1)}>Réessayer</button>
     </div> : !page ? <p role="status">Chargement des interventions…</p>
@@ -67,8 +87,11 @@ export function PartnerPrivateInterventionList() {
             <h3 className="break-words font-bold">{visit.client.name} · {visit.title}</h3>
             <p className="mt-1 text-sm font-semibold">{slot} · {specialist}</p>
             <p className="break-words text-sm">{partnerClientAddress(visit.client) || "Adresse à compléter"}</p>
-            <Link className="focus-ring inline-flex min-h-11 items-center text-sm font-bold text-sanispa-blue underline"
-              href={partnerVisitMapPath(visit.id, visit.starts_at)}>Retrouver sur la carte</Link>
+            <div className="flex flex-wrap items-start gap-x-4">
+              <Link className="focus-ring inline-flex min-h-11 items-center text-sm font-bold text-sanispa-blue underline"
+                href={partnerVisitMapPath(visit.id, visit.starts_at)}>Retrouver sur la carte</Link>
+              <PartnerVisitDelete onDelete={() => remove(visit)} />
+            </div>
           </li>;
         })}
       </ul>}

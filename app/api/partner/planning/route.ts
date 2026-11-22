@@ -39,6 +39,14 @@ const privateVisitInput = z.object({
   technician_id: technicianId.optional(),
   expected_at: timestamp.optional(),
 }).strict();
+const visitWithContactInput = z.object({
+  action: z.literal("createVisitWithClient"),
+  client: privateClientInput.omit({ action: true, intervention_type: true, description: true }),
+  visit: privateVisitInput.omit({ action: true, client_id: true, expected_at: true }),
+}).strict();
+const deleteVisitInput = z.object({
+  action: z.literal("deleteVisit"), id: z.string().uuid(), expected_at: timestamp,
+}).strict();
 const stockInput = z.object({
   action: z.literal("saveStock"),
   id: z.string().uuid(),
@@ -81,12 +89,19 @@ const applyTourInput = z.object({
     source: z.enum(["private", "sanispa"]), id: z.string().uuid(), expected_at: timestamp, starts_at: timestamp,
   }).strict()).min(1).max(maximumTourRouteStops),
 }).strict();
-const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, tourRouteInput, applyTourInput]);
+const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, visitWithContactInput, deleteVisitInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, tourRouteInput, applyTourInput]);
 const rangeInput = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
 });
 export const maxDuration = 60;
+
+function validatePrivateVisitTimes({ starts_at, ends_at }: { starts_at: string | null; ends_at: string | null }) {
+  if (starts_at === null && ends_at === null) return;
+  const duration = starts_at !== null && ends_at !== null ? Date.parse(ends_at) - Date.parse(starts_at) : 0;
+  if (!(duration > 0 && duration <= 12 * 3600000))
+    throw new HttpError(400, "Prévoyez une fin après le début et une durée de 12 heures maximum.");
+}
 
 async function requirePlanner(request: Request) {
   const context = await getAuthenticatedPartner(request);
@@ -251,7 +266,7 @@ export async function GET(request: Request) {
       const namePattern = `%${name.replace(/[\\%_]/g, "\\$&")}%`;
       if (params.get("section") === "visits") {
         let visits = supabase.from("partner_private_visits")
-          .select("id,title,starts_at,ends_at,technician_id,client:partner_private_clients!inner(name,street,postal_code,city)")
+          .select("id,title,starts_at,ends_at,technician_id,updated_at,client:partner_private_clients!inner(name,street,postal_code,city)")
           .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
         if (name) visits = visits.ilike("client.name", namePattern);
         const [{ data, error }, team] = await Promise.all([visits.order("updated_at", { ascending: false })
@@ -365,6 +380,31 @@ export async function POST(request: Request) {
     }
     await rateLimit(supabase, `partner-private-planner:${partner.id}`, 30);
     const updated_at = new Date().toISOString();
+    if (command.action === "deleteVisit") {
+      const table = supabase.from("partner_private_visits");
+      const removed = await table.delete().eq("partner_id", partner.id).eq("id", command.id)
+        .eq("updated_at", command.expected_at).select("id").maybeSingle();
+      if (removed.error) throw removed.error;
+      if (!removed.data) {
+        const current = await table.select("id").eq("partner_id", partner.id).eq("id", command.id).maybeSingle();
+        if (current.error) throw current.error;
+        if (current.data) throw new HttpError(409, "Cette intervention a été modifiée. Actualisez la page avant de la supprimer.");
+      }
+      return NextResponse.json({ deleted: true });
+    }
+    if (command.action === "createVisitWithClient") {
+      validatePrivateVisitTimes(command.visit);
+      const location = await locateAddress(command.client);
+      const { error } = await supabase.rpc("create_partner_visit_with_contact", {
+        p_partner: partner.id, p_actor: user.id, p_client: { ...command.client, ...location },
+        p_visit: command.visit,
+      });
+      if (error?.code === "23503") throw new HttpError(404, "Ce technicien est introuvable dans votre planning.");
+      if (error?.code === "23505" || error?.message.includes("APPOINTMENT_CHANGED"))
+        throw new HttpError(409, "Cette intervention a déjà été enregistrée ou supprimée. Actualisez la page.");
+      if (error) throw interventionError(error);
+      return NextResponse.json({ saved: true });
+    }
     if (command.action === "addTechnician") {
       const { error } = await supabase.from("partner_planning_technicians")
         .upsert({ id: command.id, name: command.name, partner_id: partner.id }, { onConflict: "partner_id,id", ignoreDuplicates: true });
@@ -441,11 +481,7 @@ export async function POST(request: Request) {
     }
 
     const { action: _action, expected_at, ...input } = command;
-    if (input.starts_at !== null || input.ends_at !== null) {
-      const duration = input.starts_at !== null && input.ends_at !== null ? Date.parse(input.ends_at) - Date.parse(input.starts_at) : 0;
-      if (!(duration > 0 && duration <= 12 * 3600000))
-        throw new HttpError(400, "Prévoyez une fin après le début et une durée de 12 heures maximum.");
-    }
+    validatePrivateVisitTimes(input);
     const table = supabase.from("partner_private_visits");
     const result = expected_at
       ? await table.update({ ...input, updated_at }).eq("partner_id", partner.id).eq("id", input.id)
