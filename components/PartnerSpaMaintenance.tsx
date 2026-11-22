@@ -60,7 +60,10 @@ export function PartnerSpaMaintenance({ endpoint, clientId, spaId }: { endpoint:
         <p className="text-sm font-bold">Entretien du {maintenanceDate(upcoming.maintenance_due_on)}</p>
         <p className="text-sm">{upcoming.starts_at ? "Rendez-vous le " + dateAndTime.format(new Date(upcoming.starts_at)) : "En attente d’un créneau"}</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          {!upcoming.starts_at ? <ButtonLink variant="secondary" href="/partenaire/planning?statut=pending">Voir dans À planifier</ButtonLink> : null}
+          {!upcoming.starts_at ? <a href="/partenaire/planning?statut=pending"
+            className="focus-ring inline-flex min-h-12 items-center rounded-full border border-sanispa-line bg-white px-5 py-3 text-sm font-bold text-sanispa-navy hover:border-sanispa-blue">
+            Voir dans À planifier
+          </a> : null}
           <ButtonLink variant="secondary" href={partnerPrivateVisitPath(upcoming.id)}>Ouvrir l’intervention</ButtonLink>
         </div>
       </div> : null}
