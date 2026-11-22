@@ -3,13 +3,13 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type DragEvent, type FormEvent } from "react";
-import { Button } from "@/components/Button";
+import { Button, ButtonLink } from "@/components/Button";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import {
-  partnerPrivateVisitPath, plannerDate, plannerDay, plannerRange, plannerTime, timelineDropTime, timelineQuarter, visitsOverlap,
+  plannerDate, plannerDay, plannerRange, plannerTime, timelineDropTime, timelineQuarter, visitsOverlap,
   type PlannerAppointment, type PlannerQueueEntry, type PlannerSlot, type PlannerTechnician,
 } from "@/lib/partner-planner";
-import { workStatusLabels } from "@/lib/partner-workspace";
+import { workItemPath, workStatusLabels } from "@/lib/partner-workspace";
 
 const hour = 3600000;
 const inputClass = "focus-ring min-h-12 w-full min-w-0 rounded-lg border border-sanispa-line bg-white px-3 py-2 text-base";
@@ -167,6 +167,11 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
         <p className="text-sm">{plannerTime(selected.starts_at)}–{plannerTime(selected.ends_at)} · {team.find(member => member.id === selected.technician_id)?.name ?? "À affecter"}</p>
         {selected.address ? <p className="break-words text-sm">{selected.address}</p> : null}
         {selected.description ? <p className="mt-1 whitespace-pre-wrap break-words text-sm">{selected.description}</p> : null}
+        <div className="mt-3">
+          <ButtonLink href={workItemPath({ id: selected.id, dossierId: selected.source === "sanispa" ? selected.id : undefined, workStatus: selected.workStatus })}>
+            Ouvrir la fiche terrain
+          </ButtonLink>
+        </div>
       </> : booking ? <p className="mt-1 break-words text-sm">{booking.item.customer} · {booking.item.title}</p> : null}
       {!selected || selected.movable ? <form onSubmit={submit} key={booking ? booking.item.id + booking.slot.startsAt + booking.slot.technicianId : selected?.id ?? newTechnician}>
         <fieldset disabled={busy} className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -191,10 +196,6 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
         </fieldset>
       </form> : null}
       {selected ? <div className="mt-2 flex flex-wrap items-center gap-x-4">
-        <Link className="focus-ring inline-flex min-h-11 items-center text-sm font-bold underline"
-          href={selected.source === "private" ? partnerPrivateVisitPath(selected.id) : "/partenaire/interventions/" + selected.id + (selected.workStatus === "review" || selected.workStatus === "validated" ? "#rapport" : "")}>
-          {selected.source === "sanispa" && selected.workStatus === "review" ? "Ouvrir le rapport" : "Ouvrir la fiche"}
-        </Link>
         {selected.movable && Date.parse(selected.starts_at) > Date.now() ? <PartnerVisitUnplan key={selected.source + selected.id} disabled={busy} onUnplan={async () => {
           await onUnplan(selected);
           setSelected(null);
@@ -230,6 +231,10 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
             <span className="block">{item.title}</span>
             <span className="block text-xs text-sanispa-steel">{[item.reference ?? (item.source === "sanispa" ? "SANISPA" : ""), item.address].filter(Boolean).join(" · ")}</span>
           </button>
+          <Link draggable={false} className="focus-ring inline-flex min-h-11 items-center px-2.5 text-sm font-bold text-sanispa-blue underline"
+            href={workItemPath({ id: item.id, dossierId: item.source === "sanispa" ? item.id : undefined, workStatus: "pending" })}>
+            Ouvrir la fiche terrain
+          </Link>
         </li>)}
       </ul>
       {!visibleQueue.length ? <p role="status" className="mt-2 text-sm">{queue.length ? "Aucun résultat." : "Aucune intervention à planifier."}</p> : null}

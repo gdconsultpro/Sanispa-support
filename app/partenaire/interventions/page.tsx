@@ -112,8 +112,8 @@ export default function InterventionsPage() {
               </div>
               <p className="mt-1 text-sm text-sanispa-steel">{[item.dossierId ? "SANISPA" : "Mon entreprise", item.reference, date, hours, technician].filter(Boolean).join(" · ")}</p>
               <p className="break-words text-sm">{item.address || "Adresse à compléter"}</p>
-              <div className="flex flex-wrap items-start gap-x-4">
-                <Link className={actionClass} href={workItemPath(item)}>{item.dossierId && item.workStatus === "review" ? "Ouvrir le rapport" : "Ouvrir la fiche"}</Link>
+              <div className="mt-2 flex flex-wrap items-start gap-x-4">
+                <ButtonLink href={workItemPath(item)}>Ouvrir la fiche terrain</ButtonLink>
                 <Link className={actionClass} href={workspacePath("map", { ...selection, status: item.workStatus, technician: "all" }, item.id)}>Retrouver sur la carte</Link>
                 {item.workStatus === "scheduled" && item.startsAt && Date.parse(item.startsAt) > Date.now() ?
                   <PartnerVisitUnplan disabled={saving} onUnplan={() => change(item, "unplanVisit")} /> : null}

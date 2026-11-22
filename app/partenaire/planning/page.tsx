@@ -570,7 +570,7 @@ export default function PartnerPlanningPage() {
     {notice ? <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
       <p role="status">{notice}</p>
       {savedVisit ? <div className="flex flex-wrap gap-x-4">
-        <Link className={actionClass} href={partnerPrivateVisitPath(savedVisit.id)}>Ouvrir la fiche d’intervention</Link>
+        <Link className={actionClass} href={partnerPrivateVisitPath(savedVisit.id)}>Ouvrir la fiche terrain</Link>
         {view !== "map" ? <button type="button" className={actionClass} onClick={() => openVisitOnMap(savedVisit)}>Voir le rendez-vous sur la carte</button> : null}
         <Link className={actionClass} href="/partenaire/interventions">Retrouver dans Mes interventions</Link>
       </div> : null}
@@ -740,7 +740,7 @@ export default function PartnerPlanningPage() {
             <div className="flex flex-wrap gap-x-4">
               <button type="button" disabled={saving} className={actionClass}
                 onClick={() => openVisitOnMap({ id: entry.id, startsAt: entry.starts_at }, appointments[index].workStatus)}>Voir sur la carte</button>
-              <Link className={actionClass} href={partnerPrivateVisitPath(entry.id)}>Ouvrir la fiche</Link>
+              <Link className={actionClass} href={partnerPrivateVisitPath(entry.id)}>Ouvrir la fiche terrain</Link>
               {appointments[index].movable ? <button type="button" disabled={saving} className={actionClass} onClick={() => edit({ type: "visit", id: entry.id, client: entry.client, visit: entry })}>Modifier le rendez-vous</button> : null}
               {appointments[index].movable && Date.parse(entry.starts_at) > Date.now() ? <PartnerVisitUnplan disabled={saving} onUnplan={() => unplanVisit(entry)} /> : null}
             </div>
@@ -749,7 +749,7 @@ export default function PartnerPlanningPage() {
             {entry.diagnostic.customer?.address ? <p className="break-words text-sm">{entry.diagnostic.customer.address}</p> : null}
             <div className="flex flex-wrap gap-x-4">
               <Link className={actionClass} href={workItemPath({ id: "sanispa:" + entry.diagnostic_id, dossierId: entry.diagnostic_id, workStatus: appointments[index].workStatus })}>
-                {appointments[index].workStatus === "review" ? "Ouvrir le rapport" : "Ouvrir le dossier SANISPA"}
+                Ouvrir la fiche terrain
               </Link>
               {appointments[index].movable ? <>
                 {period === "week" ? <button type="button" className={actionClass} disabled={saving} onClick={() => {
@@ -767,7 +767,7 @@ export default function PartnerPlanningPage() {
         <ul className="mt-2 divide-y divide-sanispa-line">{unslotted.map(item => <li key={item.id} className="py-2">
           <p className="break-words font-semibold">{item.title}</p>
           <p className="text-sm">{item.workStatus ? workStatusLabels[item.workStatus] : ""}</p>
-          <Link className={actionClass} href={workItemPath(item)}>{item.dossierId && item.workStatus === "review" ? "Ouvrir le rapport" : "Ouvrir la fiche"}</Link>
+          <Link className={actionClass} href={workItemPath(item)}>Ouvrir la fiche terrain</Link>
         </li>)}</ul>
       </section> : null}
     </section> : null}

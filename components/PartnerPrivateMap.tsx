@@ -122,7 +122,7 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
             const link = document.createElement("a");
             link.href = point.recordHref;
             link.className = "focus-ring inline-flex min-h-11 items-center text-sm font-bold underline";
-            link.textContent = "Ouvrir l’intervention";
+            link.textContent = "Ouvrir la fiche terrain";
             actions.append(link);
           }
           if ((!point.workStatus || point.workStatus === "scheduled") && !point.pending && onAppointment) {

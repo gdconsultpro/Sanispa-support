@@ -137,7 +137,7 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
           <p className="text-sm font-semibold">{item.detail}</p>
           <p className="break-words text-sm">{item.address || "Adresse à compléter"}</p>
           <div className="flex flex-wrap gap-x-4 text-sm">
-            <Link className={linkClass} href={workItemPath(item)}>{item.workStatus === "review" && item.dossierId ? "Ouvrir le rapport" : "Ouvrir la fiche"}</Link>
+            <Link className={linkClass} href={workItemPath(item)}>Ouvrir la fiche terrain</Link>
             {item.visit && !item.reschedule?.closed ? <button type="button" disabled={busy} className={linkClass} onClick={() => item.visit && onVisit(item.visit)}>
               {item.startsAt ? "Modifier le rendez-vous" : "Fixer le rendez-vous"}
             </button> : null}
