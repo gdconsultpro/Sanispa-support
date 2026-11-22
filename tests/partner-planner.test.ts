@@ -46,7 +46,9 @@ test("map filters combine status and technician, including visits without a date
   assert.equal(matchesPlannerMapFilters(awaiting, "pending", "camille"), true);
   assert.equal(matchesPlannerMapFilters(awaiting, "pending", ""), false);
   assert.equal(matchesPlannerMapFilters(unassigned, "pending", ""), true);
-  assert.equal(matchesPlannerMapFilters(unassigned, "all", "all"), true);
+  assert.equal(matchesPlannerMapFilters(unassigned, "upcoming", "all"), true);
+  assert.equal(matchesPlannerMapFilters(dated, "upcoming", "all"), true);
+  assert.equal(matchesPlannerMapFilters(dated, "pending", "all"), false);
 });
 
 test("tour suggestions rank nearby pending visits and keep another technician's work out of the tour", () => {

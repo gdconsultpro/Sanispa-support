@@ -17,7 +17,7 @@ import {
   type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
-import type { TourDrivingRoute, TourReschedule } from "@/lib/partner-tour-routing";
+import type { TourApplyResult, TourDrivingRoute, TourReschedule } from "@/lib/partner-tour-routing";
 
 const path = "/partenaire/planning";
 const endpoint = "/api/partner/planning";
@@ -60,6 +60,37 @@ async function plannerRequest(url: string, options: { signal?: AbortSignal; payl
   const result = await response.json();
   if (!response.ok) throw new PlannerRequestError(result.error || "Votre planning est temporairement indisponible.", response.status, result.code);
   return result;
+}
+
+function normalizeMapItems(agenda: Agenda): PlannerMapIntervention[] {
+  const own = [...agenda.visits, ...(agenda.pendingVisits ?? [])].map(visit => ({
+    id: "private:" + visit.id, title: `${visit.title} · ${visit.client.name}`, startsAt: visit.starts_at, technicianId: visit.technician_id,
+    endsAt: visit.ends_at ?? undefined, address: partnerClientAddress(visit.client),
+    latitude: visit.latitude ?? visit.client.latitude, longitude: visit.longitude ?? visit.client.longitude,
+    approximateLocation: visit.approximateLocation, client: visit.client, visit,
+    reschedule: { source: "private" as const, id: visit.id, version: visit.updated_at },
+  }));
+  const scheduled = agenda.sanispa.map(visit => ({
+    id: "sanispa:" + visit.diagnostic_id, dossierId: visit.diagnostic_id, startsAt: visit.starts_at, endsAt: visit.ends_at, technicianId: visit.technician_id,
+    title: `${problemLabel(visit.diagnostic.problem_type)} · ${visit.diagnostic.customer?.name || "Client"}`,
+    address: visit.diagnostic.customer?.address ?? "", latitude: visit.latitude ?? null, longitude: visit.longitude ?? null,
+    approximateLocation: visit.approximateLocation,
+    reschedule: { source: "sanispa" as const, id: visit.diagnostic_id, version: visit.updated_at,
+      closed: visit.diagnostic.status === "CLOSED" || visit.diagnostic.status === "terminé" },
+  }));
+  const pending = (agenda.pendingDossiers ?? []).map(dossier => ({
+    id: "sanispa:" + dossier.id, dossierId: dossier.id, startsAt: null, technicianId: null,
+    title: `${problemLabel(dossier.problem_type)} · ${dossier.customer?.name || "Client"}`,
+    address: dossier.customer?.address ?? "", latitude: dossier.latitude ?? null, longitude: dossier.longitude ?? null,
+    approximateLocation: dossier.approximateLocation,
+  }));
+  return [...own, ...scheduled, ...pending].sort((left, right) =>
+    (left.startsAt ? Date.parse(left.startsAt) : Infinity) - (right.startsAt ? Date.parse(right.startsAt) : Infinity));
+}
+
+async function loadUpcomingMap(signal: AbortSignal) {
+  const result = await plannerRequest(endpoint + "?map=1&scope=upcoming", { signal });
+  return result ? normalizeMapItems(result) : [];
 }
 
 export default function PartnerPlanningPage() {
@@ -196,13 +227,13 @@ export default function PartnerPlanningPage() {
     return route;
   }, []);
 
-  async function applyDrivingTour(tour: TourReschedule) {
+  async function applyDrivingTour(tour: TourReschedule): Promise<TourApplyResult> {
     setSaving(true);
     try {
       const result = await plannerRequest(endpoint, { payload: { action: "applyTour", ...tour } });
       if (!result) throw new Error("Reconnectez-vous pour valider la tournée.");
       setRevision(current => current + 1);
-      return result.updated as number;
+      return result;
     } finally {
       setSaving(false);
     }
@@ -334,32 +365,7 @@ export default function PartnerPlanningPage() {
   const mapWeek = day && view === "map" && mapPeriod === "week" ? plannerRange(day, "week").from : null;
   const monthDays = month ? new Date(month.to.getFullYear(), month.to.getMonth(), 0).getDate() : 0;
   const monthIndent = month ? (month.from.getDay() + 6) % 7 : 0;
-  const mapItems = useMemo<PlannerMapIntervention[] | null>(() => {
-    if (!agenda || view !== "map") return null;
-    const own = [...agenda.visits, ...(agenda.pendingVisits ?? [])].map(visit => ({
-      id: "private:" + visit.id, title: `${visit.title} · ${visit.client.name}`, startsAt: visit.starts_at, technicianId: visit.technician_id,
-      endsAt: visit.ends_at ?? undefined, address: partnerClientAddress(visit.client),
-      latitude: visit.latitude ?? visit.client.latitude, longitude: visit.longitude ?? visit.client.longitude,
-      approximateLocation: visit.approximateLocation, client: visit.client, visit,
-      reschedule: { source: "private" as const, id: visit.id, version: visit.updated_at },
-    }));
-    const scheduled = agenda.sanispa.map(visit => ({
-      id: "sanispa:" + visit.diagnostic_id, dossierId: visit.diagnostic_id, startsAt: visit.starts_at, endsAt: visit.ends_at, technicianId: visit.technician_id,
-      title: `${problemLabel(visit.diagnostic.problem_type)} · ${visit.diagnostic.customer?.name || "Client"}`,
-      address: visit.diagnostic.customer?.address ?? "", latitude: visit.latitude ?? null, longitude: visit.longitude ?? null,
-      approximateLocation: visit.approximateLocation,
-      reschedule: { source: "sanispa" as const, id: visit.diagnostic_id, version: visit.updated_at,
-        closed: visit.diagnostic.status === "CLOSED" || visit.diagnostic.status === "terminé" },
-    }));
-    const pending = (agenda.pendingDossiers ?? []).map(dossier => ({
-      id: "sanispa:" + dossier.id, dossierId: dossier.id, startsAt: null, technicianId: null,
-      title: `${problemLabel(dossier.problem_type)} · ${dossier.customer?.name || "Client"}`,
-      address: dossier.customer?.address ?? "", latitude: dossier.latitude ?? null, longitude: dossier.longitude ?? null,
-      approximateLocation: dossier.approximateLocation,
-    }));
-    return [...own, ...scheduled, ...pending].sort((left, right) =>
-      (left.startsAt ? Date.parse(left.startsAt) : Infinity) - (right.startsAt ? Date.parse(right.startsAt) : Infinity));
-  }, [agenda, view]);
+  const mapItems = useMemo(() => agenda && view === "map" ? normalizeMapItems(agenda) : null, [agenda, view]);
   const selectedPoint = useMemo<PartnerMapPoint[]>(() => mapped && mapped.latitude !== null && mapped.longitude !== null ? [{
     id: mapped.id, latitude: mapped.latitude, longitude: mapped.longitude, title: mapped.name, address: partnerClientAddress(mapped),
   }] : [], [mapped]);
@@ -506,7 +512,7 @@ export default function PartnerPlanningPage() {
         {mapWeek ? <p className="mb-3 font-bold">Semaine du {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" })
           .formatRange(mapWeek, plannerDay(plannerDate(mapWeek), 6))}</p> : null}
         <PartnerTourMap items={mapItems} team={team} period={mapPeriod} scope={day} busy={saving} onBook={saveTourVisit} loadRoute={loadDrivingTour}
-          applyTour={applyDrivingTour} reloadTour={() => setRevision(current => current + 1)}
+          applyTour={applyDrivingTour} reloadTour={() => setRevision(current => current + 1)} loadUpcoming={loadUpcomingMap} version={revision}
           onVisit={visit => edit({ type: "visit", id: visit.id, client: visit.client, visit })}
           onAddress={client => edit({ type: "client", id: client.id, client, returnToMap: true })} />
       </> : null}

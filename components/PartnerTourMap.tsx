@@ -7,7 +7,7 @@ import { Button } from "@/components/Button";
 import { PartnerDrivingTour, type ApplyDrivingTour, type LoadDrivingTour } from "@/components/PartnerDrivingTour";
 import { matchesPlannerMapFilters, nearbyPendingVisits, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
   type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
-  type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
+  type PlannerMapStatus, type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
 
 const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
   ssr: false,
@@ -17,7 +17,7 @@ const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
 const filterClass = "focus-ring mt-1 min-h-12 w-full rounded-lg border border-sanispa-line bg-white px-3 text-base";
 const linkClass = "focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline";
 
-export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour }: {
+export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, loadUpcoming, version }: {
   items: PlannerMapIntervention[] | null;
   team: PlannerTechnician[];
   period: "day" | "week";
@@ -29,26 +29,49 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
   loadRoute: LoadDrivingTour;
   applyTour: ApplyDrivingTour;
   reloadTour: () => void;
+  loadUpcoming: (signal: AbortSignal) => Promise<PlannerMapIntervention[]>;
+  version: number;
 }) {
-  const [status, setStatus] = useState<"all" | "scheduled" | "pending">("all");
+  const [status, setStatus] = useState<PlannerMapStatus>("scheduled");
   const [technician, setTechnician] = useState("all");
   const [showTour, setShowTour] = useState(false);
+  const [lastMap, setLastMap] = useState<{ waiting: PlannerMapIntervention[]; team: PlannerTechnician[] } | null>(null);
+  const [upcoming, setUpcoming] = useState<PlannerMapIntervention[] | null>(null);
+  const [upcomingError, setUpcomingError] = useState("");
+  const [upcomingAttempt, setUpcomingAttempt] = useState(0);
   const [selected, setSelected] = useState<{ id: string; scope: string } | null>(null);
   const [confirmation, setConfirmation] = useState<{ id: string; message: string } | null>(null);
   const filterId = useId();
-  const tourTechnician = team.find(member => member.id === technician) ?? (team.length === 1 ? team[0] : undefined);
+  const visibleTeam = items ? team : lastMap?.team ?? team;
+  const tourTechnician = visibleTeam.find(member => member.id === technician) ?? (visibleTeam.length === 1 ? visibleTeam[0] : undefined);
+  const displayItems = status === "upcoming" ? upcoming : items ?? (status === "pending" ? lastMap?.waiting ?? null : null);
+  const showUpcoming = status === "upcoming" && !showTour;
+  useEffect(() => {
+    if (items) setLastMap({ waiting: items.filter(item => !item.startsAt), team });
+  }, [items, team]);
+  useEffect(() => {
+    if (!showUpcoming) return;
+    const controller = new AbortController();
+    setUpcomingError("");
+    void loadUpcoming(controller.signal).then(result => {
+      if (!controller.signal.aborted) setUpcoming(result);
+    }).catch(error => {
+      if (!controller.signal.aborted) setUpcomingError(error instanceof Error ? error.message : "Les interventions à venir sont temporairement indisponibles.");
+    });
+    return () => controller.abort();
+  }, [loadUpcoming, showUpcoming, upcomingAttempt, version]);
   const panelScope = period + ":" + scope;
   const chooseAppointment = useCallback((id: string) => {
     setConfirmation(null);
     setSelected({ id, scope: panelScope });
   }, [panelScope]);
   const anchor = selected?.scope === panelScope
-    ? items?.find(item => item.id === selected.id && item.startsAt && item.endsAt) : undefined;
+    ? displayItems?.find(item => item.id === selected.id && item.startsAt && item.endsAt) : undefined;
   const { entries, points } = useMemo(() => {
-    const names = new Map(team.map(member => [member.id, member.name]));
-    const entries = (items ?? []).filter(item => matchesPlannerMapFilters(item, status, technician)).map(item => {
+    const names = new Map(visibleTeam.map(member => [member.id, member.name]));
+    const entries = (displayItems ?? []).filter(item => matchesPlannerMapFilters(item, status, technician)).map(item => {
       const time = item.startsAt ? plannerTime(item.startsAt) : "À planifier · Sans date";
-      const day = item.startsAt && period === "week"
+      const day = item.startsAt && (status === "upcoming" || period === "week")
         ? new Date(item.startsAt).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })
         : "";
       const detail = [[day, time].filter(Boolean).join(" "), (item.technicianId && names.get(item.technicianId)) || "À affecter",
@@ -60,7 +83,7 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
       detail: item.detail, address: item.address, pending: item.startsAt === null,
     }] : []);
     return { entries, points };
-  }, [items, period, status, technician, team]);
+  }, [displayItems, period, status, technician, visibleTeam]);
   const mappedIds = new Set(points.map(point => point.id));
   const waitingCount = entries.filter(item => !item.startsAt).length;
 
@@ -72,16 +95,16 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
           onChange={event => setTechnician(event.target.value)}>
           <option value="all">{showTour ? "Choisir un technicien" : "Toute l’équipe"}</option>
           {!showTour ? <option value="">À affecter</option> : null}
-          {team.map(member => <option value={member.id} key={member.id}>{member.name}</option>)}
+          {visibleTeam.map(member => <option value={member.id} key={member.id}>{member.name}</option>)}
         </select>
       </div>
       <div>
         <label htmlFor={filterId + "-status"} className="text-sm font-bold">Statut</label>
         <select id={filterId + "-status"} className={filterClass} value={showTour ? "scheduled" : status} disabled={showTour}
-          onChange={event => setStatus(event.target.value as typeof status)}>
-          <option value="all">Toutes les interventions</option>
+          onChange={event => { setSelected(null); setStatus(event.target.value as PlannerMapStatus); }}>
           <option value="scheduled">Planifiées</option>
           <option value="pending">À planifier</option>
+          <option value="upcoming">À venir</option>
         </select>
       </div>
     </div>
@@ -92,26 +115,32 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
     </label>
     {showTour ? <PartnerDrivingTour items={items} technician={tourTechnician} scope={scope} loadRoute={loadRoute}
       applyTour={applyTour} reloadTour={reloadTour} saving={busy} /> : <>
-    {items && status !== "scheduled" ? <p className="mb-2 text-sm font-bold">
+    {status === "pending" ? <p className="mb-2 text-sm">Interventions sans créneau, toutes dates confondues.</p>
+      : status === "upcoming" ? <p className="mb-2 text-sm">Interventions sans créneau et rendez-vous futurs, toutes dates confondues.</p> : null}
+    {displayItems && status !== "scheduled" ? <p className="mb-2 text-sm font-bold">
       {waitingCount} {waitingCount === 1 ? "intervention à planifier" : "interventions à planifier"}
     </p> : null}
+    {showUpcoming && upcomingError ? <p role="alert" className="mb-2 text-sm">
+      {upcomingError} <button type="button" className={linkClass} onClick={() => setUpcomingAttempt(value => value + 1)}>Réessayer</button>
+    </p> : showUpcoming && !displayItems ? <p role="status" className="mb-2 text-sm">Chargement des interventions à venir…</p> : null}
     <PrivateMap points={points} onAppointment={chooseAppointment}
-      label={period === "week" ? "Carte des interventions de la semaine" : "Carte des interventions du jour"} />
+      label={status === "pending" ? "Carte des interventions à planifier" : status === "upcoming" ? "Carte des interventions à venir"
+        : period === "week" ? "Carte des interventions de la semaine" : "Carte des interventions du jour"} />
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
       {status !== "pending" ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Planifiées</span> : null}
       {status !== "scheduled" ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-600" /> À planifier, sans date</span> : null}
     </div>
-    {items && entries.length > points.length ? <p className="mt-2 text-sm text-sanispa-steel">
+    {displayItems && entries.length > points.length ? <p className="mt-2 text-sm text-sanispa-steel">
       {entries.length - points.length} {entries.length - points.length === 1 ? "intervention sans adresse localisée" : "interventions sans adresse localisée"}. Retrouvez-les dans la liste ci-dessous.
     </p> : null}
-    {anchor && items ? <NearbyInterventions key={anchor.id} anchor={anchor} items={items}
-      team={team} busy={busy} confirmation={confirmation?.id === anchor.id ? confirmation.message : ""} onClose={() => setSelected(null)}
+    {anchor && displayItems ? <NearbyInterventions key={anchor.id} anchor={anchor} items={displayItems}
+      team={visibleTeam} busy={busy} confirmation={confirmation?.id === anchor.id ? confirmation.message : ""} onClose={() => setSelected(null)}
       onBook={async (booking, message) => {
         await onBook(booking);
         setConfirmation({ id: anchor.id, message });
       }} /> : null}
-    {items ? <section className="mt-4" aria-label="Interventions affichées">
-      {!entries.length ? <p>Aucune intervention pour cette période et ces filtres.</p> : <ul className="divide-y divide-sanispa-line">
+    {displayItems ? <section className="mt-4" aria-label="Interventions affichées">
+      {!entries.length ? <p>{status === "scheduled" ? "Aucune intervention pour cette période et ces filtres." : "Aucune intervention pour ces filtres."}</p> : <ul className="divide-y divide-sanispa-line">
         {entries.map(item => <li key={item.id} className="py-3">
           <h3 className="break-words text-lg font-bold">{item.title}</h3>
           <p className="text-sm font-semibold">{item.detail}</p>

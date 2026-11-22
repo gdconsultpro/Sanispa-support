@@ -135,6 +135,33 @@ test("applying a mixed tour is atomic, keeps the original durations and rejects 
     assert.deepEqual(privateRow, { seconds: 1800, technician_id: technician });
     assert.deepEqual(assignedRow, { seconds: 3600, technician_id: technician });
     assert.equal((await db.query("select * from public.diagnostic_activity where event_type='appointment_scheduled'")).rows.length, 1);
+    assert.equal((await db.query("select * from public.notification_jobs")).rows.length, 0);
+
+    await db.query("update public.partner_private_clients set email='tour-customer@example.invalid' where id=$1", [client]);
+    const latest = await db.query<{ id: string; version: string }>(`select id,updated_at::text version
+      from public.partner_private_visits union all select diagnostic_id,updated_at::text from public.partner_appointments`);
+    const notify = (steps: ReturnType<typeof edit>[]) => db.query<{ result: { updated: number; queued: number; without_email: number } }>(
+      "select public.apply_partner_tour_and_queue($1,$2,$3,$4,$5::jsonb,$6) result",
+      [partner, actor, technician, time.day, JSON.stringify(steps), id(20)],
+    );
+    const updatedPlan = [edit("sanispa", dossier, at(9)), edit("private", visit, at(12))].map(step => ({
+      ...step, expected_at: latest.rows.find(row => row.id === step.id)!.version,
+    }));
+    await assert.rejects(notify([{ ...updatedPlan[0], starts_at: at(11.5) }, updatedPlan[1]]), /TOUR_OVERLAP/);
+    assert.equal((await db.query("select * from public.notification_jobs")).rows.length, 0);
+    const result = await notify(updatedPlan);
+    assert.deepEqual(result.rows[0].result, { updated: 1, queued: 1, without_email: 0 });
+    const { rows: [job] } = await db.query<{ kind: string; key: string; first_delivery_attempt_at: string; payload: Record<string, string> }>(
+      "select * from public.claim_notifications($1)", ["tour-slot:" + id(20) + ":"]);
+    assert.equal(job.kind, "tour_slot_changed");
+    assert.equal(job.key, "tour-slot:" + id(20) + ":private:" + visit);
+    assert.equal(job.payload.appointmentId, visit);
+    assert.equal(job.payload.partnerId, partner);
+    assert.equal(Object.hasOwn(job.payload, "email"), false);
+    assert.equal(new Date(job.payload.startsAt).toISOString(), at(12));
+    assert.equal(new Date(job.payload.endsAt).toISOString(), at(12.5));
+    assert.ok(job.first_delivery_attempt_at);
+    assert.equal((await db.query("select * from public.claim_notifications($1)", ["tour-slot:"])).rows.length, 0);
   } finally {
     await db.close();
   }

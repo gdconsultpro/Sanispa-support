@@ -124,9 +124,11 @@ export function suggestedTourStart(endsAt: string, appointments: Array<{ startsA
   return new Date(start);
 }
 
+export type PlannerMapStatus = "scheduled" | "pending" | "upcoming";
+
 export function matchesPlannerMapFilters(item: Pick<PlannerMapIntervention, "startsAt" | "technicianId">,
-  status: "all" | "scheduled" | "pending", technician: string) {
-  return (status === "all" || (status === "scheduled") === Boolean(item.startsAt)) &&
+  status: PlannerMapStatus, technician: string) {
+  return (status === "upcoming" || (status === "scheduled") === Boolean(item.startsAt)) &&
     (technician === "all" || (item.technicianId ?? "") === technician);
 }
 

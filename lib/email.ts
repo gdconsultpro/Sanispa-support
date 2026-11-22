@@ -61,6 +61,7 @@ type TransactionalEmail = {
   subject: string;
   html: string;
   replyTo?: string;
+  privateRecipient?: boolean;
 };
 export async function sendVideoNotification(input: { email: string; requesterEmail: string; audience: string; details: string; availability: string; status: string; startsAt: string | null; admin: boolean; key: string }) {
   const origin = process.env.NEXT_PUBLIC_APP_URL || "https://support.sani-spa.fr";
@@ -79,6 +80,33 @@ export async function sendClientAccessLink(email: string, url: string, recovery:
     idempotencyKey: key,
     replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;color:#0a2342;line-height:1.6"><img src="${escapeHtml(origin)}/sanispa-logo.png" width="120" alt="SANISPA"/><h1>${title}</h1><p>${recovery ? "Vous avez demandé un lien pour choisir un nouveau mot de passe." : "Un seul clic confirme votre adresse et vous ramène directement à votre parcours SANISPA."}</p><p><a href="${escapeHtml(url)}" style="display:inline-block;background:#0a2342;color:white;padding:14px 20px;border-radius:8px;text-decoration:none">${title}</a></p><p>Ce lien est personnel, temporaire et à usage unique. Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.</p><p>SANISPA Support · <a href="https://www.sani-spa.fr">www.sani-spa.fr</a></p></div>`,
+  });
+}
+
+export async function sendTourSlotNotification(input: {
+  email: string; replyTo?: string; partnerName: string; startsAt: string; endsAt: string; diagnosticId?: string; key: string;
+}) {
+  const origin = process.env.NEXT_PUBLIC_APP_URL || "https://support.sani-spa.fr";
+  const start = new Date(input.startsAt);
+  const end = new Date(input.endsAt);
+  const dayLabel = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", dateStyle: "full" });
+  const timeLabel = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", timeStyle: "short" });
+  const day = dayLabel.format(start);
+  const lastDay = dayLabel.format(end);
+  const slot = day === lastDay ? `Le ${day} de ${timeLabel.format(start)} à ${timeLabel.format(end)}`
+    : `Du ${day} à ${timeLabel.format(start)} au ${lastDay} à ${timeLabel.format(end)}`;
+  const url = input.diagnosticId ? origin + clientDossierPath(input.diagnosticId) + "#rendez-vous" : null;
+  const replyTo = input.replyTo || process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL;
+  return sendTransactionalEmail({
+    to: input.email, subject: "SANISPA — Nouvel horaire de votre rendez-vous", idempotencyKey: input.key, replyTo, privateRecipient: true,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;color:#193b5b;line-height:1.6">
+      <img src="${escapeHtml(origin)}/sanispa-logo.png" width="120" alt="SANISPA"/>
+      <h1>Votre rendez-vous a été déplacé</h1>
+      <p>${escapeHtml(input.partnerName)} a mis à jour l’horaire de votre intervention.</p>
+      <p><strong>${escapeHtml(slot)}</strong> (heure de Paris)</p>
+      ${url ? `<p><a href="${escapeHtml(url)}">Voir mon rendez-vous</a></p>` : ""}
+      ${replyTo ? "<p>Si ce créneau vous pose problème, répondez à cet e-mail.</p>" : ""}
+    </div>`,
   });
 }
 export async function sendDiagnosticNotification(
@@ -253,6 +281,7 @@ async function sendTransactionalEmail({
   html,
   replyTo,
   idempotencyKey,
+  privateRecipient,
 }: TransactionalEmail) {
   const provider = (process.env.EMAIL_PROVIDER || "resend").toLowerCase();
   const apiKey =
@@ -262,7 +291,7 @@ async function sendTransactionalEmail({
   const from = process.env.EMAIL_FROM || "SANISPA <onboarding@resend.dev>";
   console.log("[SANISPA email] préparation envoi", {
     provider,
-    to,
+    to: privateRecipient ? undefined : to,
     from,
     subject,
     hasResendKey: Boolean(process.env.RESEND_API_KEY),
@@ -271,7 +300,7 @@ async function sendTransactionalEmail({
   if (!apiKey || !to) {
     console.log("[SANISPA email] envoi ignoré", {
       provider,
-      to,
+      to: privateRecipient ? undefined : to,
       reason: !apiKey ? "clé API manquante" : "destinataire manquant",
     });
     return { skipped: true };
@@ -349,10 +378,10 @@ async function sendTransactionalEmail({
   });
   const resendResponse = await response.text();
   console.log("[SANISPA email] réponse Resend", {
-    to,
+    to: privateRecipient ? undefined : to,
     status: response.status,
     ok: response.ok,
-    response: resendResponse,
+    response: privateRecipient ? undefined : resendResponse,
   });
   if (!response.ok) {
     throw new Error(`Resend email failed: ${resendResponse}`);

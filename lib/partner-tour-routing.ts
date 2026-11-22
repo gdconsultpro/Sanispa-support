@@ -8,8 +8,10 @@ export type TourDrivingRoute = { legs: (RouteLeg | null)[]; lines: RouteLine[] }
 export type TourReschedule = {
   day: string;
   technician_id: string;
+  notify_clients?: boolean;
   stops: { source: "private" | "sanispa"; id: string; expected_at: string; starts_at: string }[];
 };
+export type TourApplyResult = { updated: number; queued: number; without_email: number };
 
 export const maximumTourRouteStops = 100;
 

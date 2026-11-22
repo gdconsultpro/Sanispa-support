@@ -5,7 +5,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/Button";
 import { plannerDate, plannerDay, plannerTime, type MapCoordinate, type PartnerMapPoint, type PlannerMapIntervention, type PlannerTechnician } from "@/lib/partner-planner";
 import { isFixedTourStop, maximumTourRouteStops, minutesMissingBetweenStops, moveTourStep, orderTourStops, proposeTourTimes, scheduledTechnicianDays, tourCoordinate, tourDuration,
-  type TourDrivingRoute, type TourOrder, type TourReschedule, type TourStop } from "@/lib/partner-tour-routing";
+  type TourApplyResult, type TourDrivingRoute, type TourOrder, type TourReschedule, type TourStop } from "@/lib/partner-tour-routing";
 
 const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
   ssr: false,
@@ -16,7 +16,7 @@ const emptyStops: TourStop[] = [];
 const filterClass = "focus-ring mt-1 min-h-12 w-full min-w-0 rounded-lg border border-sanispa-line bg-white px-3 text-base";
 
 export type LoadDrivingTour = (stops: (MapCoordinate | null)[], signal: AbortSignal) => Promise<TourDrivingRoute>;
-export type ApplyDrivingTour = (tour: TourReschedule) => Promise<number>;
+export type ApplyDrivingTour = (tour: TourReschedule) => Promise<TourApplyResult>;
 type TourDraft = { stops: TourStop[]; firstTime: string; now: number };
 
 export function PartnerDrivingTour({ items, technician, scope, loadRoute, applyTour, reloadTour, saving }: {
@@ -80,6 +80,7 @@ function DrivingTourMap({ stops, scheduled, draft, saving, day, technician, load
   const [manualMinutes, setManualMinutes] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<{ message: string; stale: boolean } | null>(null);
   const [savedMessage, setSavedMessage] = useState("");
+  const [notifyClients, setNotifyClients] = useState(false);
   const applying = useRef(false);
   const cache = useRef(new Map<string, TourDrivingRoute>());
   const isEditing = Boolean(draft);
@@ -151,6 +152,7 @@ function DrivingTourMap({ stops, scheduled, draft, saving, day, technician, load
     let index = 0;
     const ordered = chronological.map(stop => isFixedTourStop(stop, now) ? stop : movable[index++]);
     setManualMinutes({});
+    setNotifyClients(false);
     setSaveError(null);
     setSavedMessage("");
     onDraft({ stops: ordered, firstTime: plannerTime(first.startsAt), now });
@@ -169,9 +171,13 @@ function DrivingTourMap({ stops, scheduled, draft, saving, day, technician, load
     applying.current = true;
     setSaveError(null);
     try {
-      const updated = await applyTour({ day, technician_id: technician.id, stops: shifted });
-      setSavedMessage(updated === 1 ? "Tournée validée. Un horaire a été mis à jour dans le planning."
-        : `Tournée validée. ${updated} horaires ont été mis à jour dans le planning.`);
+      const { updated, queued, without_email } = await applyTour({ day, technician_id: technician.id, stops: shifted, notify_clients: notifyClients });
+      setSavedMessage([
+        updated === 1 ? "Tournée validée. Un horaire a été mis à jour dans le planning."
+          : `Tournée validée. ${updated} horaires ont été mis à jour dans le planning.`,
+        queued > 0 ? `${queued} ${queued === 1 ? "e-mail en cours d’envoi" : "e-mails en cours d’envoi"}.` : "",
+        without_email > 0 ? `${without_email} rendez-vous sans adresse e-mail disponible.` : "",
+      ].filter(Boolean).join(" "));
       onApplied();
     } catch (error) {
       setSaveError({ message: error instanceof Error ? error.message : "La tournée n’a pas pu être validée.",
@@ -260,6 +266,11 @@ function DrivingTourMap({ stops, scheduled, draft, saving, day, technician, load
         {movedToPast ? <p role="status" className="mb-2 text-sm text-amber-900">Choisissez une heure de départ à venir.</p> : null}
         {lockedConflict && !busy ? <p role="status" className="mb-2 text-sm text-amber-900">Le trajet arrive après l’heure d’un rendez-vous verrouillé.</p> : null}
         {saveError ? <p role="alert" className="mb-2 text-sm font-bold text-red-700">{saveError.message}</p> : null}
+        <label className="mb-2 flex min-h-11 items-center gap-2 text-sm font-bold">
+          <input type="checkbox" checked={notifyClients} disabled={saving} className="h-5 w-5 shrink-0 accent-sanispa-blue"
+            onChange={event => setNotifyClients(event.target.checked)} />
+          Envoyer le nouveau créneau par e-mail aux clients concernés
+        </label>
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => void saveTour()} disabled={!canSave}>{saving ? "Enregistrement…" : "Valider la tournée"}</Button>
           <Button type="button" variant="secondary" disabled={saving} onClick={() => { setSaveError(null); onDraft(null); }}>Annuler</Button>

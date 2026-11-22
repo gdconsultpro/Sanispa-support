@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { getAuthenticatedPartner } from "@/lib/partner-auth";
 import { interventionError } from "@/lib/interventions";
+import { processNotifications } from "@/lib/notifications";
 import { getPartnerRoadRoute } from "@/lib/partner-road-route";
 import { maximumTourRouteStops } from "@/lib/partner-tour-routing";
 import { partnerClientAddress, partnerVisitAddress, type PendingPartnerDossier, type PendingPrivatePartnerVisit,
@@ -74,6 +76,7 @@ const applyTourInput = z.object({
   action: z.literal("applyTour"),
   day: z.string().date().min(10).max(10),
   technician_id: z.string().uuid(),
+  notify_clients: z.boolean().optional(),
   stops: z.array(z.object({
     source: z.enum(["private", "sanispa"]), id: z.string().uuid(), expected_at: timestamp, starts_at: timestamp,
   }).strict()).min(1).max(maximumTourRouteStops),
@@ -83,6 +86,7 @@ const rangeInput = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
 });
+export const maxDuration = 60;
 
 async function requirePlanner(request: Request) {
   const context = await getAuthenticatedPartner(request);
@@ -134,21 +138,15 @@ async function locateAddress(address: Address, budget?: AbortSignal, municipalit
   }
 }
 
-async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: Array<Address | null>) {
+async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: Array<Address | null>, waitingAddresses: Array<Address | null>) {
   function addressKey(address: Address) {
     return partnerClientAddress(address).toLowerCase();
   }
   const located = new Map<string, Awaited<ReturnType<typeof locateAddress>>>();
-  const lookup = new Map<string, Address>();
   for (const client of clients) {
     if (client.latitude !== null && client.longitude !== null) {
       located.set(addressKey(client), { latitude: client.latitude, longitude: client.longitude });
     }
-  }
-  for (const address of [...clients, ...sanispaAddresses]) {
-    if (!address?.street || !address.postal_code || !address.city) continue;
-    const key = addressKey(address);
-    if (!located.has(key)) lookup.set(key, address);
   }
   const budget = AbortSignal.timeout(8000);
   const municipalities = new Map<string, Awaited<ReturnType<typeof locateAddress>>>();
@@ -165,15 +163,25 @@ async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: A
       }));
     }
   }
-  await locateBatch(lookup, false);
   const municipalityKey = (address: Address) => addressKey({ ...address, street: "" });
-  const incompleteMunicipalities = new Map<string, Address>();
-  for (const address of [...clients, ...sanispaAddresses]) {
-    if (address?.city && located.get(addressKey(address))?.latitude == null) {
-      incompleteMunicipalities.set(municipalityKey(address), address);
+  async function locateGroup(addresses: Array<Address | null>) {
+    const lookup = new Map<string, Address>();
+    for (const address of addresses) {
+      if (address?.street && address.postal_code && address.city && !located.has(addressKey(address))) {
+        lookup.set(addressKey(address), address);
+      }
     }
+    await locateBatch(lookup, false);
+    const incompleteMunicipalities = new Map<string, Address>();
+    for (const address of addresses) {
+      if (address?.city && located.get(addressKey(address))?.latitude == null && !municipalities.has(municipalityKey(address))) {
+        incompleteMunicipalities.set(municipalityKey(address), address);
+      }
+    }
+    await locateBatch(incompleteMunicipalities, true);
   }
-  await locateBatch(incompleteMunicipalities, true);
+  await locateGroup(waitingAddresses);
+  await locateGroup([...clients, ...sanispaAddresses]);
   return (address: Address | null): MapLocation | undefined => {
     if (!address) return undefined;
     const precise = located.get(addressKey(address));
@@ -183,7 +191,7 @@ async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: A
   };
 }
 
-async function pendingRows<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>) {
+async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>) {
   const size = 250;
   const rows: T[] = [];
   for (let offset = 0; ; offset += size) {
@@ -198,13 +206,15 @@ export async function GET(request: Request) {
   try {
     const { partner, supabase } = await requirePlanner(request);
     const params = new URL(request.url).searchParams;
+    const forMap = params.get("map") === "1";
+    const upcoming = forMap && params.get("scope") === "upcoming";
     async function technicians() {
       const { data, error } = await supabase.from("partner_planning_technicians").select("id,name")
         .eq("partner_id", partner.id).order("name").order("id");
       if (error) throw error;
       return data;
     }
-    if (!params.has("from") && !params.has("to")) {
+    if (!upcoming && !params.has("from") && !params.has("to")) {
       const offset = z.coerce.number().int().min(0).max(1000000).parse(params.get("offset") ?? 0);
       if (params.get("section") === "stock") {
         const { data, error } = await supabase.from("partner_private_stock").select(stockColumns).eq("partner_id", partner.id)
@@ -220,33 +230,36 @@ export async function GET(request: Request) {
       return NextResponse.json({ clients: data.slice(0, 30), more: data.length > 30, technicians: team });
     }
 
-    const { from, to } = rangeInput.parse({ from: params.get("from"), to: params.get("to") });
-    const duration = Date.parse(to) - Date.parse(from);
-    if (!(duration > 0 && duration <= 32 * 24 * 3600000)) throw new HttpError(400, "Choisissez une période valide.");
-    const forMap = params.get("map") === "1";
-    if (forMap && duration > 8 * 24 * 3600000) throw new HttpError(400, "Choisissez un jour ou une semaine pour la carte.");
+    const range = upcoming ? null : rangeInput.parse({ from: params.get("from"), to: params.get("to") });
+    if (range) {
+      const duration = Date.parse(range.to) - Date.parse(range.from);
+      if (!(duration > 0 && duration <= 32 * 24 * 3600000)) throw new HttpError(400, "Choisissez une période valide.");
+      if (forMap && duration > 8 * 24 * 3600000) throw new HttpError(400, "Choisissez un jour ou une semaine pour la carte.");
+    }
+    const now = new Date().toISOString();
     const privateQuery = () => supabase.from("partner_private_visits").select(privateVisitColumns)
       .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
+    const sanispaQuery = () => supabase.from("partner_appointments")
+      .select("diagnostic_id,starts_at,ends_at,technician_id,updated_at,diagnostic:diagnostics!inner(problem_type,status,customer:customers(name,address))")
+      .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id).is("diagnostic.archived_at", null);
     const [privateVisits, sanispaVisits, team, waitingPrivate, waitingSanispa] = await Promise.all([
-      privateQuery().lt("starts_at", to).gt("ends_at", from).order("starts_at"),
-      supabase.from("partner_appointments")
-        .select("diagnostic_id,starts_at,ends_at,technician_id,updated_at,diagnostic:diagnostics!inner(problem_type,status,customer:customers(name,address))")
-        .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id).is("diagnostic.archived_at", null)
-        .lt("starts_at", to).gt("ends_at", from).order("starts_at"),
+      allRows((from, to) => (range ? privateQuery().lt("starts_at", range.to).gt("ends_at", range.from) : privateQuery().gte("starts_at", now))
+        .order("starts_at").order("id").range(from, to)),
+      allRows((from, to) => (range ? sanispaQuery().lt("starts_at", range.to).gt("ends_at", range.from)
+        : sanispaQuery().gte("starts_at", now).not("diagnostic.status", "in", "(CLOSED,terminé)"))
+        .order("starts_at").order("diagnostic_id").range(from, to)),
       technicians(),
-      forMap ? pendingRows((from, to) => privateQuery().is("starts_at", null)
+      forMap ? allRows((from, to) => privateQuery().is("starts_at", null)
         .order("updated_at", { ascending: false }).order("id").range(from, to)) : null,
-      forMap ? pendingRows((from, to) => supabase.from("diagnostics")
+      forMap ? allRows((from, to) => supabase.from("diagnostics")
         .select("id,problem_type,status,customer:customers(name,address),partner_appointments(),intervention_reports()")
         .eq("assigned_partner_id", partner.id).is("archived_at", null).not("status", "in", "(CLOSED,terminé)")
         .is("partner_appointments", null).is("intervention_reports", null)
         .order("created_at", { ascending: false }).order("id").range(from, to)) : null,
     ]);
-    if (privateVisits.error) throw privateVisits.error;
-    if (sanispaVisits.error) throw sanispaVisits.error;
     if (forMap) {
-      const visits = privateVisits.data as unknown as PrivatePartnerVisit[];
-      const sanispa = sanispaVisits.data as unknown as SanispaPartnerVisit[];
+      const visits = privateVisits as unknown as PrivatePartnerVisit[];
+      const sanispa = sanispaVisits as unknown as SanispaPartnerVisit[];
       const pendingVisits = (waitingPrivate ?? []) as unknown as PendingPrivatePartnerVisit[];
       const pendingDossiers = (waitingSanispa ?? []) as unknown as PendingPartnerDossier[];
       const dossierAddress = (dossier: PendingPartnerDossier | SanispaPartnerVisit["diagnostic"]) => partnerVisitAddress(dossier.customer?.address);
@@ -254,6 +267,7 @@ export async function GET(request: Request) {
       const location = await mapLocations(
         [...visits, ...pendingVisits].map(visit => visit.client),
         [...sanispa.map(visit => dossierAddress(visit.diagnostic)), ...pendingDossierAddresses],
+        [...pendingVisits.map(visit => visit.client), ...pendingDossierAddresses],
       );
       function locateVisit<T extends (PrivatePartnerVisit | PendingPrivatePartnerVisit)>(visit: T) {
         const point = visit.client.latitude === null || visit.client.longitude === null
@@ -269,7 +283,7 @@ export async function GET(request: Request) {
         technicians: team,
       });
     }
-    return NextResponse.json({ visits: privateVisits.data, sanispa: sanispaVisits.data, technicians: team });
+    return NextResponse.json({ visits: privateVisits, sanispa: sanispaVisits, technicians: team });
   } catch (error) {
     return apiError(error);
   }
@@ -286,9 +300,13 @@ export async function POST(request: Request) {
     }
     if (command.action === "applyTour") {
       await rateLimit(supabase, `partner-tour-apply:${partner.id}`, 12);
-      const { data, error } = await supabase.rpc("apply_partner_tour", {
+      const args = {
         p_partner: partner.id, p_actor: user.id, p_technician: command.technician_id, p_day: command.day, p_stops: command.stops,
-      });
+      };
+      const batch = command.notify_clients ? randomUUID() : null;
+      const { data, error } = batch
+        ? await supabase.rpc("apply_partner_tour_and_queue", { ...args, p_batch: batch })
+        : await supabase.rpc("apply_partner_tour", args);
       const code = error?.message ?? "";
       if (code.includes("TOUR_CHANGED") || error?.code === "40P01" || error?.code === "40001")
         throw new HttpError(409, "Le planning a changé. Rechargez la tournée avant de la valider.", "TOUR_CHANGED");
@@ -299,7 +317,14 @@ export async function POST(request: Request) {
       if (code.includes("INVALID_TOUR") || code.includes("TECHNICIAN_NOT_FOUND"))
         throw new HttpError(400, "Vérifiez le jour, les horaires et le technicien de la tournée.");
       if (error) throw interventionError(error);
-      return NextResponse.json({ updated: data });
+      if (batch && data.queued > 0) after(async () => {
+        try {
+          for (let offset = 0; offset < data.queued; offset += 10) await processNotifications(`tour-slot:${batch}:`);
+        } catch {
+          console.error("Les notifications de tournée seront reprises par la file d’envoi.");
+        }
+      });
+      return NextResponse.json(batch ? data : { updated: data, queued: 0, without_email: 0 });
     }
     await rateLimit(supabase, `partner-private-planner:${partner.id}`, 30);
     const updated_at = new Date().toISOString();
