@@ -1,4 +1,5 @@
 import { administrator, requireSameOrigin } from "@/lib/admin-auth";
+import { loadAdminPartnerApprovalEmails } from "@/lib/admin-partner-approval-email";
 import { apiError } from "@/lib/http";
 import { processNotifications } from "@/lib/notifications";
 import { NextResponse } from "next/server";
@@ -64,11 +65,8 @@ export async function PATCH(request: Request, { params }: {
                     : "La confirmation est disponible pour les entreprises actives et vérifiées."},{status:409});
             if (result.error) throw result.error;
             await processNotifications(result.data).catch(() => undefined);
-            const [partner, job] = await Promise.all([
-                loadPartner(supabase,id),
-                supabase.from("notification_jobs").select("state").eq("key",result.data).maybeSingle(),
-            ]);
-            return NextResponse.json({partner, approvalEmail: job.data?.state ?? "pending"});
+            const partner = await loadPartner(supabase,id);
+            return NextResponse.json({partner, approvalEmail: partner.approval_email?.state ?? "pending"});
         }
         const { departments, ...partnerPayload } = payload;
         if (Object.keys(partnerPayload).length) {
@@ -94,8 +92,10 @@ async function loadPartner(supabase: any, id: string) {
         .single();
     if (error)
         throw error;
+    const approvalEmails = await loadAdminPartnerApprovalEmails(supabase, data.verification_status === "verified" ? [id] : []);
     return {
         ...data,
+        approval_email: approvalEmails ? approvalEmails.get(id) ?? null : undefined,
         departments: (data.partner_departments ?? []).map((row: {
             department: string;
         }) => row.department)

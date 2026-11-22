@@ -123,10 +123,16 @@ export type AdminDiagnostic = import("./admin-intervention-summary").AdminInterv
     public_url: string | null;
   }>;
 };
+export type PartnerApprovalEmail = {
+  state: string;
+  sent_at: string | null;
+};
+
 export type PartnerAdminItem = {
   siret?: string | null;
   verification_status?: "existing" | "pending" | "verified";
   verified_at?: string | null;
+  approval_email?: PartnerApprovalEmail | null;
   registered_at: string | null;
   id: string;
   company_name: string;

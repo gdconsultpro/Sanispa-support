@@ -2,7 +2,7 @@
 
 import { paymentsPaused } from "@/lib/commercial-mode";
 import { useMemo, useState } from "react";
-import { PartnerAdminItem } from "@/lib/types";
+import type { PartnerAdminItem, PartnerApprovalEmail } from "@/lib/types";
 import { PartnerAccessAdmin } from "@/components/PartnerAccessAdmin";
 
 const emptyForm = {
@@ -19,6 +19,23 @@ const emptyForm = {
 };
 
 const partnerDate = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" });
+const approvalDate = new Intl.DateTimeFormat("fr-FR", {
+  dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris",
+});
+
+function ApprovalEmailStatus({ email }: { email: PartnerApprovalEmail | null | undefined }) {
+  let status: React.ReactNode;
+  if (email === undefined) status = "Statut indisponible";
+  else if (email === null) status = "Aucun envoi enregistré";
+  else if (email.state === "sent" && email.sent_at) {
+    status = <>Envoyé le <time dateTime={email.sent_at}>{approvalDate.format(new Date(email.sent_at))}</time></>;
+  } else if (email.state === "sent") status = "Envoyé · Date indisponible";
+  else if (email.state === "pending") status = "En attente d’envoi";
+  else if (email.state === "cancelled") status = "Envoi annulé";
+  else status = "Envoi non confirmé";
+
+  return <p className="mt-1 text-sm text-sanispa-steel"><strong>E-mail de validation</strong> · {status}</p>;
+}
 
 export function PartnerAdmin({
   initialPartners,
@@ -360,6 +377,7 @@ export function PartnerAdmin({
                   {partner.contact_name || "Contact non renseigné"} ·{" "}
                   {partner.email}
                 </p>
+                {partner.verification_status === "verified" && <ApprovalEmailStatus email={partner.approval_email} />}
                 <p className="mt-1 text-sm text-sanispa-steel">
                   {[partner.address, partner.postal_code, partner.city]
                     .filter(Boolean)
@@ -384,7 +402,7 @@ export function PartnerAdmin({
                   setCorrection("");
                   setMessage("");
                 }} className="focus-ring rounded-md bg-sanispa-blue px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Examiner les coordonnées et le SIRET</button> : null}
-                {partner.active && partner.verification_status === "verified" ? <button
+                {partner.active && partner.verification_status === "verified" && partner.approval_email?.state !== "sent" ? <button
                   type="button" disabled={saving} onClick={() => void confirmPartner(partner, true)}
                   className="focus-ring rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy disabled:opacity-50">
                   Envoyer le mail de validation

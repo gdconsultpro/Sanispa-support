@@ -44,6 +44,19 @@ test("partner changes, planning a pending job, and CSV imports are scoped to the
     assert.equal((await review(null)).rows[0].key, approvalKey);
     assert.deepEqual((await db.query("select kind, payload->>'email' email from notification_jobs where key=$1", [approvalKey])).rows,
       [{ kind: "partner_approval", email: "contact@example.invalid" }]);
+    const emailStatuses = () => db.query(
+      "select partner_id, state, sent_at::text from admin_partner_approval_email_statuses(array[$1]::uuid[])", [partner]);
+    assert.deepEqual((await emailStatuses()).rows, [{ partner_id: partner, state: "pending", sent_at: null }]);
+    await db.query("update notification_jobs set state='sent', sent_at='2026-11-22T10:30:00Z' where key=$1", [approvalKey]);
+    assert.deepEqual((await emailStatuses()).rows,
+      [{ partner_id: partner, state: "sent", sent_at: "2026-11-22 10:30:00+00" }]);
+    await account(owner, { email: "nouveau@example.invalid" });
+    assert.deepEqual((await emailStatuses()).rows, []);
+    await account(owner, { email: "contact@example.invalid", siret: "22222222222222" });
+    assert.deepEqual((await emailStatuses()).rows, []);
+    const nextApprovalKey = (await review("22222222222222")).rows[0].key;
+    assert.notEqual(nextApprovalKey, approvalKey);
+    assert.deepEqual((await emailStatuses()).rows, [{ partner_id: partner, state: "pending", sent_at: null }]);
     const rows = [{ category: "piece", label: "Filtre test", reference: "F1", quantity: 3 },
       { category: "piece", label: "Filtre doublon", reference: "f1", quantity: 5 }];
     const importStock = (actor: string) => db.query<{ count: number }>("select import_partner_stock($1,$2,$3) count", [partner, actor, JSON.stringify(rows)]);

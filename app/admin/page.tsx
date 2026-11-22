@@ -1,5 +1,6 @@
 import { adminClientsPath, adminDirectoryTab, adminDossierId, adminDossierSection, adminLoginPath } from "@/lib/admin-navigation";
 import { adminInboxFlags, adminInboxViews, adminInboxView } from "@/lib/admin-inbox";
+import { loadAdminPartnerApprovalEmails } from "@/lib/admin-partner-approval-email";
 import { interventionSummaryFields } from "@/lib/admin-intervention-summary";
 import { partnerDispatchDecision } from "@/lib/partner-release";
 import { AdminRequests } from "@/components/AdminRequests";
@@ -49,7 +50,7 @@ export default async function AdminPage({ searchParams }: {
     const showArchived = !dueOnly && params?.archived === "1";
     const [{ diagnostics, error }, { partners, error: partnerError }, clients] = await Promise.all([
         tab === "diagnostics" ? loadDiagnostics(showArchived, params?.q, params?.status, dueOnly, dispatchFilter) : { diagnostics: [], error: null },
-        tab === "partners" ? loadPartners() : { partners: [], error: null },
+        tab === "partners" ? loadPartners(context.supabase) : { partners: [], error: null },
         tab === "clients" ? context.supabase.rpc("list_admin_customer_accounts", {
             p_actor: context.user.id, p_search: clientQuery, p_page: clientPage,
         }) : null,
@@ -273,20 +274,22 @@ async function loadDiagnostics(showArchived: boolean, q?: string, status?: strin
         return { diagnostics: [], error: error instanceof Error ? error.message : "Erreur de chargement." };
     }
 }
-async function loadPartners(): Promise<{
+async function loadPartners(supabase: ReturnType<typeof getSupabaseAdmin>): Promise<{
     partners: PartnerAdminItem[];
     error: string | null;
 }> {
     try {
-        const supabase = getSupabaseAdmin();
         const { data, error } = await supabase
             .from("partners")
             .select("*, partner_departments(department)")
             .order("company_name", { ascending: true });
         if (error)
             throw error;
+        const approvalEmails = await loadAdminPartnerApprovalEmails(supabase,
+            (data ?? []).filter(partner => partner.verification_status === "verified").map(partner => partner.id));
         const partners = (data ?? []).map((partner) => ({
             ...partner,
+            approval_email: approvalEmails ? approvalEmails.get(partner.id) ?? null : undefined,
             departments: (partner.partner_departments ?? []).map((row: {
                 department: string;
             }) => row.department).sort()
