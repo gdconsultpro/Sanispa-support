@@ -9,42 +9,42 @@ import { localDateTime } from "@/lib/client-browser-api";
 import { partnerLoginPath } from "@/lib/partner-navigation";
 import { clientCaseLoginPath, clientCaseReturnPath, clientDossierPath } from "@/lib/client-case-navigation";
 import { partnerWorkLabels, partnerWorkState } from "@/lib/partner-work";
+import type { FieldPhoto } from "@/lib/partner-field";
 type Report = { id: string; performed_at: string; submitted_at: string; findings: string; actions: string; next_steps: string; client_validated_at: string | null;
   client_outcome: "repaired" | "quote_pending" | "abandoned" | null; responsiveness: number | null; professionalism: number | null; pricing: number | null };
 type Workspace = { dossierReference?: string; dossierStatus?: string; assignedPartner?: boolean; appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[]; job?: PartnerAssignedVisit };
 const outcomes = { repaired: "Spa réparé", quote_pending: "Devis en cours", abandoned: "Projet abandonné" } as const;
 const criteria = [{ key: "responsiveness", label: "Réactivité" }, { key: "professionalism", label: "Professionnalisme" }, { key: "pricing", label: "Tarif" }] as const;
 const inputClass = "mt-2 w-full rounded-xl border border-sanispa-line bg-white p-3 text-sanispa-navy";
-type Draft = { id: string; performed: string; findings: string; actions: string; nextSteps: string; onSite: boolean };
-const emptyDraft: Draft = { id: "", performed: "", findings: "", actions: "", nextSteps: "", onSite: false };
 
-function restoreDraft(key: string, reports: Report[]): Draft {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return emptyDraft;
-    const draft: Partial<Draft> = JSON.parse(raw);
-    if (typeof draft.id !== "string" || !draft.id || typeof draft.performed !== "string" ||
-        typeof draft.findings !== "string" || typeof draft.actions !== "string" ||
-        typeof draft.nextSteps !== "string" || typeof draft.onSite !== "boolean") return emptyDraft;
-    if (reports.some(report => report.id === draft.id)) {
-      localStorage.removeItem(key);
-      return emptyDraft;
-    }
-    return { id: draft.id, performed: draft.performed, findings: draft.findings, actions: draft.actions, nextSteps: draft.nextSteps, onSite: draft.onSite };
-  } catch {
-    return emptyDraft;
-  }
+function ClientReportPhotos({ load }: { load: () => Promise<{ photos: FieldPhoto[] }> }) {
+  const [photos, setPhotos] = useState<FieldPhoto[] | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  return <details className="mt-3" onToggle={event => {
+    if (!event.currentTarget.open || loading) return;
+    setLoading(true);
+    setError("");
+    void load().then(result => setPhotos(result.photos)).catch(cause => setError(cause instanceof Error ? cause.message : "Photos indisponibles."))
+      .finally(() => setLoading(false));
+  }}>
+    <summary className="cursor-pointer text-sm font-bold underline">Photos du compte rendu</summary>
+    {loading ? <p role="status" className="text-sm">Chargement des photos…</p> : null}
+    {error ? <p role="alert" className="text-sm text-red-800">{error}</p> : null}
+    {photos?.length ? <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">{photos.map((photo, index) => <li key={photo.id}>
+      <a href={photo.url} target="_blank" rel="noreferrer" className="focus-ring block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={photo.url} className="aspect-square w-full rounded-lg object-cover" alt={`Photo du rapport ${index + 1}`} loading="lazy" />
+      </a>
+    </li>)}</ul> : photos && !loading && !error ? <p className="text-sm">Aucune photo jointe à ce compte rendu.</p> : null}
+  </details>;
 }
-
 export function InterventionWorkspace({ id, role }: { id: string; role: "client" | "partner" }) {
   const base = `/api/${role}/interventions/${id}`;
   const [data, setData] = useState<Workspace | null>(null), [error, setError] = useState(""), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
   const [start, setStart] = useState(""), [end, setEnd] = useState("");
   const [editingAppointment, setEditingAppointment] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [draftStatus, setDraftStatus] = useState("");
-  const draftKey = useRef("");
   const [file, setFile] = useState<File | null>(null), [outcome, setOutcome] = useState<"" | keyof typeof outcomes>("");
   const [ratings, setRatings] = useState({ responsiveness: 0, professionalism: 0, pricing: 0 });
   const pending = useRef(false);
@@ -53,7 +53,7 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
       const dossier = clientDossierPath(id);
       const destination = clientCaseReturnPath(dossier + window.location.hash) || dossier;
       window.location.replace(role === "partner"
-        ? partnerLoginPath("/partenaire/interventions/" + id)
+        ? partnerLoginPath("/partenaire/interventions/" + id + "/gestion")
         : clientCaseLoginPath(destination));
     };
     const { data: auth } = await getSupabaseBrowser().auth.getSession();
@@ -65,24 +65,17 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
     const body = await response.json();
     if (response.status === 401 && !init?.signal?.aborted) redirectToLogin();
     if (!response.ok) throw new Error(body.error || "Opération impossible. Réessayez.");
-    return { body, userId: auth.session.user.id };
+    return body;
   }, [id, role]);
   const load = useCallback(async (signal?: AbortSignal) => {
-    const { body, userId }: { body: Workspace; userId: string } = await request(base, { signal });
+    const body: Workspace = await request(base, { signal });
     if (signal?.aborted) return;
     setData(body);
     if (role === "partner") {
       setStart(body.appointment ? localDateTime(new Date(body.appointment.starts_at)) : "");
       setEnd(body.appointment ? localDateTime(new Date(body.appointment.ends_at)) : "");
-      if (signal) {
-        const key = "sanispa-report-v1:" + userId + ":" + id;
-        const saved = restoreDraft(key, body.reports);
-        draftKey.current = key;
-        setDraft(saved);
-        setDraftStatus(saved.id ? "Brouillon retrouvé sur cet appareil." : "");
-      }
     }
-  }, [base, id, request, role]);
+  }, [base, request, role]);
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal).catch(e => { if (!controller.signal.aborted) setError(e.message); });
@@ -90,22 +83,11 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
   }, [load]);
   const dataReady = Boolean(data);
   useEffect(() => {
-    if (role !== "client" || !dataReady) return;
+    if (!dataReady) return;
     const section = window.location.hash.slice(1);
     if (["validation", "rendez-vous", "rapport", "factures"].includes(section))
       document.getElementById(section)?.scrollIntoView({ block: "start" });
   }, [role, dataReady]);
-  function editDraft(update: Partial<Draft>) {
-    const next = { ...draft, id: draft.id || crypto.randomUUID(), ...update };
-    setDraft(next);
-    try {
-      localStorage.setItem(draftKey.current, JSON.stringify(next));
-      setDraftStatus("Brouillon enregistré sur cet appareil.");
-    } catch {
-      setDraftStatus("La sauvegarde locale est indisponible. Gardez cette page ouverte jusqu’à l’envoi.");
-    }
-  }
-
   async function save(body: unknown, success: string, afterSave?: () => void) {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError(""); setMessage("");
@@ -143,7 +125,7 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
         <p className="text-sm">{data.dossierReference || "Référence en cours"}</p>
         <h2 className="mt-1 text-xl font-bold">{partnerWorkLabels[workState]}</h2>
         {workState === "invoice" ? <p className="mt-2">Le compte rendu est transmis. Le client a besoin de la facture pour confirmer une réparation.</p> : null}
-        {nextSection ? <a href={"#" + nextSection} className="mt-3 inline-block font-bold underline">{workState === "invoice" ? "Déposer la facture" : workState === "report" ? "Rédiger le compte rendu" : workState === "contact" ? "Planifier la visite" : "Voir le rendez-vous"}</a> : null}
+        {nextSection ? <a href={nextSection === "rapport" ? "/partenaire/interventions/" + id + "#rapport" : "#" + nextSection} className="mt-3 inline-block font-bold underline">{workState === "invoice" ? "Déposer la facture" : workState === "report" ? "Rédiger le compte rendu" : workState === "contact" ? "Planifier la visite" : "Voir le rendez-vous"}</a> : null}
       </section> : null}
       {role === "partner" && data.job && (workState === "upcoming" || workState === "contact" || Boolean(!closed && data.appointment && Date.parse(data.appointment.ends_at) > Date.now())) ?
         <PartnerAssignedVisitInfo id={id} key={id} job={data.job} /> : null}
@@ -201,30 +183,9 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
           <h3 className="font-bold">Intervention du {new Date(report.performed_at).toLocaleString("fr-FR")}</h3>
           <dl className="mt-3 grid gap-2"><dt className="font-bold">Constats</dt><dd className="whitespace-pre-wrap break-words">{report.findings}</dd><dt className="font-bold">Travaux et contrôles effectués</dt><dd className="whitespace-pre-wrap break-words">{report.actions}</dd><dt className="font-bold">Suite prévue</dt><dd className="whitespace-pre-wrap break-words">{report.next_steps}</dd></dl>
           <p className="mt-3 font-bold">{report.client_validated_at && report.client_outcome ? `${outcomes[report.client_outcome]} · Validé par le client` : "En attente de validation par le client"}</p>
+          {role === "client" ? <ClientReportPhotos load={() => request(base + "?photos=" + report.id)} /> : null}
           {report.client_validated_at ? <p className="mt-2 text-sm">Réactivité : {report.responsiveness}/5 · Professionnalisme : {report.professionalism}/5 · Tarif : {report.pricing}/5</p> : null}
         </article>)}
-        {role === "partner" && !waiting && !closed ? <form className="mt-5 grid gap-4" onSubmit={e => {
-          e.preventDefault();
-          if (!draft.performed || !draft.onSite) return;
-          const { id, performed, findings, actions, nextSteps, onSite } = draft;
-          const payload = { id, action: "report", performedAt: new Date(performed).toISOString(), findings, actions, nextSteps, onSite };
-          void save(payload, "Compte rendu transmis au client pour validation.", () => {
-            try { localStorage.removeItem(draftKey.current); } catch { /* cleared when the report is next loaded */ }
-            setDraft(emptyDraft);
-            setDraftStatus("");
-          });
-        }}>
-          <p className="text-sm">Remplissez ce rapport pendant votre visite. Après envoi, son contenu est conservé sans modification. Un nouveau rapport pourra être ajouté après la validation du devis en cours.</p>
-          {draftStatus ? <p role="status" className="text-sm font-bold text-sanispa-steel">{draftStatus}</p> : null}
-          <fieldset disabled={busy} className="grid min-w-0 gap-4">
-            <label className="min-w-0">Date et heure de l’intervention<input className={inputClass} type="datetime-local" required value={draft.performed} onChange={e => editDraft({ performed: e.target.value })} /></label>
-            <label>Ce que vous avez constaté <span className="text-sm">(20 caractères minimum)</span><textarea className={inputClass} minLength={20} maxLength={5000} required value={draft.findings} onChange={e => editDraft({ findings: e.target.value })} /></label>
-            <label>Ce que vous avez fait et vérifié <span className="text-sm">(20 caractères minimum)</span><textarea className={inputClass} minLength={20} maxLength={5000} required value={draft.actions} onChange={e => editDraft({ actions: e.target.value })} /></label>
-            <label>Ce qui reste à faire / suite convenue <span className="text-sm">(5 caractères minimum)</span><textarea className={inputClass} minLength={5} maxLength={3000} required value={draft.nextSteps} onChange={e => editDraft({ nextSteps: e.target.value })} /></label>
-            <label className="flex items-start gap-3"><input type="checkbox" required checked={draft.onSite} onChange={e => editDraft({ onSite: e.target.checked })} className="mt-1" />Je confirme remplir ce compte rendu sur place lors de cette intervention.</label>
-          </fieldset>
-          <Button disabled={busy} type="submit">Transmettre mon compte rendu</Button>
-        </form> : null}
       </section>
       <section id="factures" className="scroll-mt-4 rounded-2xl border border-sanispa-line bg-white p-5">
         <h2 className="text-xl font-bold">{role === "client" ? "Factures d’intervention" : "3. Les factures d’intervention"}</h2>

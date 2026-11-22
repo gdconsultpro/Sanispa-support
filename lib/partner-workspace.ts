@@ -5,6 +5,7 @@ import { problemLabel } from "./display-labels";
 export const workStatusLabels = {
   pending: "À planifier",
   scheduled: "Planifiée",
+  in_progress: "En cours",
   due: "À terminer",
   review: "Terminée · À valider",
   validated: "Validée",
@@ -14,7 +15,7 @@ export const workStatusLabels = {
 export type PartnerWorkStatus = keyof typeof workStatusLabels;
 export type WorkFilterStatus = PartnerWorkStatus | "all";
 export const workFilterLabels: Record<WorkFilterStatus, string> = {
-  all: "Toutes les interventions", pending: "À planifier", scheduled: "Planifiées",
+  all: "Toutes les interventions", pending: "À planifier", scheduled: "Planifiées", in_progress: "En cours",
   due: "À terminer", review: "À valider", validated: "Validées", followup: "En suivi", closed: "Clôturées",
 };
 const legacyStatus: Record<string, PartnerWorkStatus> = {
@@ -64,20 +65,22 @@ export function workItemPath(item: Pick<PlannerMapIntervention, "id" | "dossierI
   return "/partenaire/interventions/" + item.dossierId + section;
 }
 
-export function privateWorkStatus(visit: Pick<PrivatePartnerVisit | PendingPrivatePartnerVisit, "starts_at" | "ends_at" | "completed_at" | "validated_at">, now: number): PartnerWorkStatus {
+export function privateWorkStatus(visit: Pick<PrivatePartnerVisit | PendingPrivatePartnerVisit, "starts_at" | "ends_at" | "completed_at" | "validated_at" | "field_started_at">, now: number): PartnerWorkStatus {
   if (visit.validated_at) return "validated";
   if (visit.completed_at) return "review";
+  if (visit.field_started_at) return "in_progress";
   if (!visit.starts_at) return "pending";
   return visit.ends_at && Date.parse(visit.ends_at) <= now ? "due" : "scheduled";
 }
 
-function sanispaWorkStatus(dossier: Omit<PendingPartnerDossier, "id">, visit: SanispaPartnerVisit | undefined, now: number) {
+export function sanispaWorkStatus(dossier: Omit<PendingPartnerDossier, "id">, visit: SanispaPartnerVisit | undefined, now: number) {
   const latest = dossier.intervention_reports?.reduce<NonNullable<PendingPartnerDossier["intervention_reports"]>[number] | undefined>(
     (current, report) => !current || Date.parse(report.submitted_at) > Date.parse(current.submitted_at) ? report : current, undefined);
   let workStatus: PartnerWorkStatus;
   if (dossier.status === "CLOSED" || dossier.status === "terminé") workStatus = latest?.client_validated_at ? "validated" : "closed";
   else if (latest && !latest.client_validated_at) workStatus = "review";
   else if (latest && latest.client_outcome !== "quote_pending") workStatus = "validated";
+  else if (visit && dossier.partner_field_sessions?.some(session => session.submitted_at === null && Date.parse(session.appointment_start) === Date.parse(visit.starts_at))) workStatus = "in_progress";
   else if (latest && (!visit || Date.parse(visit.starts_at) <= Date.parse(latest.performed_at))) workStatus = "followup";
   else if (!visit) workStatus = dossier.intervened_at ? "followup" : "pending";
   else workStatus = Date.parse(visit.ends_at) <= now ? "due" : "scheduled";
@@ -93,7 +96,7 @@ export function workspaceWorkItems(data: PartnerWorkspaceData, now: number): Pla
       technicianId: visit.technician_id, address: partnerClientAddress(visit.client), description: visit.description, workStatus,
       latitude: visit.latitude ?? visit.client.latitude, longitude: visit.longitude ?? visit.client.longitude,
       approximateLocation: visit.approximateLocation, client: visit.client, visit,
-      reschedule: { source: "private" as const, id: visit.id, version: visit.updated_at, closed: Boolean(visit.completed_at) },
+      reschedule: { source: "private" as const, id: visit.id, version: visit.updated_at, closed: Boolean(visit.completed_at || visit.field_started_at) },
     };
   });
   function assigned(id: string, dossier: Omit<PendingPartnerDossier, "id">, visit?: SanispaPartnerVisit): PlannerMapIntervention {

@@ -21,7 +21,7 @@ import { plannerRequest, PlannerRequestError } from "@/lib/partner-planner-brows
 import {
   hasCompletePartnerAddress, interventionTypes, partnerClientAddress, partnerClientIdPattern, partnerClientPath, partnerClientVisitTiming, partnerDirections,
   partnerClientsPath, partnerPrivateVisitPath, partnerStockPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
-  type MapCoordinate, type PartnerMapContacts, type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerAppointment,
+  type MapCoordinate, type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerAppointment,
   type PartnerClientHistory, type PartnerClientSpa, type PartnerPrivateVisitFile, type PlannerPeriod, type PlannerQueueEntry, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
@@ -54,8 +54,6 @@ export default function PartnerPlanningPage() {
   const [period, setPeriod] = useState<PlannerPeriod>("day");
   const [workStatus, setWorkStatus] = useState<WorkFilterStatus>("all");
   const [technician, setTechnician] = useState("all");
-  const [mapContacts, setMapContacts] = useState<PartnerMapContacts | null>(null);
-  const [mapContactError, setMapContactError] = useState("");
   const [appointmentToOpen, setAppointmentToOpen] = useState<PlannerAppointment | null>(null);
   const [mapVisitId, setMapVisitId] = useState<string | null>(null);
   const [day, setDay] = useState("");
@@ -172,17 +170,6 @@ export default function PartnerPlanningPage() {
     return () => controller.abort();
   }, [view, day, period, search, offset, revision, clientId, historyOffset, showDeleted, directVisitId]);
 
-  useEffect(() => {
-    if (view !== "map") return;
-    const controller = new AbortController();
-    setMapContactError("");
-    void plannerRequest(endpoint + "?section=map-clients", { signal: controller.signal }).then(result => {
-      if (result && !controller.signal.aborted) setMapContacts(result);
-    }).catch(() => {
-      if (!controller.signal.aborted) setMapContactError("Les adresses du carnet sont temporairement indisponibles. Actualisez la carte pour réessayer.");
-    });
-    return () => controller.abort();
-  }, [view, revision]);
 
   const mappedId = mapped?.id;
   useEffect(() => {
@@ -527,7 +514,7 @@ export default function PartnerPlanningPage() {
   const team = (directVisitId ? directVisit?.technicians : view === "clients" ? clientId ? clientFile?.technicians : page?.technicians : agenda?.technicians) ?? [];
   const currentBooking = editor?.type === "client" || editor?.type === "visit" ? editor.booking : undefined;
   const allAppointments: PlannerAppointment[] = (agendaEntries ?? []).map(entry => entry.source === "private" ? {
-    ...entry, title: entry.title + " · " + entry.client.name, movable: !entry.completed_at, address: partnerClientAddress(entry.client),
+    ...entry, title: entry.title + " · " + entry.client.name, movable: !entry.completed_at && !entry.field_started_at, address: partnerClientAddress(entry.client),
     workStatus: workById.get("private:" + entry.id)?.workStatus,
   } : {
     ...entry, id: entry.diagnostic_id,
@@ -549,7 +536,7 @@ export default function PartnerPlanningPage() {
       reference: dossier.public_reference, description: dossier.preview_description,
     })),
   ].filter(item => visibleIds.has(item.source + ":" + item.id));
-  const unslotted = visibleItems.filter(item => !item.startsAt && (period !== "day" || item.workStatus !== "pending"));
+  const unslotted = visibleItems.filter(item => !item.startsAt && (period === "month" || item.workStatus !== "pending"));
   const month = day && view === "agenda" && period === "month" ? plannerRange(day, "month") : null;
   const monthDays = month ? new Date(month.to.getFullYear(), month.to.getMonth(), 0).getDate() : 0;
   const monthIndent = month ? (month.from.getDay() + 6) % 7 : 0;
@@ -588,7 +575,7 @@ export default function PartnerPlanningPage() {
         <Link className={actionClass} href="/partenaire/interventions">Retrouver dans Mes interventions</Link>
       </div> : null}
     </div> : null}
-    {gridError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{gridError}</p> : null}
+    {gridError && (view !== "agenda" || period === "month") ? <p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{gridError}</p> : null}
     {savedClient && view === "clients" ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
       <p role="status" className="break-words font-bold text-emerald-900">Fiche créée pour {savedClient.name}.</p>
       <div className="flex flex-wrap gap-x-4">
@@ -705,14 +692,14 @@ export default function PartnerPlanningPage() {
         <button type="button" disabled={saving} className={actionClass} onClick={() => edit({ type: "pickClient", id: crypto.randomUUID() })}>Nouvelle intervention</button>
       </div>
       <PartnerWorkspaceFilters selection={selection} team={team} disabled={saving} onChange={updateSelection} />
-      {view === "agenda" && period === "day" && agenda?.pendingVisits ? <PartnerScheduleGrid key={[day, workStatus, technician].join(":")} day={day} appointments={appointments}
+      {view === "agenda" && period !== "month" && agenda?.pendingVisits ? <PartnerScheduleGrid key={[day, period, workStatus, technician].join(":")} day={day} period={period} appointments={appointments}
         occupied={allAppointments} technicianFilter={technician} showQueue={workStatus === "all" || workStatus === "pending"} queue={queue}
-        initialAppointment={appointmentToOpen} team={team} busy={saving} onMove={moveFromGrid}
+        initialAppointment={appointmentToOpen} team={team} busy={saving} error={gridError} onMove={moveFromGrid}
         onSchedule={scheduleFromGrid} onUnplan={unplanAppointment}
         onCreate={slot => edit({ type: "pickClient", id: crypto.randomUUID(), slot })}
         onAdd={(id, name) => saveFromGrid({ action: "addTechnician", id, name }, "Technicien ajouté au planning.")} /> : null}
       {view === "map" ? <>
-        <PartnerTourMap items={workItems} contacts={mapContacts} contactError={mapContactError} team={team} period={period} scope={day} busy={saving} onBook={saveTourVisit} loadRoute={loadDrivingTour}
+        <PartnerTourMap items={workItems} team={team} period={period} scope={day} busy={saving} onBook={saveTourVisit} loadRoute={loadDrivingTour}
           applyTour={applyDrivingTour} reloadTour={() => setRevision(current => current + 1)} onNextAppointment={goToNextAppointment}
           status={workStatus} technician={technician} highlightId={mapVisitId}
           onVisit={visit => edit({ type: "visit", id: visit.id, client: visit.client, visit })}

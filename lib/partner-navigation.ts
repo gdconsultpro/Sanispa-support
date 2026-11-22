@@ -6,6 +6,7 @@ export const partnerAccountPath = "/partenaire/compte";
 export function partnerReturnPath(value: string | null | undefined) {
   if (!value) return "/partenaire";
   if (value === partnerAccountPath || value === partnerClientsPath || value === partnerNewClientPath || value === partnerMapPath || value === partnerNewVisitPath || value === partnerStockPath) return value;
+  if (/^\/partenaire\/interventions\/[a-f0-9-]{36}\/gestion$/i.test(value)) return value;
   for (const prefix of [partnerClientsPath + "&fiche=", partnerPrivateVisitsPath, partnerEditVisitPrefix]) {
     if (value.startsWith(prefix) && partnerClientIdPattern.test(value.slice(prefix.length))) return value;
   }

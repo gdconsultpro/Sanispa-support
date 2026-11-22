@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState, type DragEvent, type FormEvent } fr
 import { Button } from "@/components/Button";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import {
-  partnerPrivateVisitPath, plannerDate, plannerDay, plannerTime, timelineDropTime, timelineQuarter, visitsOverlap,
+  partnerPrivateVisitPath, plannerDate, plannerDay, plannerRange, plannerTime, timelineDropTime, timelineQuarter, visitsOverlap,
   type PlannerAppointment, type PlannerQueueEntry, type PlannerSlot, type PlannerTechnician,
 } from "@/lib/partner-planner";
 import { workStatusLabels } from "@/lib/partner-workspace";
@@ -26,9 +26,13 @@ export function PlannerTechnicianSelect({ team, selected }: { team: PlannerTechn
 
 const searchable = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 const defaultDuration = 60;
+const weekDayLabel = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+const dragType = "application/x-sanispa-intervention";
+type ActiveDrag = { appointment: PlannerAppointment; offset: number } | { item: PlannerQueueEntry };
 
-export function PartnerScheduleGrid({ day, appointments, occupied, technicianFilter, showQueue, queue, team, busy, initialAppointment, onAdd, onMove, onCreate, onSchedule, onUnplan }: {
+export function PartnerScheduleGrid({ day, period, appointments, occupied, technicianFilter, showQueue, queue, team, busy, error, initialAppointment, onAdd, onMove, onCreate, onSchedule, onUnplan }: {
   day: string;
+  period: "day" | "week";
   appointments: PlannerAppointment[];
   occupied: PlannerAppointment[];
   technicianFilter: string;
@@ -36,6 +40,7 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
   queue: PlannerQueueEntry[];
   team: PlannerTechnician[];
   busy: boolean;
+  error?: string;
   initialAppointment?: PlannerAppointment | null;
   onAdd: (id: string, name: string) => Promise<boolean>;
   onMove: (appointment: PlannerAppointment, start: Date, technician: string | null) => Promise<boolean>;
@@ -48,17 +53,22 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
   const [query, setQuery] = useState("");
   const [newTechnician, setNewTechnician] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  const [focusedDay, setFocusedDay] = useState(day);
   const scroll = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const drag = useRef<{ appointment: PlannerAppointment; offset: number } | { item: PlannerQueueEntry } | null>(null);
-  const start = +plannerDay(day);
-  const end = +plannerDay(day, 1);
+  const drag = useRef<ActiveDrag | null>(null);
+  const range = plannerRange(day, period);
+  const start = +range.from;
+  const end = +range.to;
   const elapsed = end - start;
   const length = elapsed / hour;
   const rows = [{ id: "", name: "À affecter" }, ...team].filter(row => technicianFilter === "all" || row.id === technicianFilter);
-  const firstVisit = appointments[0]?.starts_at ?? occupied[0]?.starts_at;
-  const firstVisible = firstVisit ? Math.max(start, Date.parse(firstVisit) - hour) : +new Date(day + "T08:00");
-  const columnWidth = 96;
+  const focusStart = +plannerDay(focusedDay);
+  const focusEnd = +plannerDay(focusedDay, 1);
+  const firstVisit = occupied.find(appointment => Date.parse(appointment.starts_at) >= focusStart && Date.parse(appointment.starts_at) < focusEnd)?.starts_at;
+  const firstVisible = firstVisit ? Math.max(focusStart, Date.parse(firstVisit) - hour) : +new Date(focusedDay + "T08:00");
+  const columnWidth = period === "week" ? 70 : 96;
+  const days = period === "week" ? Array.from({ length: 7 }, (_, index) => plannerDay(plannerDate(range.from), index)) : [];
   const terms = searchable(query).trim().split(/\s+/).filter(Boolean);
   const visibleQueue = terms.length ? queue.filter(item => {
     const text = searchable([item.customer, item.title, item.reference, item.address, item.description].join(" "));
@@ -67,13 +77,29 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
 
   useEffect(() => {
     if (scroll.current) scroll.current.scrollLeft = (firstVisible - start) / hour * columnWidth;
-  }, [firstVisible, start]);
+  }, [firstVisible, start, columnWidth]);
+
+  function focusDate(date: Date) {
+    const day = plannerDate(date);
+    setFocusedDay(day);
+    if (day === focusedDay && scroll.current) scroll.current.scrollLeft = (firstVisible - start) / hour * columnWidth;
+  }
 
   useEffect(() => { if (selected || booking || newTechnician) heading.current?.focus(); }, [selected, booking, newTechnician]);
 
   function finishDrag() {
     drag.current = null;
     setOver(null);
+  }
+
+  function beginDrag(event: DragEvent, value: ActiveDrag) {
+    const pending = "item" in value;
+    const item = pending ? value.item : value.appointment;
+    const key = [pending ? "pending" : "appointment", item.source, item.id].join(":");
+    drag.current = value;
+    event.dataTransfer.setData("text/plain", "sanispa:" + key);
+    event.dataTransfer.setData(dragType, key);
+    event.dataTransfer.effectAllowed = "move";
   }
 
   function selectBooking(item: PlannerQueueEntry, slot: PlannerSlot) {
@@ -83,9 +109,14 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
   }
 
   function drop(event: DragEvent<HTMLDivElement>, technician: string) {
-    const current = drag.current;
+    const key = event.dataTransfer.getData(dragType) || event.dataTransfer.getData("text/plain").replace(/^sanispa:/, "");
+    const [kind, source, id] = key.split(":");
+    const pending = kind === "pending" ? queue.find(item => item.id === id && item.source === source) : undefined;
+    const existing = kind === "appointment" ? appointments.find(item => item.id === id && item.source === source && item.movable) : undefined;
+    const current = drag.current ?? (pending ? { item: pending } : existing ? { appointment: existing, offset: 0 } : null);
     if (!current || busy) return;
     event.preventDefault();
+    event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
     const time = start + ((event.clientX - rect.left) / rect.width) * elapsed - ("offset" in current ? current.offset : 0);
     const duration = "appointment" in current
@@ -121,6 +152,7 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
         Ajouter un technicien
       </Button>
     </div>
+    {error ? <p role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-800">{error}</p> : null}
     <p className="mb-3 text-sm text-sanispa-steel">{showQueue
       ? "Glissez une intervention sur un créneau ou sélectionnez-la pour choisir l’heure."
       : "Ouvrez un rendez-vous pour consulter sa fiche et les actions disponibles."}</p>
@@ -175,23 +207,21 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
           placeholder="Client, ville, panne…" />
       </label>
       <ul className="mt-2 max-h-52 space-y-2 overflow-y-auto lg:max-h-[30rem]">
-        {visibleQueue.map(item => <li key={item.source + item.id}>
-          <button type="button" disabled={busy} draggable={!busy}
+        {visibleQueue.map(item => <li key={item.source + item.id} draggable={!busy}
+          onDragStart={event => {
+            if (busy) { event.preventDefault(); return; }
+            beginDrag(event, { item });
+          }}
+          onDragEnd={finishDrag}>
+          <button type="button" disabled={busy}
             aria-pressed={booking?.item.id === item.id && booking.item.source === item.source}
             onClick={() => {
               const today = new Date();
-              const defaultStart = new Date(day + "T08:00");
+              const defaultStart = new Date(focusedDay + "T08:00");
               const nextQuarter = Math.ceil(+today / (15 * 60000)) * 15 * 60000;
-              const startsAt = (plannerDate(today) === day && nextQuarter > +defaultStart ? new Date(nextQuarter) : defaultStart).toISOString();
+              const startsAt = (plannerDate(today) === focusedDay && nextQuarter > +defaultStart ? new Date(nextQuarter) : defaultStart).toISOString();
               selectBooking(item, { startsAt, technicianId: item.technicianId });
             }}
-            onDragStart={event => {
-              if (busy) { event.preventDefault(); return; }
-              drag.current = { item };
-              event.dataTransfer.setData("text/plain", item.id);
-              event.dataTransfer.effectAllowed = "move";
-            }}
-            onDragEnd={finishDrag}
             className="focus-ring w-full break-words rounded-lg border border-sanispa-line bg-white p-2.5 text-left text-sm aria-pressed:border-sanispa-blue aria-pressed:bg-blue-50 lg:cursor-grab">
             <span className="block font-bold">{item.customer}</span>
             <span className="block">{item.title}</span>
@@ -201,12 +231,26 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
       </ul>
       {!visibleQueue.length ? <p role="status" className="mt-2 text-sm">{queue.length ? "Aucun résultat." : "Aucune intervention à planifier."}</p> : null}
     </section> : null}
+    <div className="min-w-0">
+    {days.length ? <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Accès aux jours de la grille">
+      {days.map(date => <button key={+date} type="button" aria-pressed={plannerDate(date) === focusedDay} onClick={() => focusDate(date)}
+        className="focus-ring min-h-10 rounded-lg border border-sanispa-line px-2.5 text-sm font-semibold capitalize aria-pressed:bg-sanispa-blue aria-pressed:text-white">
+        {weekDayLabel.format(date)}
+      </button>)}
+    </div> : null}
     <div ref={scroll} tabIndex={0} role="region" aria-label="Grille horaire des interventions" className="focus-ring isolate max-w-full overflow-x-auto rounded-xl border border-sanispa-line">
-      <div className="w-max" role="table" aria-label="Rendez-vous de la journée par technicien">
+      <div className="w-max" role="table" aria-label={period === "week" ? "Rendez-vous de la semaine par technicien" : "Rendez-vous de la journée par technicien"}>
+        {days.length ? <div role="row" className="flex border-b border-sanispa-line bg-sanispa-ice text-sm font-bold">
+          <div role="columnheader" className="sticky left-0 z-10 w-28 shrink-0 border-r border-sanispa-line bg-sanispa-ice px-2 py-2 sm:w-44">Semaine</div>
+          {days.map(date => <div role="columnheader" key={+date} className="relative shrink-0 border-r border-sanispa-line"
+            style={{ width: (+plannerDay(plannerDate(date), 1) - +date) / hour * columnWidth }}>
+            <span className="sticky left-28 inline-block bg-sanispa-ice px-2 py-2 capitalize sm:left-44">{weekDayLabel.format(date)}</span>
+          </div>)}
+        </div> : null}
         <div role="row" className="flex border-b border-sanispa-line bg-sanispa-ice text-sm">
           <div role="columnheader" className="sticky left-0 z-10 flex w-28 shrink-0 items-center border-r border-sanispa-line bg-sanispa-ice px-2 font-bold sm:w-44">Technicien</div>
           {Array.from({ length }, (_, index) => (
-            <div role="columnheader" key={index} className="border-r border-sanispa-line px-2 py-2 font-semibold" style={{ width: columnWidth }}>
+            <div role="columnheader" key={index} className="shrink-0 border-r border-sanispa-line px-2 py-2 font-semibold" style={{ width: columnWidth }}>
               {plannerTime(new Date(start + index * hour).toISOString())}
             </div>
           ))}
@@ -231,14 +275,14 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
               <span className="min-w-0">{row.name}</span>
             </div>
             <div role="cell" aria-colspan={length} aria-label={`Créneaux pour ${row.name}`} data-technician={row.id}
-              className={`relative ${over === row.id ? "bg-sanispa-ice" : "bg-white"}`}
+              className={`relative shrink-0 ${over === row.id ? "bg-sanispa-ice" : "bg-white"}`}
               style={{
                 width: length * columnWidth, minHeight: Math.max(1, endByLane.length) * 54 + 8,
                 backgroundImage: "linear-gradient(to right, transparent calc(100% - 1px), #d6e5f1 0)",
                 backgroundSize: `${columnWidth}px 100%`,
               }}
               onDragOver={event => {
-                if (!drag.current || busy) return;
+                if (busy || !drag.current && !event.dataTransfer.types.includes(dragType)) return;
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
                 setOver(row.id);
@@ -249,7 +293,7 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
                   const hourStart = start + index * hour;
                   const firstFree = [0, 0.25, 0.5, 0.75].map(fraction => timelineQuarter(hourStart, fraction)).find(free);
                   const label = firstFree === undefined ? undefined
-                    : `${booking ? "Choisir le créneau de" : "Créer un rendez-vous à"} ${plannerTime(new Date(firstFree).toISOString())} · ${row.name}`;
+                    : `${booking ? "Choisir le créneau de" : "Créer un rendez-vous à"} ${plannerTime(new Date(firstFree).toISOString())} · ${row.name}${period === "week" ? " · " + weekDayLabel.format(new Date(firstFree)) : ""}`;
                   return <button type="button" key={hourStart} aria-label={label} disabled={busy || firstFree === undefined}
                     className="focus-ring flex shrink-0 items-center justify-center text-lg font-bold text-transparent hover:bg-sanispa-ice hover:text-sanispa-blue focus-visible:bg-sanispa-ice focus-visible:text-sanispa-blue disabled:pointer-events-none"
                     style={{ width: columnWidth }}
@@ -286,9 +330,7 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
                   onDragStart={event => {
                     if (!draggable) { event.preventDefault(); return; }
                     const left = event.currentTarget.getBoundingClientRect().left;
-                    drag.current = { appointment, offset: (event.clientX - left) / columnWidth * hour };
-                    event.dataTransfer.setData("text/plain", appointment.id);
-                    event.dataTransfer.effectAllowed = "move";
+                    beginDrag(event, { appointment, offset: (event.clientX - left) / columnWidth * hour });
                   }}
                   onDragEnd={finishDrag}>
                   <span className="block w-full truncate">{time}{status ? " · " + status : ""}</span>
@@ -299,6 +341,7 @@ export function PartnerScheduleGrid({ day, appointments, occupied, technicianFil
           </div>;
         })}
       </div>
+    </div>
     </div>
     </div>
     {appointments.some(appointment => appointment.source === "sanispa") ? <div className="mt-2 flex flex-wrap gap-4 text-xs font-semibold">

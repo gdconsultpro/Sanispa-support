@@ -6,8 +6,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { Button } from "@/components/Button";
 import { PartnerDrivingTour, type ApplyDrivingTour, type LoadDrivingTour } from "@/components/PartnerDrivingTour";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
-import { nearbyPendingVisits, partnerClientPath, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
-  type PartnerMapContacts, type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
+import { nearbyPendingVisits, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
+  type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
   type PlannerPeriod, type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
 import { matchesWorkFilters, workItemPath, workStatusLabels, type WorkFilterStatus } from "@/lib/partner-workspace";
 
@@ -19,10 +19,8 @@ const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
 const filterClass = "focus-ring mt-1 min-h-12 w-full rounded-lg border border-sanispa-line bg-white px-3 text-base";
 const linkClass = "focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline";
 
-export function PartnerTourMap({ items, contacts, contactError, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, onNextAppointment, status, technician, highlightId, onUnplan }: {
+export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, onNextAppointment, status, technician, highlightId, onUnplan }: {
   items: PlannerMapIntervention[] | null;
-  contacts: PartnerMapContacts | null;
-  contactError: string;
   team: PlannerTechnician[];
   period: PlannerPeriod;
   scope: string;
@@ -40,7 +38,6 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
   onUnplan: (item: PlannerMapIntervention) => Promise<void>;
 }) {
   const [showTour, setShowTour] = useState(false);
-  const [showContacts, setShowContacts] = useState(true);
   const [lastMap, setLastMap] = useState<{ waiting: PlannerMapIntervention[]; team: PlannerTechnician[] } | null>(null);
   const [nextPending, setNextPending] = useState(false);
   const [nextMessage, setNextMessage] = useState("");
@@ -91,7 +88,6 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
     }] : []);
     return { entries, points };
   }, [displayItems, highlightId, period, status, technician, visibleTeam]);
-  const mapPoints = useMemo(() => showContacts && contacts?.points.length ? [...points, ...contacts.points] : points, [showContacts, contacts, points]);
   const mappedIds = new Set(points.map(point => point.id));
 
   return <>
@@ -101,11 +97,6 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
         onChange={event => setShowTour(event.target.checked)} />
       Afficher la tournée
     </label>
-    {!showTour ? <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm font-bold">
-      <input type="checkbox" className="h-5 w-5 accent-violet-700" checked={showContacts}
-        onChange={event => setShowContacts(event.target.checked)} />
-      Afficher les clients du carnet
-    </label> : null}
     </div>
     {showTour ? <PartnerDrivingTour items={items} technician={tourTechnician} scope={scope} loadRoute={loadRoute}
       applyTour={applyTour} reloadTour={reloadTour} saving={busy} /> : <>
@@ -119,27 +110,16 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
     {nextMessage ? <p role="status" className="mb-2 text-sm">{nextMessage}</p> : null}
     {displayItems ? <p className="mb-2 text-sm font-bold">
       {entries.length} {entries.length === 1 ? "intervention" : "interventions"}{status === "pending" ? " à planifier" : ""}
-      {showContacts && contacts?.points.length ? <span className="font-normal text-sanispa-steel">
-        {" · "}{contacts.points.length} {contacts.points.length === 1 ? "adresse client sur la carte" : "adresses clients sur la carte"}
-      </span> : null}
     </p> : null}
-    <PrivateMap points={mapPoints} onAppointment={chooseAppointment} overview
+    <PrivateMap points={points} onAppointment={chooseAppointment} overview
       label={status === "pending" ? "Carte des interventions à planifier"
         : "Carte des interventions de la période"} />
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
       {entries.some(item => item.workStatus === "pending") ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-600" /> À planifier</span> : null}
-      {entries.some(item => item.workStatus === "scheduled" || item.workStatus === "due") ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Rendez-vous</span> : null}
+      {entries.some(item => item.workStatus === "scheduled" || item.workStatus === "due" || item.workStatus === "in_progress") ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Rendez-vous</span> : null}
       {entries.some(item => item.workStatus === "review" || item.workStatus === "validated" || item.workStatus === "closed" || item.workStatus === "followup") ?
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-700" /> Historique et suivi</span> : null}
-      {showContacts ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-violet-700" /> Clients du carnet</span> : null}
     </div>
-    {showContacts && contactError ? <p role="status" className="mt-2 text-sm">{contactError}</p> : null}
-    {showContacts && contacts?.unresolved.length ? <details className="mt-2 text-sm">
-      <summary className="cursor-pointer font-semibold">{contacts.unresolved.length} {contacts.unresolved.length === 1 ? "adresse client à localiser" : "adresses clients à localiser"}</summary>
-      <ul className="mt-1 flex flex-wrap gap-x-4">{contacts.unresolved.map(client => <li key={client.id}>
-        <Link className={linkClass} href={partnerClientPath(client.id)}>{client.name}</Link>
-      </li>)}</ul>
-    </details> : null}
     {displayItems && entries.length > points.length ? <p className="mt-2 text-sm text-sanispa-steel">
       {entries.length - points.length} {entries.length - points.length === 1 ? "intervention sans adresse localisée" : "interventions sans adresse localisée"}. Retrouvez-les dans la liste ci-dessous.
     </p> : null}

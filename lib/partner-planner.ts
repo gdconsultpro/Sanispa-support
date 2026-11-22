@@ -22,6 +22,7 @@ export type PrivatePartnerVisit = ScheduledVisit & {
   description: string;
   completed_at?: string | null;
   validated_at?: string | null;
+  field_started_at?: string | null;
   client: PrivatePartnerClient;
 } & MapPosition;
 export type PendingPrivatePartnerVisit = Omit<PrivatePartnerVisit, "starts_at" | "ends_at"> & {
@@ -137,11 +138,9 @@ export type PartnerMapPoint = {
   pending?: boolean;
   step?: number;
   highlighted?: boolean;
-  clientPath?: string;
   recordHref?: string;
   workStatus?: PartnerWorkStatus;
 };
-export type PartnerMapContacts = { points: PartnerMapPoint[]; unresolved: { id: string; name: string }[] };
 
 export type PendingPartnerDossier = MapPosition & {
   id: string;
@@ -154,6 +153,7 @@ export type PendingPartnerDossier = MapPosition & {
   intervention_reports?: {
     performed_at: string; submitted_at: string; client_validated_at: string | null; client_outcome: string | null;
   }[];
+  partner_field_sessions?: { appointment_start: string; submitted_at: string | null }[];
   customer: { name: string | null; address: string | null } | null;
 };
 
@@ -261,8 +261,9 @@ export function plannerRange(date: string, period: PlannerPeriod) {
   return { from, to };
 }
 
+const plannerClock = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
 export function plannerTime(date: string) {
-  return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date(date));
+  return plannerClock.format(new Date(date));
 }
 
 export function timelineDropTime(dayStart: number, dayEnd: number, drop: number, duration: number) {

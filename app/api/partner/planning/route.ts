@@ -8,14 +8,14 @@ import { interventionError } from "@/lib/interventions";
 import { processNotifications } from "@/lib/notifications";
 import { getPartnerRoadRoute } from "@/lib/partner-road-route";
 import { maximumTourRouteStops } from "@/lib/partner-tour-routing";
-import { partnerClientAddress, partnerClientDossierTiming, partnerClientPath, partnerVisitAddress, type PartnerMapContacts,
+import { partnerClientAddress, partnerClientDossierTiming, partnerVisitAddress,
   type PartnerClientDossier,
   type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
 const privateClientColumns = "id,name,phone,email,street,postal_code,city,latitude,longitude,source_diagnostic_id";
-const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at,spa_id,completed_at,validated_at";
+const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at,spa_id,completed_at,validated_at,field_started_at";
 const dossierFields = "problem_type,status,public_reference,preview_description,intervened_at,created_at,customer:customers(name,address)";
-const reportStateFields = "intervention_reports(performed_at,submitted_at,client_validated_at,client_outcome)";
+const reportStateFields = "intervention_reports(performed_at,submitted_at,client_validated_at,client_outcome),partner_field_sessions(appointment_start,submitted_at)";
 const spaFields = "id,brand,model,serial_number,updated_at";
 const privateVisitColumns = `${visitFields},client:partner_private_clients!inner(${privateClientColumns})`;
 const stockColumns = "id,category,label,reference,quantity,updated_at";
@@ -266,24 +266,7 @@ export async function GET(request: Request) {
       }
       const offset = z.coerce.number().int().min(0).max(1000000).parse(params.get("offset") ?? 0);
       const section = params.get("section");
-      if (section === "map-clients") {
-        const clients = await allRows((from, to) => supabase.from("partner_private_clients")
-          .select("id,name,street,postal_code,city,latitude,longitude")
-          .eq("partner_id", partner.id).is("deleted_at", null).order("name").order("id").range(from, to));
-        const location = await mapLocations(clients, [], []);
-        const result: PartnerMapContacts = { points: [], unresolved: [] };
-        for (const client of clients) {
-          const point = location(client);
-          if (point?.latitude == null || point.longitude == null) {
-            result.unresolved.push({ id: client.id, name: client.name });
-            continue;
-          }
-          result.points.push({ id: "client:" + client.id, title: client.name, address: partnerClientAddress(client),
-            clientPath: partnerClientPath(client.id), latitude: point.latitude, longitude: point.longitude,
-            detail: point.approximateLocation ? "Client · Position approximative (commune)" : "Client" });
-        }
-        return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
-      }
+      if (section === "map-clients") throw new HttpError(404, "La carte affiche les interventions.");
       if (section === "client" || section === "client-spas") {
         const id = z.string().uuid().parse(params.get("id"));
         let owner = supabase.from("partner_private_clients").select(privateClientColumns).eq("partner_id", partner.id).eq("id", id);
@@ -368,7 +351,8 @@ export async function GET(request: Request) {
       .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
     const sanispaQuery = () => supabase.from("partner_appointments")
       .select(`diagnostic_id,starts_at,ends_at,technician_id,updated_at,diagnostic:diagnostics!inner(${dossierFields},${reportStateFields})`)
-      .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id).is("diagnostic.archived_at", null);
+      .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id).is("diagnostic.archived_at", null)
+      .eq("diagnostic.partner_field_sessions.partner_id", partner.id).eq("diagnostic.intervention_reports.partner_id", partner.id);
     const [privateVisits, sanispaVisits, team, waitingPrivate, waitingSanispa, historicalSanispa] = await Promise.all([
       allRows((from, to) => (range ? privateQuery().lt("starts_at", range.to).gt("ends_at", range.from) : privateQuery().gte("starts_at", now))
         .order("starts_at").order("id").range(from, to)),
@@ -384,9 +368,10 @@ export async function GET(request: Request) {
         .is("intervened_at", null)
         .eq("partner_appointments.partner_id", partner.id).is("partner_appointments", null).is("intervention_reports", null)
         .order("created_at", { ascending: false }).order("id").range(from, to)) : null,
-      range && withPending ? allRows((from, to) => supabase.from("diagnostics")
+      range && withPending && !forMap ? allRows((from, to) => supabase.from("diagnostics")
         .select(`id,${dossierFields},${reportStateFields},partner_appointments()`)
         .eq("assigned_partner_id", partner.id).is("archived_at", null)
+        .eq("partner_field_sessions.partner_id", partner.id).eq("intervention_reports.partner_id", partner.id)
         .eq("partner_appointments.partner_id", partner.id).is("partner_appointments", null)
         .or(`and(intervened_at.gte.${range.from},intervened_at.lt.${range.to}),and(intervened_at.is.null,status.in.(CLOSED,terminé),created_at.gte.${range.from},created_at.lt.${range.to})`)
         .order("created_at", { ascending: false }).order("id").range(from, to)) : null,
@@ -396,12 +381,11 @@ export async function GET(request: Request) {
       const sanispa = sanispaVisits as unknown as SanispaPartnerVisit[];
       const pendingVisits = (waitingPrivate ?? []) as unknown as PendingPrivatePartnerVisit[];
       const pendingDossiers = (waitingSanispa ?? []) as unknown as PendingPartnerDossier[];
-      const historyDossiers = (historicalSanispa ?? []) as unknown as PendingPartnerDossier[];
       const dossierAddress = (dossier: PendingPartnerDossier | SanispaPartnerVisit["diagnostic"]) => partnerVisitAddress(dossier.customer?.address);
       const pendingDossierAddresses = pendingDossiers.map(dossierAddress);
       const location = await mapLocations(
         [...visits, ...pendingVisits].map(visit => visit.client),
-        [...sanispa.map(visit => dossierAddress(visit.diagnostic)), ...pendingDossierAddresses, ...historyDossiers.map(dossierAddress)],
+        [...sanispa.map(visit => dossierAddress(visit.diagnostic)), ...pendingDossierAddresses],
         [...pendingVisits.map(visit => visit.client), ...pendingDossierAddresses],
       );
       function locateVisit<T extends (PrivatePartnerVisit | PendingPrivatePartnerVisit)>(visit: T) {
@@ -415,7 +399,6 @@ export async function GET(request: Request) {
         sanispa: sanispa.map(visit => ({ ...visit, ...location(dossierAddress(visit.diagnostic)) })),
         pendingVisits: pendingVisits.map(locateVisit),
         pendingDossiers: pendingDossiers.map((dossier, index) => ({ ...dossier, ...location(pendingDossierAddresses[index]) })),
-        historyDossiers: historyDossiers.map(dossier => ({ ...dossier, ...location(dossierAddress(dossier)) })),
         technicians: team,
       }, { headers: { "Cache-Control": "private, no-store" } });
     }
@@ -536,7 +519,7 @@ export async function POST(request: Request) {
         p_expected: command.expected_at, p_start: command.starts_at, p_technician: command.technician_id,
       });
       if (error?.message.includes("TECHNICIAN_NOT_FOUND")) throw new HttpError(404, "Ce technicien est introuvable dans votre planning.");
-      if (error?.message === "PARTNER_VISIT_FINISHED") throw new HttpError(409, "Cette intervention est terminée. Le créneau reste dans l’historique.");
+      if (error?.message === "PARTNER_VISIT_FINISHED") throw new HttpError(409, "L’intervention a démarré. Son créneau est conservé.");
       if (/APPOINTMENT_CHANGED|partner_private_visits_schedule_pair/.test(error?.message ?? ""))
         throw new HttpError(409, "Ce rendez-vous a été modifié. Le planning a été actualisé.");
       if (error) throw interventionError(error);
@@ -617,7 +600,7 @@ export async function POST(request: Request) {
       });
     const { error } = result;
     if (error?.message.includes("CLIENT_NOT_FOUND")) throw new HttpError(404, "Client introuvable dans votre carnet.");
-    if (error?.message === "PARTNER_VISIT_FINISHED") throw new HttpError(409, "Cette intervention est terminée. Le créneau reste dans l’historique.");
+    if (error?.message === "PARTNER_VISIT_FINISHED") throw new HttpError(409, "L’intervention a démarré. Son créneau est conservé.");
     if (error?.message.includes("CLIENT_ADDRESS_REQUIRED")) throw new HttpError(400, "Renseignez la rue, le code postal et la ville du client.");
     if (error?.message.includes("CLIENT_ADDRESS_CHANGED"))
       throw new HttpError(409, "L’adresse du client a changé. Rouvrez l’intervention pour utiliser son adresse actuelle.");

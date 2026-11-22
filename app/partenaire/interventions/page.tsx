@@ -104,7 +104,7 @@ export default function InterventionsPage() {
             const technician = data.technicians.find(member => member.id === item.technicianId)?.name ?? "À affecter";
             const date = item.activityAt && new Date(item.activityAt).toLocaleDateString("fr-FR", { dateStyle: "medium" });
             const hours = item.startsAt && item.endsAt && plannerTime(item.startsAt) + "–" + plannerTime(item.endsAt);
-            const privateEditable = item.visit && !item.visit.completed_at;
+            const privateEditable = item.visit && !item.visit.completed_at && !item.visit.field_started_at;
             return <li key={item.id} className="py-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <h2 className="break-words text-lg font-bold">{item.title}</h2>
