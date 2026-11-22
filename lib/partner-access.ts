@@ -51,11 +51,13 @@ export async function createPartnerAccess(supabase: SupabaseClient, partnerId: s
     ...(input.role === "technician" ? { p_role: input.role } : {}) });
   if (linked.error) {
     const reason = linked.error.message === "ACCOUNT_LINKED_ELSEWHERE" ? "Ce compte est déjà rattaché à une autre entreprise. Aucun transfert automatique n’a été effectué."
+      : linked.error.message === "PARTNER_ROLE_CONFLICT" ? "Ce compte possède déjà un accès responsable pour cette entreprise."
       : linked.error.message === "ACCESS_INACTIVE" ? "Le rattachement existant est désactivé. Confirmez explicitement sa réactivation."
       : "Le rattachement à l’entreprise n’a pas pu être confirmé. Vérifiez l’accès puis réessayez.";
     throw new HttpError(409, `${created ? "Le compte de connexion a été créé, mais l’accès partenaire n’est pas prêt. " : ""}${reason}`);
   }
   return { ready: true as const, userId: user.id, passwordChangeRequired: needsPartnerPasswordChange(user),
     message: created ? "Accès créé et rattaché à cette entreprise. Transmettez le mot de passe provisoire au contact par un canal sûr ; il devra le remplacer à sa première connexion. Aucun e-mail n’a été envoyé."
+      : input.role === "technician" ? "Compte rattaché comme technicien. Il peut utiliser son mot de passe SANISPA habituel."
       : "Compte existant rattaché à cette entreprise. Son mot de passe a été conservé. Aucun e-mail n’a été envoyé." };
 }

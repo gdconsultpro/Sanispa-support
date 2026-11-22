@@ -36,6 +36,7 @@ export function PartnerAdmin({
   const [correction, setCorrection] = useState("");
   const [showEditor, setShowEditor] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [technicianPartnerId, setTechnicianPartnerId] = useState<string | null>(null);
   const isEditing = Boolean(form.id);
   const editingPartner = partners.find((partner) => partner.id === form.id);
 
@@ -71,6 +72,7 @@ export function PartnerAdmin({
 
   function editPartner(partner: PartnerAdminItem) {
     setMessage("");
+    setTechnicianPartnerId(null);
     openEditor();
     setForm({
       id: partner.id,
@@ -193,6 +195,7 @@ export function PartnerAdmin({
         setForm(emptyForm);
       }
       setReviewId(current => current === partner.id ? null : current);
+      setTechnicianPartnerId(current => current === partner.id ? null : current);
       setDeleteId(null);
       setMessage(`${partner.company_name} a été supprimé de la liste des partenaires.`);
     } catch {
@@ -384,6 +387,14 @@ export function PartnerAdmin({
                 >
                   Modifier / Accès
                 </button>
+                {partner.active ? <button
+                  type="button"
+                  aria-expanded={technicianPartnerId === partner.id}
+                  onClick={() => setTechnicianPartnerId(current => current === partner.id ? null : partner.id)}
+                  className="focus-ring rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy"
+                >
+                  Rattacher un technicien
+                </button> : null}
                 <button
                   type="button"
                   onClick={() => togglePartner(partner)}
@@ -406,6 +417,9 @@ export function PartnerAdmin({
                 </button>
               </div>
             </div>
+            {technicianPartnerId === partner.id && partner.active ? (
+              <PartnerAccessAdmin partner={partner} technicianOnly />
+            ) : null}
             {deleteId === partner.id ? (
               <div id={`supprimer-${partner.id}`} className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
                 <p className="font-bold">Supprimer définitivement {partner.company_name} ?</p>

@@ -30,10 +30,11 @@ test("only the partner owner can link a registered technician to a line of the s
     await db.exec("set role service_role");
     const adminLink = "select public.link_partner_account($1,$2,$3,$4,false,$5)";
     await db.query("select public.link_partner_account($1,$2,$3,'Responsable')", [partner, owner, admin]);
-    await db.query(adminLink, [partner, first, admin, "Alice", "technician"]);
+    const firstLink = await db.query(adminLink, [partner, first, admin, "Alice", "technician"]);
+    assert.deepEqual((await db.query(adminLink, [partner, first, admin, "Alice", "technician"])).rows, firstLink.rows);
     await db.query(adminLink, [partner, second, admin, "Bob", "technician"]);
     await db.query(adminLink, [other, foreign, admin, "Autre", "technician"]);
-    await db.query(adminLink, [partner, owner, admin, "Responsable", "technician"]);
+    await assert.rejects(db.query(adminLink, [partner, owner, admin, "Responsable", "technician"]), /PARTNER_ROLE_CONFLICT/);
     assert.equal((await db.query<{ role: string }>("select role from partner_users where user_id=$1", [owner])).rows[0].role, "owner");
     await assert.rejects(db.query(adminLink, [other, second, admin, "Bob", "technician"]), /ACCOUNT_LINKED_ELSEWHERE/);
     await assert.rejects(db.query(adminLink, [partner, admin, owner, "Test", "technician"]), /ADMIN_REQUIRED/);
