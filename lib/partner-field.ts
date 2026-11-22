@@ -7,6 +7,7 @@ export type FieldReport = {
   id: string; performed_at: string; findings: string; actions: string; next_steps: string;
   submitted_at: string; client_validated_at?: string | null;
   details?: FieldReportDetails | null;
+  customerSigner?: string | null;
 };
 export type FieldPhoto = { id: string; url: string; kind: FieldPhotoKind };
 export type PreviousFieldReport = Pick<FieldReport, "id" | "performed_at" | "findings" | "actions" | "next_steps" | "details"> & {

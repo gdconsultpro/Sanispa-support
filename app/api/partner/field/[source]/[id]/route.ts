@@ -11,6 +11,7 @@ import type { FieldReport, FieldVisit } from "@/lib/partner-field";
 import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoKinds, fieldPhotoLabels, fieldReportRows, fieldTemplate, requiredFieldPhotos,
   type FieldReportDetails } from "@/lib/partner-field-forms";
 import { fieldPhotoBucket, fieldPhotoPath, loadFieldPhotos } from "@/lib/partner-field-photos";
+import { hasSignatureStroke, maxSignaturePoints, maxSignatureStrokes, signatureHeight, signatureWidth } from "@/lib/partner-field-signature";
 import { partnerClientAddress, partnerSpaOption } from "@/lib/partner-planner";
 import { privateWorkStatus, sanispaWorkStatus } from "@/lib/partner-workspace";
 import { buildSummaryPdf } from "@/lib/pdf";
@@ -19,16 +20,22 @@ type Context = { params: Promise<{ source: string; id: string }> };
 const uuid = z.string().uuid();
 const timestamp = z.string().datetime({ offset: true });
 const headers = { "Cache-Control": "private, no-store" };
+const signaturePoint = z.tuple([z.number().int().min(0).max(signatureWidth), z.number().int().min(0).max(signatureHeight)]);
+const customerSignature = z.object({
+  name: z.string().trim().min(1).max(140).transform(name => name.replace(/\s+/g, " ")),
+  strokes: z.array(z.array(signaturePoint).min(2).max(maxSignaturePoints)).min(1).max(maxSignatureStrokes)
+    .refine(strokes => strokes.every(hasSignatureStroke) && strokes.reduce((count, stroke) => count + stroke.length, 0) <= maxSignaturePoints),
+}).strict();
 const fieldCommands = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start") }).strict(),
-  reportSchema.extend({ session: uuid, details: z.record(z.string().max(5000)).optional(),
+  reportSchema.extend({ session: uuid, details: z.record(z.string().max(5000)).optional(), signature: customerSignature.optional(),
     findings: z.string().trim().max(5000), actions: z.string().trim().max(5000), nextSteps: z.string().trim().max(3000) }),
   z.object({ action: z.literal("validate"), version: timestamp }).strict(),
   z.object({ action: z.literal("followup"), reportId: uuid }).strict(),
   z.object({ action: z.literal("spa"), spaId: uuid.nullable(), version: timestamp }).strict(),
 ]);
 const spaFields = "id,brand,model,serial_number,updated_at";
-const sessions = "id,started_at,started_by,appointment_start,report_id,submitted_at,performed_at,findings,actions,next_steps,report_details";
+const sessions = "id,started_at,started_by,appointment_start,report_id,submitted_at,performed_at,findings,actions,next_steps,report_details,customer_signer:customer_signature->>name";
 const pdfDate = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" });
 
 async function fieldCase(request: Request, context: Context) {
@@ -61,6 +68,7 @@ function fieldError(error: { message?: string }) {
     case "FIELD_PHOTO_LIMIT": return new HttpError(409, "Vous pouvez joindre jusqu’à 12 photos par intervention.");
     case "FIELD_RECEIPT_EXISTS": return new HttpError(409, "Retirez le justificatif actuel avant de le remplacer.");
     case "FIELD_REQUIRED_PHOTOS": return new HttpError(400, "Ajoutez les photos obligatoires avant de valider le compte rendu.");
+    case "FIELD_INVALID_SIGNATURE": return new HttpError(400, "Vérifiez le nom du signataire et recommencez la signature.");
     case "PARTNER_WORK_ROLE_REQUIRED": return new HttpError(403, "Demandez au technicien qui a démarré l’intervention de valider le compte rendu.");
     case "PARTNER_VISIT_STATE_CHANGED": return new HttpError(409, "L’intervention a évolué. Actualisez la fiche.");
     case "INVALID_FIELD_REPORT": return new HttpError(400, "Vérifiez la date et les trois réponses du compte rendu.");
@@ -102,6 +110,7 @@ export async function GET(request: Request, context: Context) {
       const reports: FieldReport[] = session?.report_id ? [{
         id: session.report_id, performed_at: session.performed_at, submitted_at: session.submitted_at,
         findings: session.findings, actions: session.actions, next_steps: session.next_steps, details: session.report_details,
+        customerSigner: session.customer_signer,
       }] : [];
       result = {
         title: visit.title, description: visit.description, workStatus, version: visit.updated_at,
@@ -124,14 +133,16 @@ export async function GET(request: Request, context: Context) {
           .eq("diagnostic_id", id).eq("partner_id", partner.id).order("submitted_at", { ascending: false }),
         supabase.from("partner_private_clients").select("id").eq("partner_id", partner.id)
           .eq("source_diagnostic_id", id).is("deleted_at", null).maybeSingle(),
-        supabase.from("partner_field_sessions").select("report_id,report_details").eq("partner_id", partner.id)
+        supabase.from("partner_field_sessions").select("report_id,report_details,customer_signer:customer_signature->>name").eq("partner_id", partner.id)
           .eq("diagnostic_id", id).not("report_details", "is", null),
       ]);
       if (last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error)
         throw last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error;
       const appointment = appointmentResult.data ?? undefined;
-      const details = new Map(reportDetails.data.map(item => [item.report_id, item.report_details]));
-      const reports = reportResult.data.map(report => ({ ...report, details: details.get(report.id) }));
+      const details = new Map(reportDetails.data.map(item => [item.report_id, item]));
+      const reports = reportResult.data.map(report => ({
+        ...report, details: details.get(report.id)?.report_details, customerSigner: details.get(report.id)?.customer_signer,
+      }));
       const session = last.data && (last.data.submitted_at === null || !appointment || last.data.appointment_start === appointment.starts_at) ? last.data : null;
       const clientId = contact.data?.id;
       const [equipment, link] = clientId ? await Promise.all([
@@ -157,7 +168,7 @@ export async function GET(request: Request, context: Context) {
     if (pdfReport) {
       const report = result.reports.find(item => item.id === pdfReport);
       if (!report) throw fieldError({ message: "FIELD_REPORT_NOT_FOUND" });
-      const session = await supabase.from("partner_field_sessions").select("id")
+      const session = await supabase.from("partner_field_sessions").select("id,customer_signature,submitted_at")
         .eq("partner_id", partner.id).eq("report_id", report.id)
         .eq(field.source === "private" ? "private_visit_id" : "diagnostic_id", id).maybeSingle();
       if (session.error) throw session.error;
@@ -189,7 +200,11 @@ export async function GET(request: Request, context: Context) {
           "Travaux et contrôles effectués", report.actions,
         ]),
         "Suite à donner", report.next_steps,
-      ], { field: { company: partner.company_name, photos } });
+      ], { field: {
+        company: partner.company_name, photos,
+        signature: session.data?.customer_signature
+          ? { ...customerSignature.parse(session.data.customer_signature), signedAt: pdfDate.format(new Date(session.data.submitted_at)) } : undefined,
+      } });
       return new NextResponse(bytes, { headers: { ...headers, "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="compte-rendu-${report.id.slice(0, 8)}.pdf"` } });
     }
@@ -210,6 +225,7 @@ export async function POST(request: Request, context: Context) {
     } else if (command.action === "report") {
       await ownSession(field, command.session);
       const details = field.template ? parseFieldDetails(field.template, command.details) : null;
+      if (command.signature && !details) throw new HttpError(400, "La signature est réservée aux rapports SAV et de mise en service.");
       const findings = details?.answers.observations || (details ? "Nature de l’intervention : " + details.answers.nature : command.findings);
       const actions = details?.template === "installation"
         ? fieldReportRows(details).filter(row => row.label !== "Observations").map(row => row.label + " : " + row.value).join("\n").slice(0, 5000)
@@ -222,10 +238,13 @@ export async function POST(request: Request, context: Context) {
         findings: details && findings.length < 20 ? "Observations du technicien : " + findings : findings,
         actions: details && actions.length < 20 ? "Travaux effectués : " + actions : actions, nextSteps,
       });
-      const { error } = await supabase.rpc(details ? "submit_structured_partner_field_report" : "submit_partner_field_report", {
+      const procedure = command.signature ? "submit_signed_partner_field_report" :
+        details ? "submit_structured_partner_field_report" : "submit_partner_field_report";
+      const { error } = await supabase.rpc(procedure, {
         ...actor, p_session: command.session, p_report: command.id, p_performed: command.performedAt,
         p_findings: result.findings, p_actions: result.actions, p_next: result.nextSteps,
         ...(details ? { p_details: details } : {}),
+        ...(command.signature ? { p_signature: command.signature } : {}),
       });
       if (error) throw fieldError(error);
       if (source === "sanispa") {

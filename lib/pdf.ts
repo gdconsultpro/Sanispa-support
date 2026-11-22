@@ -7,6 +7,7 @@ import {
 } from "pdf-lib";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { signatureHeight, signatureWidth, type CustomerSignature } from "./partner-field-signature";
 // Contact information verified on https://www.sani-spa.fr/contact/ (18 November 2026).
 export const sanispaCompany = {
   name: "SANISPA",
@@ -29,7 +30,8 @@ export function summaryPdfMode(choice?: string | null) {
 }
 export async function buildSummaryPdf(input: string[], options: {
   mode?: "matchmaking" | "company";
-  field?: { company: string; photos: { bytes: Uint8Array; caption?: string }[] };
+  field?: { company: string; photos: { bytes: Uint8Array; caption?: string }[];
+    signature?: CustomerSignature & { signedAt: string } };
 } = {}) {
   const matchmaking = options.mode === "matchmaking";
   const field = options.field;
@@ -198,6 +200,37 @@ export async function buildSummaryPdf(input: string[], options: {
       }
       y -= 5;
     }
+  }
+  if (field?.signature) {
+    const { name, signedAt, strokes } = field.signature;
+    const signer = wrap("Signé par " + name, regular, 10, 471);
+    ensure(150 + signer.length * 14);
+    y -= 6;
+    text("Signature du client", 48, y, 12, bold, teal);
+    y -= 16;
+    for (const row of signer) {
+      text(row, 48, y);
+      y -= 14;
+    }
+    text(signedAt, 48, y, 9, regular, muted);
+    y -= 12;
+    const top = y;
+    const height = 100;
+    const scale = 0.36;
+    const x = 58 + (479 - signatureWidth * scale) / 2;
+    const originY = top - (height - signatureHeight * scale) / 2;
+    page.drawRectangle({ x: 48, y: top - height, width: 499, height, borderWidth: 0.7, borderColor: line });
+    for (const stroke of strokes) {
+      for (let index = 1; index < stroke.length; index++) {
+        const [fromX, fromY] = stroke[index - 1];
+        const [toX, toY] = stroke[index];
+        page.drawLine({
+          start: { x: x + fromX * scale, y: originY - fromY * scale },
+          end: { x: x + toX * scale, y: originY - toY * scale }, thickness: 1.4, color: navy,
+        });
+      }
+    }
+    y -= height + 18;
   }
   if (field?.photos.length) {
     newPage();

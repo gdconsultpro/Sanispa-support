@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Camera, ClipboardCheck, Download, MapPin, Phone, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, ButtonLink } from "@/components/Button";
+import { CustomerSignaturePad } from "@/components/CustomerSignaturePad";
 import { partnerEquipmentEndpoint, PartnerSpaOptions } from "@/components/PartnerClientSpas";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
@@ -13,6 +14,7 @@ import { compressPhoto } from "@/lib/compress-photo";
 import { downloadBlob } from "@/lib/download";
 import { partnerAuthError } from "@/lib/partner-browser";
 import type { FieldReport, FieldSource, FieldVisit } from "@/lib/partner-field";
+import type { SignatureStrokes } from "@/lib/partner-field-signature";
 import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoLabels, fieldReportRows, requiredFieldPhotos,
   type FieldPhotoKind } from "@/lib/partner-field-forms";
 import { partnerClientPath, partnerDirections, partnerEditVisitPath, partnerPrivateVisitPath, partnerSpaOption, plannerDate } from "@/lib/partner-planner";
@@ -52,6 +54,8 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
   const [confirmValidation, setConfirmValidation] = useState(false);
+  const [signatureStrokes, setSignatureStrokes] = useState<SignatureStrokes>([]);
+  const [signer, setSigner] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [pendingPhotos, setPendingPhotos] = useState<{ id: string; file: File; kind: FieldPhotoKind }[]>([]);
   const working = useRef(false);
@@ -161,6 +165,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   const session = data?.session;
   const spa = data?.spas.find(item => item.id === data.spaId);
   const template = data?.reportTemplate;
+  const signerName = signer ?? data?.customer.name ?? "";
   const requiredPhotos = template ? requiredFieldPhotos[template] : [];
   const photoKinds: FieldPhotoKind[] = [...requiredPhotos, "extra", ...(template === "sav" ? ["receipt" as const] : [])];
   const fieldAnswers = {
@@ -309,10 +314,13 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
             action: "report", session: session.id, id: draft.id, performedAt: performed.toISOString(),
             findings: draft.findings, actions: draft.actions, nextSteps: draft.nextSteps, onSite: draft.onSite,
             ...(template ? { details: fieldAnswers } : {}),
+            ...(template && signatureStrokes.length ? { signature: { name: signerName.trim(), strokes: signatureStrokes } } : {}),
           } }), source === "sanispa" ? "Compte rendu validé et transmis au client." : "Compte rendu validé. Intervention terminée.", () => {
             try { localStorage.removeItem(draftKey.current); } catch { /* Cleared on the next load. */ }
             setDraft(emptyDraft);
             setDraftNote("");
+            setSignatureStrokes([]);
+            setSigner(null);
           });
         }}>
           {draftNote ? <p role="status" className="mb-2 text-sm font-semibold text-sanispa-steel">{draftNote}</p> : null}
@@ -344,12 +352,21 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
             </label> : null}
             <label className="flex items-start gap-2 py-2 text-sm"><input type="checkbox" required checked={draft.onSite}
               onChange={event => editDraft({ onSite: event.target.checked })} className="mt-0.5 h-5 w-5" /> Je confirme avoir réalisé l’intervention sur place.</label>
+            {template ? <fieldset className="min-w-0 rounded-lg border border-sanispa-line bg-sanispa-ice p-3">
+              <legend className="px-1 text-sm font-bold">Signature du client (facultative)</legend>
+              <label className="mb-2 block text-sm font-bold">Nom du signataire
+                <input type="text" value={signerName} onChange={event => setSigner(event.target.value)} maxLength={140}
+                  required={signatureStrokes.length > 0} className={input} />
+              </label>
+              <CustomerSignaturePad strokes={signatureStrokes} onChange={setSignatureStrokes} disabled={busy} />
+            </fieldset> : null}
             {formError ? <p role="alert" className="rounded-lg bg-red-50 p-2 text-sm text-red-800">{formError} <a href="#photos" className="font-bold underline">Voir les photos</a></p> : null}
             <Button type="submit"><ClipboardCheck aria-hidden="true" size={18} /> {source === "sanispa" ? "Valider et transmettre au client" : "Valider le compte rendu"}</Button>
           </fieldset>
         </form> : null}
         {data.reports.map(report => <article key={report.id} className="mt-3 rounded-xl border border-sanispa-line p-3">
           <FieldReportDetails report={report} />
+          {report.customerSigner ? <p className="mt-3 text-sm font-bold">Signé sur place par {report.customerSigner}</p> : null}
           {source === "sanispa" ? <p className="mt-3 text-sm font-bold">{report.client_validated_at ? "Validé par le client" : "En attente de validation par le client"}</p> : null}
           {source === "private" && data.workStatus === "validated" ? <p className="mt-3 text-sm font-bold">Compte rendu validé</p> : null}
           <div className="mt-3 flex flex-wrap gap-2">

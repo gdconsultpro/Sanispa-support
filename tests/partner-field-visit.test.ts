@@ -105,6 +105,9 @@ test("structured SAV and installation reports require their evidence and keep ex
     const submit = (session: string, report: string, details: object) => db.query(
       "select submit_structured_partner_field_report($1,$2,$3,$4,now(),'Constat détaillé pour essai','Travaux et mesures contrôlés','Aucune suite à prévoir.',$5)",
       [partner, actor, session, report, JSON.stringify(details)]);
+    const sign = (session: string, report: string, details: object, signature: object) => db.query(
+      "select submit_signed_partner_field_report($1,$2,$3,$4,now(),'Constat détaillé pour essai','Travaux et mesures contrôlés','Aucune suite à prévoir.',$5,$6)",
+      [partner, actor, session, report, JSON.stringify(details), JSON.stringify(signature)]);
 
     const savSession = await start(sav);
     const savReport = randomUUID();
@@ -114,9 +117,12 @@ test("structured SAV and installation reports require their evidence and keep ex
     await photo(savSession, "extra");
     await assert.rejects(submit(savSession, savReport, savDetails), /FIELD_REQUIRED_PHOTOS/);
     await photo(savSession, "finish");
-    await submit(savSession, savReport, savDetails);
-    const [saved] = (await db.query("select report_details from partner_field_sessions where id=$1", [savSession])).rows;
-    assert.deepEqual(saved, { report_details: savDetails });
+    const signature = { name: "Client fictif", strokes: [[[40, 180], [100, 40], [150, 195]]] };
+    await assert.rejects(sign(savSession, savReport, savDetails, { name: "", strokes: [] }), /FIELD_INVALID_SIGNATURE/);
+    await sign(savSession, savReport, savDetails, signature);
+    await assert.rejects(sign(savSession, savReport, savDetails, { ...signature, name: "Autre client" }), /FIELD_ALREADY_FINISHED/);
+    const [saved] = (await db.query("select report_details,customer_signature from partner_field_sessions where id=$1", [savSession])).rows;
+    assert.deepEqual(saved, { report_details: savDetails, customer_signature: signature });
     await assert.rejects(photo(savSession, "extra"), /FIELD_ALREADY_FINISHED/);
 
     const installationSession = await start(installation);
@@ -126,6 +132,7 @@ test("structured SAV and installation reports require their evidence and keep ex
     await assert.rejects(submit(installationSession, installationReport, installationDetails), /FIELD_REQUIRED_PHOTOS/);
     await photo(installationSession, "heating");
     await submit(installationSession, installationReport, installationDetails);
+    await assert.rejects(sign(installationSession, installationReport, installationDetails, signature), /FIELD_ALREADY_FINISHED/);
     const next = (await db.query<{ id: string }>("select create_partner_field_followup($1,$2,'private',$3,$4,'Suite') id",
       [partner, actor, installation, installationReport])).rows[0].id;
     assert.deepEqual((await db.query("select previous_report->'details' details from partner_private_visits where id=$1", [next])).rows,
