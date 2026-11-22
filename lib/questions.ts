@@ -97,7 +97,6 @@ export const photoUnavailableDetail = text(
   "keyboard_photo_unavailable_detail",
   "Précisez pourquoi la photo est impossible",
   {
-    required: true,
     showWhen: when("keyboard_photo_unavailable", "Autre impossibilité"),
   },
 );
@@ -1044,6 +1043,99 @@ export const questionSets = Object.fromEntries(
     ];
   }),
 ) as Record<ProblemType, Question[]>;
+
+type Breakdown = Exclude<ProblemType, "demenagement">;
+
+// These questions keep their existing answer keys so a resumed draft shows its previous selections.
+function existingQuestion(problem: Breakdown, id: string): Question {
+  const question = questionSets[problem].find(item => item.id === id);
+  if (!question) throw new Error(`Question manquante : ${problem}/${id}`);
+  return { ...question, section: undefined, help: undefined };
+}
+
+export const additionalInformation = "Informations supplémentaires que vous souhaitez nous faire connaître";
+const duration = radio("problem_duration", "Depuis quand avez-vous remarqué ce défaut ?", [
+  "Aujourd’hui ou hier", "Depuis quelques jours", "Depuis plusieurs semaines", unknown,
+]);
+const pump = existingQuestion("pompe", "pump_symptoms");
+
+export const preDiagnosticQuestions: Record<Breakdown, Question[]> = {
+  fuite: [
+    existingQuestion("fuite", "visible_leak"),
+    existingQuestion("fuite", "suspected_area"),
+    existingQuestion("fuite", "leak_at_rest"),
+    radio("leak_speed", "À quelle vitesse le niveau baisse-t-il ?", [
+      "En quelques heures", "En un ou plusieurs jours", "Lentement sur plusieurs semaines", "Pas de baisse constatée", unknown,
+    ]),
+  ],
+  electrique: [
+    existingQuestion("electrique", "electrical_state"),
+    existingQuestion("electrique", "trip"),
+    existingQuestion("electrique", "trip_moment"),
+    existingQuestion("electrique", "burnt_smell"),
+  ],
+  "traitement-eau": [
+    multi("water_symptoms", "Qu’avez-vous remarqué dans l’eau ?", [
+      "Eau trouble", "Eau colorée", "Mousse", "Odeur inhabituelle", "Résultat d’analyse inhabituel",
+    ]),
+    existingQuestion("traitement-eau", "disinfectant"),
+    existingQuestion("traitement-eau", "water_test_method"),
+    radio("bromine_activation_used", "Avez-vous déjà utilisé du brome choc ou un activateur de brome ?", [
+      "Oui", "Non", unknown,
+    ], { showWhen: when("disinfectant", "Brome") }),
+  ],
+  pompe: [
+    { ...pump, options: [pumpSymptoms.silent, pumpSymptoms.hum, pumpSymptoms.flow, pumpSymptoms.noise, pumpSymptoms.stop,
+      pumpSymptoms.immediateTrip, pumpSymptoms.delayedTrip, pumpSymptoms.leak, pumpSymptoms.smell, unknown],
+      legacyOptions: pump.options },
+    existingQuestion("pompe", "pump_jets_affected"),
+    duration,
+  ],
+  chauffage: [
+    existingQuestion("chauffage", "heating_symptoms"),
+    existingQuestion("chauffage", "heating_system"),
+    existingQuestion("chauffage", "filtration_ok"),
+    existingQuestion("chauffage", "has_error"),
+  ],
+  "clavier-ecran": [
+    existingQuestion("clavier-ecran", "screen_on"),
+    existingQuestion("clavier-ecran", "screen_symptoms"),
+    existingQuestion("clavier-ecran", "buttons_work"),
+    existingQuestion("clavier-ecran", "lock_symbol"),
+  ],
+  filtration: [
+    existingQuestion("filtration", "filtration_behavior"),
+    existingQuestion("filtration", "filter_cleaned"),
+    existingQuestion("filtration", "water_level_mark"),
+    existingQuestion("filtration", "has_error"),
+  ],
+  "bruit-anormal": [
+    existingQuestion("bruit-anormal", "noise_types"),
+    existingQuestion("bruit-anormal", "when_noise"),
+    existingQuestion("bruit-anormal", "noise_associated"),
+  ],
+  autre: [
+    existingQuestion("autre", "other_equipment"),
+    radio("other_symptom", "Que se passe-t-il ?", [
+      "Ne fonctionne plus", "Fonctionne par moments", "Fonctionne mal", "Élément cassé ou abîmé", "Autre symptôme", unknown,
+    ]),
+    existingQuestion("autre", "still_usable"),
+  ],
+};
+
+const additionalHelp: Partial<Record<Breakdown, string>> = {
+  "traitement-eau": "Si vous avez déjà des mesures, indiquez-les avec leurs unités ainsi que le nom des produits utilisés.",
+  chauffage: "Vous pouvez indiquer les températures constatée et demandée, ou un code déjà lu à l’écran.",
+  "clavier-ecran": "Vous pouvez indiquer le modèle du clavier ou le message affiché.",
+  autre: "Vous pouvez décrire ce que vous avez observé et préciser l’équipement concerné.",
+};
+
+export function finalPreDiagnosticQuestion(problem: Breakdown): Question {
+  return text("additional_information", additionalInformation, {
+    type: "textarea",
+    help: `Facultatif. ${additionalHelp[problem] ?? "Vous pouvez ajouter un détail utile ou signaler un autre problème."}`,
+  });
+}
 
 type PhotoRequirement = {
   id: string;

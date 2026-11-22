@@ -1,8 +1,10 @@
 import {
   getPhotoRequirements,
   isPhotoRequired,
+  finalPreDiagnosticQuestion,
   photoUnavailableDetail,
   photoUnavailableQuestion,
+  preDiagnosticQuestions,
   questionSets,
   spaAccessQuestion,
   unavailableValues,
@@ -55,11 +57,20 @@ export function toggleAnswer(
       ];
 }
 export function questionsFor(draft: AnswerDraft): Question[] {
-  if (!draft.problemType || !questionSets[draft.problemType]) return [];
-  const questions = [...questionSets[draft.problemType]];
-  if (draft.choice === "intervention" && !["fuite", "demenagement"].includes(draft.problemType))
+  const problem = draft.problemType;
+  if (!problem || !questionSets[problem]) return [];
+  if (problem === "demenagement") return questionSets.demenagement;
+  const current = preDiagnosticQuestions[problem];
+  const priorAnswers = questionSets[problem].filter(q => !current.some(item => item.id === q.id));
+  const questions = [
+    ...current,
+    // Keep older answers in saved drafts and summaries without asking for them again.
+    ...priorAnswers.map(q => ({ ...q, required: false })),
+    finalPreDiagnosticQuestion(problem),
+  ];
+  if (draft.choice === "intervention" && problem !== "fuite")
     questions.push(spaAccessQuestion);
-  if (draft.problemType === "electrique" && !draft.photos.keyboard)
+  if (problem === "electrique" && !draft.photos.keyboard)
     questions.push(photoUnavailableQuestion, photoUnavailableDetail);
   return questions;
 }
@@ -215,10 +226,7 @@ export function photoExceptionValid(draft: AnswerDraft) {
   const reason = draft.answers.keyboard_photo_unavailable;
   return (
     typeof reason === "string" &&
-    Boolean(photoUnavailableQuestion.options?.includes(reason)) &&
-    (reason !== "Autre impossibilité" ||
-      answerText(draft.answers.keyboard_photo_unavailable_detail).trim()
-        .length > 0)
+    Boolean(photoUnavailableQuestion.options?.includes(reason))
   );
 }
 export function missingRequiredPhotos(draft: AnswerDraft) {

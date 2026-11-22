@@ -11,7 +11,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { BackLink } from "@/components/BackLink";
 import { StepHeader } from "@/components/StepHeader";
-import { getPhotoRequirements, isPhotoRequired, photoUnavailableQuestion, photoUnavailableDetail } from "@/lib/questions";
+import { getPhotoRequirements, isPhotoRequired, photoUnavailableQuestion } from "@/lib/questions";
 import { DiagnosticDraft } from "@/lib/types";
 import { emptyDraft, readDraft, saveDraft } from "@/lib/storage";
 export default function UploadPage() {
@@ -89,7 +89,6 @@ export default function UploadPage() {
           <h2 className="font-bold">Photo du clavier impossible à fournir</h2>
           <p className="text-sm text-sanispa-steel">La photo du clavier est demandée pour ce problème. Si vous ne pouvez pas la fournir, indiquez le motif ; cette absence sera transmise à SANISPA avec le dossier.</p>
           <DiagnosticQuestion question={photoUnavailableQuestion} value={draft.answers.keyboard_photo_unavailable} onChange={value => setDraft(current => updateDiagnosticAnswer(current, "keyboard_photo_unavailable", value))} />
-          {draft.answers.keyboard_photo_unavailable === "Autre impossibilité" ? <DiagnosticQuestion question={photoUnavailableDetail} value={draft.answers.keyboard_photo_unavailable_detail} onChange={value => setDraft(current => updateDiagnosticAnswer(current, "keyboard_photo_unavailable_detail", value))} /> : null}
         </section> : null}
         {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
         <Button disabled={processing || mediaProcessing} type="submit" className="w-full sm:w-auto">Voir le résumé</Button>

@@ -31,8 +31,7 @@ export function DiagnosticQuestion({
           </legend>
           {q.type === "checkbox" ? (
             <p className="mb-2 text-xs text-sanispa-steel">
-              Plusieurs réponses possibles. Les choix incompatibles se
-              remplacent automatiquement.
+              Plusieurs réponses possibles.
             </p>
           ) : null}
           <div className="grid gap-2 sm:grid-cols-2">

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { draftSchema, validateSubmission } from "../lib/draft-schema";
 import { answerText, isQuestionVisible, normalizeDiagnostic, questionsFor, serializeAnswers, toggleAnswer, updateDiagnosticAnswer, validateAnswers } from "../lib/diagnostic-answers";
-import { getPhotoRequirements, problemTypes, pumpSymptoms, questionSets } from "../lib/questions";
+import { finalPreDiagnosticQuestion, getPhotoRequirements, preDiagnosticQuestions, problemTypes, pumpSymptoms, questionSets } from "../lib/questions";
 import { buildWaterContext, waterAssistantInstructions } from "../lib/water-context";
 import type { DiagnosticDraft } from "../lib/types";
 import { emptyDraft } from "../lib/storage";
@@ -50,15 +50,23 @@ test("pump accepts simultaneous symptoms, avoids duplicate questions, and remove
   assert.equal(draft.answers.pump_stop_delay, undefined); assert.equal(draft.answers.pump_restart_observed, undefined);
   assert.ok(!visible(draft).includes("flow_ok"));
 });
-test("pump opens with five questions and shows targeted details only for selected symptoms", () => {
-  let draft = fixture("pompe", {});
-  assert.deepEqual(questionSets.pompe.filter(q => isQuestionVisible(q, draft.answers, questionSets.pompe)).map(q => q.id),
-    ["pump_symptoms", "pump_jets_affected", "started_when", "pump_details", "additional_issue"]);
-  draft = updateDiagnosticAnswer(draft, "pump_symptoms", [pumpSymptoms.leak, pumpSymptoms.stop]);
-  assert.ok(visible(draft).includes("pump_leak_detail"));
-  assert.ok(visible(draft).includes("pump_stop_delay"));
-  assert.ok(!visible(draft).includes("pump_trip_detail"));
-  assert.ok(!visible(draft).includes("pump_restart_observed"));
+test("all breakdown questionnaires have three or four choices and a single optional note", () => {
+  for (const { value } of problemTypes) {
+    if (value === "demenagement") continue;
+    const questions = preDiagnosticQuestions[value];
+    assert.ok(questions.length >= 3 && questions.length <= 4, value);
+    assert.ok(questions.every(q => q.type === "radio" || q.type === "checkbox"), value);
+    const note = finalPreDiagnosticQuestion(value);
+    assert.equal(note.type, "textarea");
+    assert.ok(!note.required);
+    const draft = updateDiagnosticAnswer(fixture(value), note.id, "Ce que j’ai observé\nDepuis hier");
+    assert.equal(serializeAnswers(draft).find(q => q.question_key === note.id)?.answer, "Ce que j’ai observé\nDepuis hier");
+  }
+  assert.deepEqual(preDiagnosticQuestions.pompe.map(q => q.id), ["pump_symptoms", "pump_jets_affected", "problem_duration"]);
+  const water = preDiagnosticQuestions["traitement-eau"];
+  const bromine = water.find(q => q.id === "bromine_activation_used")!;
+  assert.equal(isQuestionVisible(bromine, { disinfectant: "Brome" }, water), true);
+  assert.equal(isQuestionVisible(bromine, { disinfectant: "Chlore" }, water), false);
 });
 test("unknown choices are exclusive; invalid multiple radio/number answers are rejected", () => {
   assert.deepEqual(toggleAnswer([pumpSymptoms.stop], "Je ne sais pas"), ["Je ne sais pas"]);
@@ -117,7 +125,7 @@ test("electrical photo obligation requires an explicit reason; photo removes obs
   const draft = fixture("electrique", { trip: "Non" });
   assert.throws(() => validateSubmission(draft));
   assert.doesNotThrow(() => validateAnswers(draft, false));
-  assert.throws(() => validateSubmission({ ...draft, answers: { ...draft.answers, keyboard_photo_unavailable: "Autre impossibilité" } }));
+  assert.doesNotThrow(() => validateSubmission({ ...draft, answers: { ...draft.answers, keyboard_photo_unavailable: "Autre impossibilité" } }));
   const explained = { ...draft, answers: { ...draft.answers, keyboard_photo_unavailable: "Autre impossibilité", keyboard_photo_unavailable_detail: "TEST : appareil photo indisponible" } };
   assert.doesNotThrow(() => validateSubmission(explained));
   assert.equal(normalizeDiagnostic({ ...explained, photos: { keyboard: "fixture" } }).answers.keyboard_photo_unavailable, undefined);

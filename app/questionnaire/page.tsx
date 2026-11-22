@@ -3,13 +3,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DraftSave } from "@/components/DraftSave";
 import { useClientSession } from "@/components/SessionPrivacy";
-import { Field, SelectField } from "@/components/Field";
+import { SelectField } from "@/components/Field";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { BackLink } from "@/components/BackLink";
 import { DiagnosticQuestion } from "@/components/DiagnosticQuestion";
 import { StepHeader } from "@/components/StepHeader";
-import { diagnosticSafety, problemTypes, questionSets } from "@/lib/questions";
+import { finalPreDiagnosticQuestion, preDiagnosticQuestions, problemTypes } from "@/lib/questions";
 import {
   isQuestionVisible,
   updateDiagnosticAnswer,
@@ -28,7 +28,9 @@ export default function QuestionnairePage() {
     setDraft(stored);
     if (!stored.problemType || stored.problemType === "demenagement") router.replace("/diagnostic");
   }, [router]);
-  const questions = draft.problemType ? questionSets[draft.problemType] : [];
+  const problem = draft.problemType === "demenagement" ? "" : draft.problemType;
+  const questions = problem ? preDiagnosticQuestions[problem] : [];
+  const additional = problem ? finalPreDiagnosticQuestion(problem) : null;
   const problemLabel =
     problemTypes.find((item) => item.value === draft.problemType)?.label ?? "";
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -59,35 +61,28 @@ export default function QuestionnairePage() {
       <StepHeader
         eyebrow="Étape 2"
         title={problemLabel}
-        description="Commencez par ce que vous constatez, puis précisez les circonstances. Aucune connaissance technique n’est nécessaire. Seules les réponses marquées d’un * sont obligatoires. Les autres informations sont facultatives ; vous pouvez répondre « Je ne sais pas »."
+        description="Sélectionnez ce que vous avez observé. Les réponses marquées d’un * sont obligatoires. En cas de doute, choisissez « Je ne sais pas »."
       />
       <DraftSave draft={draft} step="/questionnaire" sync={confirmed} />
       <BackLink href="/diagnostic" />
       <p className="mb-4 rounded-md bg-sanispa-ice p-4 text-sm leading-6 text-sanispa-navy">
-        {draft.problemType === "traitement-eau"
-          ? "Recopiez seulement les mesures déjà disponibles et les produits déjà utilisés. Ne mélangez pas les traitements pour compléter ce formulaire."
-          : diagnosticSafety}
+        {problem === "traitement-eau"
+          ? "Utilisez les observations et les mesures que vous avez déjà."
+          : "Répondez d’après vos observations, sans démontage ni nouvel essai."}
       </p>
-      {draft.problemType && draft.problemType !== "traitement-eau" ? (
-        <p className="mb-4 text-sm text-sanispa-steel">
-          Si un autre problème existe aussi, utilisez la case « Autre panne à
-          déclarer » en fin de questionnaire.
-        </p>
-      ) : null}
       <form
         onSubmit={submit}
         className="space-y-5 rounded-md border border-sanispa-line bg-white p-4 shadow-soft sm:p-6"
       >
+        {(!confirmed || !draft.installationType) && problem ? (
+          <SelectField label="Type d’installation" name="installationType" value={draft.installationType} required
+            options={[{ value: "interieur", label: "Intérieur" }, { value: "exterieur", label: "Extérieur" }]}
+            onChange={value => setDraft(current => ({ ...current, installationType: value as DiagnosticDraft["installationType"] }))} />
+        ) : null}
         {questions
           .filter((q) => isQuestionVisible(q, draft.answers, questions))
           .map((q) => (
-            <div key={q.id} className="space-y-4">
-              {q.section ? (
-                <h2 className="border-b border-sanispa-line pb-2 text-lg font-bold text-sanispa-navy">
-                  {q.section}
-                </h2>
-              ) : null}
-              <DiagnosticQuestion
+            <DiagnosticQuestion key={q.id}
                 question={q}
                 value={draft.answers[q.id]}
                 onChange={(value) => {
@@ -96,23 +91,14 @@ export default function QuestionnairePage() {
                     updateDiagnosticAnswer(current, q.id, value),
                   );
                 }}
-              />
-            </div>
+            />
           ))}
-        {!confirmed || !draft.installationType ? <section aria-labelledby="installation-spa" className="space-y-3 border-t border-sanispa-line pt-5">
-          <h2 id="installation-spa" className="text-lg font-bold">Votre spa</h2>
-          <SelectField label="Type d’installation" name="installationType" value={draft.installationType} required
-            options={[{ value: "interieur", label: "Intérieur" }, { value: "exterieur", label: "Extérieur" }]}
-            onChange={value => setDraft(current => ({ ...current, installationType: value as DiagnosticDraft["installationType"] }))} />
-          {!confirmed ? <details className="rounded-xl border border-sanispa-line p-3">
-            <summary className="cursor-pointer font-bold">Préciser le modèle du spa (facultatif)</summary>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Field label="Marque" name="spaBrand" value={draft.spaBrand} onChange={spaBrand => setDraft(current => ({ ...current, spaBrand }))} />
-              <Field label="Modèle" name="spaModel" value={draft.spaModel} onChange={spaModel => setDraft(current => ({ ...current, spaModel }))} />
-              <Field label="Année approximative" name="spaYear" value={draft.spaYear} onChange={spaYear => setDraft(current => ({ ...current, spaYear }))} />
-            </div>
-          </details> : null}
-        </section> : null}
+        {additional ? (
+          <div className="border-t border-sanispa-line pt-5">
+            <DiagnosticQuestion question={additional} value={draft.answers[additional.id]}
+              onChange={value => setDraft(current => updateDiagnosticAnswer(current, additional.id, value))} />
+          </div>
+        ) : null}
         {error ? (
           <p
             role="alert"
