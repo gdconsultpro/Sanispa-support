@@ -11,13 +11,14 @@ import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { PartnerScheduleGrid, PlannerTechnicianSelect } from "@/components/PartnerScheduleGrid";
 import { PartnerTourMap } from "@/components/PartnerTourMap";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
+import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import { problemLabel } from "@/lib/display-labels";
 import { partnerAuthError } from "@/lib/partner-browser";
 import { plannerRequest, PlannerRequestError } from "@/lib/partner-planner-browser";
 import {
-  interventionTypes, partnerClientAddress, partnerClientIdPattern, partnerClientPath, partnerClientVisitTiming, partnerDirections,
+  hasCompletePartnerAddress, interventionTypes, partnerClientAddress, partnerClientIdPattern, partnerClientPath, partnerClientVisitTiming, partnerDirections,
   partnerClientsPath, partnerMapPath, partnerVisitMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
-  type MapCoordinate, type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention, type PlannerMapStatus,
+  type MapCoordinate, type PartnerMapContacts, type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention, type PlannerMapStatus,
   type PartnerClientHistory, type PartnerClientHistoryFilter, type PartnerClientSpa, type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
@@ -77,6 +78,9 @@ export default function PartnerPlanningPage() {
   const [period, setPeriod] = useState<PlannerPeriod>("day");
   const [mapPeriod, setMapPeriod] = useState<"day" | "week">("week");
   const [mapStatus, setMapStatus] = useState<PlannerMapStatus>("pending");
+  const [mapDatePicked, setMapDatePicked] = useState(false);
+  const [mapContacts, setMapContacts] = useState<PartnerMapContacts | null>(null);
+  const [mapContactError, setMapContactError] = useState("");
   const [agendaDatePicked, setAgendaDatePicked] = useState(false);
   const [mapVisitId, setMapVisitId] = useState<string | null>(null);
   const [day, setDay] = useState("");
@@ -92,7 +96,7 @@ export default function PartnerPlanningPage() {
   const [inventory, setInventory] = useState<StockPage | null>(null);
   const [agenda, setAgenda] = useState<Agenda | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
-  const [mapped, setMapped] = useState<PrivatePartnerClient | null>(null);
+  const [mapped, setMapped] = useState<(PrivatePartnerClient & { approximateLocation?: boolean }) | null>(null);
   const [savedClient, setSavedClient] = useState<PrivatePartnerClient | null>(null);
   const [revision, setRevision] = useState(0);
   const [loadError, setLoadError] = useState("");
@@ -103,6 +107,7 @@ export default function PartnerPlanningPage() {
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
   const mapTitle = useRef<HTMLHeadingElement>(null);
+  const mapDateVersion = useRef(0);
   const openNewClient = useRef(false);
   const loadedAgenda = useRef("");
 
@@ -124,6 +129,7 @@ export default function PartnerPlanningPage() {
         initialDay = date;
         setMapPeriod("day");
         setMapStatus("scheduled");
+        setMapDatePicked(true);
       }
       if (query.get("statut") === "pending") setMapStatus("pending");
     }
@@ -170,6 +176,18 @@ export default function PartnerPlanningPage() {
     return () => controller.abort();
   }, [view, day, activePeriod, search, offset, revision, clientId, historyFilter, historyOffset, showDeleted]);
 
+  useEffect(() => {
+    if (view !== "map") return;
+    const controller = new AbortController();
+    setMapContactError("");
+    void plannerRequest(endpoint + "?section=map-clients", { signal: controller.signal }).then(result => {
+      if (result && !controller.signal.aborted) setMapContacts(result);
+    }).catch(() => {
+      if (!controller.signal.aborted) setMapContactError("Les adresses du carnet sont temporairement indisponibles. Actualisez la carte pour réessayer.");
+    });
+    return () => controller.abort();
+  }, [view, revision]);
+
   const mappedId = mapped?.id;
   useEffect(() => {
     if (!mappedId) return;
@@ -177,12 +195,13 @@ export default function PartnerPlanningPage() {
   }, [mappedId]);
 
   useEffect(() => {
-    if (!mapped || mapped.latitude !== null || !mapped.source_diagnostic_id) return;
+    if (!mapped?.city || mapped.latitude !== null) return;
     const controller = new AbortController();
     setLocating(true);
     void plannerRequest(endpoint, { signal: controller.signal, payload: { action: "locateClient", id: mapped.id } })
       .then(result => {
-        if (!controller.signal.aborted && result?.client?.latitude != null) setMapped(result.client);
+        if (!controller.signal.aborted && result?.client?.latitude != null)
+          setMapped({ ...result.client, approximateLocation: result.approximateLocation });
       }).catch(() => { /* The address stays readable when geocoding is unavailable. */ })
       .finally(() => { if (!controller.signal.aborted) setLocating(false); });
     return () => { controller.abort(); setLocating(false); };
@@ -203,6 +222,7 @@ export default function PartnerPlanningPage() {
   }
 
   function changeView(next: typeof view) {
+    mapDateVersion.current += 1;
     setMapped(null);
     setEditor(null);
     setSavedClient(null);
@@ -217,6 +237,7 @@ export default function PartnerPlanningPage() {
     setMapVisitId(null);
     if (next === "map") {
       const useAgendaDate = view === "agenda" && agendaDatePicked;
+      setMapDatePicked(useAgendaDate);
       setMapStatus(useAgendaDate ? "scheduled" : "pending");
       if (useAgendaDate) setMapPeriod(period === "day" ? "day" : "week");
     }
@@ -230,6 +251,7 @@ export default function PartnerPlanningPage() {
       setDay(plannerDate(new Date(visit.startsAt)));
       setMapPeriod("day");
       setMapStatus("scheduled");
+      setMapDatePicked(true);
     } else {
       setMapStatus("pending");
     }
@@ -237,17 +259,21 @@ export default function PartnerPlanningPage() {
   }
 
   function selectPlanningDate(date: string) {
+    mapDateVersion.current += 1;
     setMapped(null);
     setMapVisitId(null);
     setDay(date);
     if (view === "agenda") setAgendaDatePicked(true);
+    if (view === "map") setMapDatePicked(true);
   }
 
-  async function goToNextAppointment(technician: string) {
+  async function goToNextAppointment(technician: string, preservePeriod = false) {
+    const version = mapDateVersion.current;
     const result = await plannerRequest(endpoint + "?" + new URLSearchParams({ section: "next-appointment", technician }));
+    if (version !== mapDateVersion.current) return true;
     if (!result?.startsAt) return false;
     selectPlanningDate(plannerDate(new Date(result.startsAt)));
-    setMapPeriod("day");
+    if (!preservePeriod) setMapPeriod("day");
     setMapStatus("scheduled");
     window.history.replaceState(null, "", partnerMapPath);
     return true;
@@ -352,6 +378,30 @@ export default function PartnerPlanningPage() {
     }
   }
 
+  async function applyUnplan(url: string, payload: object, visit?: VisitLocation) {
+    setSaving(true);
+    try {
+      if (!await plannerRequest(url, { payload })) throw new Error("Reconnectez-vous pour déplanifier l’intervention.");
+      setEditor(null);
+      setSavedVisit(visit ?? null);
+      if (view === "map") {
+        setMapStatus("pending");
+        setMapVisitId(visit ? "private:" + visit.id : null);
+        window.history.replaceState(null, "", visit ? partnerVisitMapPath(visit.id, null) : partnerMapPath);
+      }
+      if (view === "clients") {
+        if (historyFilter !== "all") setHistoryFilter("pending");
+        setHistoryOffset(0);
+      }
+      setNotice("Le créneau a été retiré. L’intervention est de nouveau à planifier.");
+      setRevision(current => current + 1);
+    } finally { setSaving(false); }
+  }
+
+  function unplanVisit(visit: Pick<PrivatePartnerVisit, "id" | "updated_at">) {
+    return applyUnplan(endpoint, { action: "unplanVisit", id: visit.id, expected_at: visit.updated_at }, { id: visit.id, startsAt: null });
+  }
+
   async function changeClientStatus(id: string, action: "deleteClient" | "restoreClient") {
     setSaving(true);
     try {
@@ -377,9 +427,10 @@ export default function PartnerPlanningPage() {
     if (!editor || editor.type === "pickClient" || saving) return;
     const values = new FormData(event.currentTarget);
     const value = (name: string) => String(values.get(name) ?? "");
+    const address = () => ({ street: value("street"), postal_code: value("postal_code"), city: value("city") });
     const contact = () => ({
       id: editor.id, name: value("name"), phone: value("phone"), email: value("email"),
-      street: value("street"), postal_code: value("postal_code"), city: value("city"),
+      ...address(),
     });
     setSaveError("");
     setSaving(true);
@@ -424,6 +475,7 @@ export default function PartnerPlanningPage() {
           starts_at: start?.toISOString() ?? null, ends_at: end?.toISOString() ?? null, technician_id: value("technician_id") || null };
         const payload = editor.type === "client" ? { action: "createVisitWithClient", client: contact(), visit }
           : { action: "saveVisit", client_id: editor.client.id, expected_at: editor.visit?.updated_at, ...visit,
+            ...(values.has("street") ? { address: address() } : {}),
             ...(values.has("spa_id") ? { spa_id: value("spa_id") || null } : {}) };
         const result = await plannerRequest(endpoint, { payload });
         if (!result) return;
@@ -476,6 +528,7 @@ export default function PartnerPlanningPage() {
   const mapItems = useMemo(() => agenda && view === "map" ? normalizeMapItems(agenda) : null, [agenda, view]);
   const selectedPoint = useMemo<PartnerMapPoint[]>(() => mapped && mapped.latitude !== null && mapped.longitude !== null ? [{
     id: mapped.id, latitude: mapped.latitude, longitude: mapped.longitude, title: mapped.name, address: partnerClientAddress(mapped),
+    detail: mapped.approximateLocation ? "Position approximative (commune)" : undefined,
   }] : [], [mapped]);
 
   return <AppShell compact>
@@ -518,7 +571,7 @@ export default function PartnerPlanningPage() {
         clientSpas={editor.type === "visit" && clientFile?.client.id === editor.client.id ? clientFile.spas : undefined}
         save={save} error={saveError} saving={saving} close={() => setEditor(null)}
         back={currentBooking ? () => edit({ type: "pickClient", ...currentBooking }) : undefined}
-        remove={removeVisit} /> : null}
+        remove={removeVisit} unplan={unplanVisit} /> : null}
 
     {mapped ? <section className={panelClass + " mb-4"} aria-labelledby="map-title">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4">
@@ -529,6 +582,7 @@ export default function PartnerPlanningPage() {
         ? <PartnerPrivateMap key={mapped.id} points={selectedPoint} />
         : <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm">{locating ? "Recherche de l’adresse…" : "L’adresse n’a pas été localisée avec assez de précision. Vérifiez le numéro, la rue et le code postal dans la fiche client."}</p>}
       <p className="mt-3 break-words">{partnerClientAddress(mapped) || "Adresse à compléter dans la fiche client."}</p>
+      {mapped.approximateLocation ? <p className="text-sm text-sanispa-steel">Position approximative au niveau de la commune.</p> : null}
       {partnerClientAddress(mapped) ? <a href={partnerDirections(partnerClientAddress(mapped))} target="_blank" rel="noreferrer" className={actionClass}>Ouvrir l’itinéraire</a> : null}
     </section> : null}
 
@@ -543,7 +597,7 @@ export default function PartnerPlanningPage() {
       onMap={record => openVisitOnMap({ id: record.id, startsAt: record.starts_at })}
       onSpasChanged={() => setRevision(value => value + 1)}
       onDeleteClient={() => changeClientStatus(clientId, "deleteClient")}
-      onDeleteVisit={record => removeVisit({ ...record, client: clientFile.client })} /> : null}
+      onDeleteVisit={record => removeVisit({ ...record, client: clientFile.client })} onUnplanVisit={unplanVisit} /> : null}
 
     {view === "clients" && !clientId && page ? <section className={panelClass}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -646,10 +700,13 @@ export default function PartnerPlanningPage() {
       {view === "map" ? <>
         {mapWeek && mapStatus === "scheduled" ? <p className="mb-3 font-bold">Semaine du {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" })
           .formatRange(mapWeek, plannerDay(plannerDate(mapWeek), 6))}</p> : null}
-        <PartnerTourMap items={mapItems} team={team} period={mapPeriod} scope={day} busy={saving} onBook={saveTourVisit} loadRoute={loadDrivingTour}
+        <PartnerTourMap items={mapItems} contacts={mapContacts} contactError={mapContactError} team={team} period={mapPeriod} scope={day} busy={saving} onBook={saveTourVisit} loadRoute={loadDrivingTour}
           applyTour={applyDrivingTour} reloadTour={() => setRevision(current => current + 1)} onNextAppointment={goToNextAppointment}
+          autoNext={!mapDatePicked}
           status={mapStatus} highlightId={mapVisitId} onStatus={status => { setMapStatus(status); setMapVisitId(null); }}
           onVisit={visit => edit({ type: "visit", id: visit.id, client: visit.client, visit })}
+          onUnplan={item => item.visit ? unplanVisit(item.visit) : applyUnplan(`/api/partner/interventions/${item.dossierId}`,
+            { action: "cancel_appointment", start: item.startsAt, end: item.endsAt })}
           onAddress={client => edit({ type: "client", id: client.id, client, returnToMap: true })} />
       </> : null}
       {month && entries ? <>
@@ -685,6 +742,7 @@ export default function PartnerPlanningPage() {
               <button type="button" disabled={saving} className={actionClass}
                 onClick={() => openVisitOnMap({ id: entry.id, startsAt: entry.starts_at })}>Voir sur la carte</button>
               <button type="button" disabled={saving} className={actionClass} onClick={() => edit({ type: "visit", id: entry.id, client: entry.client, visit: entry })}>Modifier le rendez-vous</button>
+              <PartnerVisitUnplan disabled={saving} onUnplan={() => unplanVisit(entry)} />
             </div>
           </> : <>
             <h3 className="break-words text-lg font-bold">{problemLabel(entry.diagnostic.problem_type)} · {entry.diagnostic.customer?.name || "Client"}</h3>
@@ -761,11 +819,12 @@ function SlotClientPicker({ slot, team, choose, add, close }: {
   </section>;
 }
 
-function PlannerEditor({ editor, day, team, clientSpas, save, saving, error, close, back, remove }: {
+function PlannerEditor({ editor, day, team, clientSpas, save, saving, error, close, back, remove, unplan }: {
   editor: FormEditor; day: string; team: PlannerTechnician[]; save: (event: FormEvent<HTMLFormElement>) => void;
   clientSpas?: PartnerClientSpa[];
   saving: boolean; error: string; close: () => void; back?: () => void;
   remove: (visit: PrivatePartnerVisit | PendingPrivatePartnerVisit) => Promise<void>;
+  unplan: (visit: Pick<PrivatePartnerVisit, "id" | "updated_at">) => Promise<void>;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
   const slot = editor.type === "stock" ? undefined : editor.booking?.slot;
@@ -774,6 +833,7 @@ function PlannerEditor({ editor, day, team, clientSpas, save, saving, error, clo
   useEffect(() => { title.current?.focus(); }, []);
   const visit = editor.type === "visit" ? editor.visit : undefined;
   const newContact = editor.type === "client" && Boolean(editor.booking);
+  const addressNeeded = editor.type === "visit" && !visit && !hasCompletePartnerAddress(editor.client);
   const forVisit = editor.type === "visit" || newContact;
   const startsAt = visit?.starts_at ?? slot?.startsAt;
   const startingDay = startsAt ? plannerDate(new Date(startsAt)) : day;
@@ -785,22 +845,15 @@ function PlannerEditor({ editor, day, team, clientSpas, save, saving, error, clo
     </h2>
     {editor.type === "client" && slot ? <p className="mt-2 text-sm">{slotSummary(slot, team)}</p> : null}
     {newContact ? <p className="mt-2 text-sm">Les coordonnées seront enregistrées dans votre carnet avec l’intervention.</p> : null}
-    {editor.type === "visit" ? <p className="mt-2 break-words text-sm">{partnerClientAddress(editor.client)}</p> : null}
+    {editor.type === "visit" && !addressNeeded ? <p className="mt-2 break-words text-sm">{partnerClientAddress(editor.client)}</p> : null}
     <form onSubmit={save}>
       <fieldset disabled={saving} className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
         {editor.type === "client" ? <>
           <PlannerField label="Nom du client" name="name" maxLength={140} defaultValue={editor.client?.name} required />
           <PlannerField label="Téléphone (facultatif)" name="phone" type="tel" maxLength={35} defaultValue={editor.client?.phone} />
-          <details open={editor.client || editor.booking ? true : undefined} className="min-w-0 rounded-xl border border-sanispa-line p-3 sm:col-span-2">
-            <summary className="focus-ring cursor-pointer text-sm font-bold">Ajouter l’adresse et les détails (facultatif)</summary>
-            <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
-              <PlannerField label="E-mail" name="email" type="email" maxLength={254} defaultValue={editor.client?.email} />
-              <PlannerField label="Numéro et nom de rue" name="street" maxLength={160} defaultValue={editor.client?.street} />
-              <PlannerField label="Code postal" name="postal_code" inputMode="numeric" pattern="[0-9]{5}" maxLength={5} defaultValue={editor.client?.postal_code} />
-              <PlannerField label="Ville" name="city" maxLength={100} defaultValue={editor.client?.city} />
-              {!newContact ? <InterventionFields type={editor.client?.intervention_type} description={editor.client?.description} /> : null}
-            </div>
-          </details>
+          <PlannerField label="E-mail (facultatif)" name="email" type="email" maxLength={254} defaultValue={editor.client?.email} />
+          <PlannerClientAddressFields client={editor.client} />
+          {!newContact ? <InterventionFields type={editor.client?.intervention_type} description={editor.client?.description} /> : null}
         </> : editor.type === "stock" ? <>
           <PlannerField label="Nom de l’article" name="label" maxLength={140} defaultValue={editor.item?.label} required />
           <label className="min-w-0 text-sm font-bold">Catégorie
@@ -813,6 +866,7 @@ function PlannerEditor({ editor, day, team, clientSpas, save, saving, error, clo
           <PlannerField label="Quantité en stock" name="quantity" type="number" inputMode="numeric" min={0} max={1000000} step={1} defaultValue={editor.item?.quantity ?? 0} required />
         </> : null}
         {forVisit ? <>
+          {addressNeeded ? <PlannerClientAddressFields client={editor.client} completing /> : null}
           {editor.type === "visit" ? <VisitSpaField clientId={editor.client.id} knownSpas={clientSpas} selected={editor.spaId ?? visit?.spa_id} /> : null}
           <InterventionFields type={visit?.title ?? editor.client?.intervention_type}
             description={visit?.description ?? (editor.type === "visit" && editor.withoutDate === true ? undefined : editor.client?.description)} />
@@ -835,8 +889,23 @@ function PlannerEditor({ editor, day, team, clientSpas, save, saving, error, clo
         </div>
       </fieldset>
     </form>
-    {visit ? <div className="mt-2"><PartnerVisitDelete disabled={saving} onDelete={() => remove(visit)} /></div> : null}
+    {visit ? <div className="mt-2 flex flex-wrap gap-x-4">
+      {visit.starts_at ? <PartnerVisitUnplan disabled={saving} onUnplan={() => unplan(visit)} /> : null}
+      <PartnerVisitDelete disabled={saving} onDelete={() => remove(visit)} />
+    </div> : null}
   </section>;
+}
+
+function PlannerClientAddressFields({ client, completing }: { client?: PrivatePartnerClient; completing?: boolean }) {
+  return <fieldset className="min-w-0 rounded-xl border border-sanispa-line p-3 sm:col-span-2">
+    <legend className="px-1 text-sm font-bold">Adresse du client (obligatoire)</legend>
+    {completing ? <p className="mb-2 text-sm">L’adresse sera enregistrée dans la fiche client avec l’intervention.</p> : null}
+    <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+      <div className="min-w-0 sm:col-span-2"><PlannerField label="Numéro et nom de rue" name="street" required maxLength={160} defaultValue={client?.street} /></div>
+      <PlannerField label="Code postal" name="postal_code" required inputMode="numeric" pattern="[0-9]{5}" maxLength={5} defaultValue={client?.postal_code} />
+      <PlannerField label="Ville" name="city" required maxLength={100} defaultValue={client?.city} />
+    </div>
+  </fieldset>;
 }
 
 function VisitSpaField({ clientId, knownSpas, selected }: { clientId: string; knownSpas?: PartnerClientSpa[]; selected?: string | null }) {

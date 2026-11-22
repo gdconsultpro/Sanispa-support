@@ -109,7 +109,9 @@ export type PartnerMapPoint = {
   pending?: boolean;
   step?: number;
   highlighted?: boolean;
+  clientPath?: string;
 };
+export type PartnerMapContacts = { points: PartnerMapPoint[]; unresolved: { id: string; name: string }[] };
 
 export type PendingPartnerDossier = MapPosition & {
   id: string;
@@ -235,6 +237,10 @@ export function timelineQuarter(hourStart: number, fraction: number) {
 
 export function partnerClientAddress({ street, postal_code, city }: Pick<PrivatePartnerClient, "street" | "postal_code" | "city">) {
   return [street, [postal_code, city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+}
+
+export function hasCompletePartnerAddress({ street, postal_code, city }: Pick<PrivatePartnerClient, "street" | "postal_code" | "city">) {
+  return Boolean(street.trim() && city.trim() && /^[0-9]{5}$/.test(postal_code));
 }
 
 export function partnerVisitAddress(address?: string | null) {

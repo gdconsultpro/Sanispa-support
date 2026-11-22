@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/Button";
 import { partnerEquipmentEndpoint, PartnerClientSpas, PartnerSpaOptions } from "@/components/PartnerClientSpas";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
+import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import { problemLabel } from "@/lib/display-labels";
 import { partnerAuthError } from "@/lib/partner-browser";
 import { plannerRequest } from "@/lib/partner-planner-browser";
@@ -27,7 +28,7 @@ function dateLabel(start: string, end?: string | null) {
     : `${day} à ${plannerTime(start)} – ${dateFormat.format(new Date(end))} à ${plannerTime(end)}`;
 }
 
-export function PartnerClientFile({ history, filter, offset, busy, loading, onFilter, onPage, onEdit, onAdd, onAddress, onVisit, onMap, onSpasChanged, onDeleteClient, onDeleteVisit }: {
+export function PartnerClientFile({ history, filter, offset, busy, loading, onFilter, onPage, onEdit, onAdd, onAddress, onVisit, onMap, onSpasChanged, onDeleteClient, onDeleteVisit, onUnplanVisit }: {
   history: PartnerClientHistory;
   filter: PartnerClientHistoryFilter;
   offset: number;
@@ -43,6 +44,7 @@ export function PartnerClientFile({ history, filter, offset, busy, loading, onFi
   onSpasChanged: () => void;
   onDeleteClient: () => Promise<void>;
   onDeleteVisit: (visit: PartnerClientVisit) => Promise<void>;
+  onUnplanVisit: (visit: PartnerClientVisit) => Promise<void>;
 }) {
   const { client, visits, dossier, technicians, more, spas } = history;
   const name = useRef<HTMLHeadingElement>(null);
@@ -112,6 +114,7 @@ export function PartnerClientFile({ history, filter, offset, busy, loading, onFi
             <div className="flex flex-wrap gap-x-4">
               <button type="button" className={action} disabled={busy} onClick={() => onVisit(visit)}>Modifier l’intervention</button>
               {address ? <button type="button" className={action} disabled={busy} onClick={() => onMap(visit)}>Voir l’intervention sur la carte</button> : null}
+              {visit.starts_at ? <PartnerVisitUnplan disabled={busy} onUnplan={() => onUnplanVisit(visit)} /> : null}
               <PartnerVisitDelete disabled={busy} onDelete={() => onDeleteVisit(visit)} />
             </div>
           </li>;

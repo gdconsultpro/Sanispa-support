@@ -8,8 +8,8 @@ import { interventionError } from "@/lib/interventions";
 import { processNotifications } from "@/lib/notifications";
 import { getPartnerRoadRoute } from "@/lib/partner-road-route";
 import { maximumTourRouteStops } from "@/lib/partner-tour-routing";
-import { partnerClientAddress, partnerClientHistoryFilters, partnerVisitAddress, type PendingPartnerDossier, type PendingPrivatePartnerVisit,
-  type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
+import { partnerClientAddress, partnerClientHistoryFilters, partnerClientPath, partnerVisitAddress, type PartnerMapContacts,
+  type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
 const privateClientColumns = "id,name,phone,email,street,postal_code,city,intervention_type,description,latitude,longitude,source_diagnostic_id";
 const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at,spa_id";
@@ -18,18 +18,20 @@ const privateVisitColumns = `${visitFields},client:partner_private_clients!inner
 const stockColumns = "id,category,label,reference,quantity,updated_at";
 const timestamp = z.string().datetime({ offset: true });
 const technicianId = z.string().uuid().nullable();
+const privateAddressInput = z.object({
+  street: z.string().trim().min(1).max(160),
+  postal_code: z.string().trim().regex(/^[0-9]{5}$/),
+  city: z.string().trim().min(1).max(100),
+}).strict();
 const privateClientInput = z.object({
   action: z.literal("saveClient"),
   id: z.string().uuid(),
   name: z.string().trim().min(1).max(140),
   phone: z.string().trim().max(35),
   email: z.string().trim().max(254).refine(email => !email || z.string().email().safeParse(email).success),
-  street: z.string().trim().max(160),
-  postal_code: z.string().trim().regex(/^(?:\d{5})?$/),
-  city: z.string().trim().max(100),
   intervention_type: z.string().trim().min(1).max(140),
   description: z.string().trim().max(2500),
-}).strict();
+}).merge(privateAddressInput);
 const privateVisitInput = z.object({
   action: z.literal("saveVisit"),
   id: z.string().uuid(),
@@ -41,15 +43,17 @@ const privateVisitInput = z.object({
   technician_id: technicianId.optional(),
   spa_id: z.string().uuid().nullable().optional(),
   expected_at: timestamp.optional(),
+  address: privateAddressInput.optional(),
 }).strict();
 const visitWithContactInput = z.object({
   action: z.literal("createVisitWithClient"),
   client: privateClientInput.omit({ action: true, intervention_type: true, description: true }),
-  visit: privateVisitInput.omit({ action: true, client_id: true, expected_at: true, spa_id: true }),
+  visit: privateVisitInput.omit({ action: true, client_id: true, expected_at: true, spa_id: true, address: true }),
 }).strict();
 const deleteVisitInput = z.object({
   action: z.literal("deleteVisit"), id: z.string().uuid(), expected_at: timestamp,
 }).strict();
+const unplanVisitInput = deleteVisitInput.extend({ action: z.literal("unplanVisit") });
 const deleteClientInput = z.object({ action: z.literal("deleteClient"), id: z.string().uuid() }).strict();
 const restoreClientInput = deleteClientInput.extend({ action: z.literal("restoreClient") });
 const stockInput = z.object({
@@ -94,7 +98,7 @@ const applyTourInput = z.object({
     source: z.enum(["private", "sanispa"]), id: z.string().uuid(), expected_at: timestamp, starts_at: timestamp,
   }).strict()).min(1).max(maximumTourRouteStops),
 }).strict();
-const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, visitWithContactInput, deleteVisitInput, deleteClientInput,
+const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, visitWithContactInput, deleteVisitInput, unplanVisitInput, deleteClientInput,
   restoreClientInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, tourRouteInput, applyTourInput]);
 const rangeInput = z.object({
   from: z.string().datetime(),
@@ -151,7 +155,7 @@ async function locateAddress(address: Address, budget?: AbortSignal, municipalit
   }
 }
 
-async function mapLocations(clients: PrivatePartnerClient[], sanispaAddresses: Array<Address | null>, waitingAddresses: Array<Address | null>) {
+async function mapLocations(clients: Array<Address & Pick<PrivatePartnerClient, "latitude" | "longitude">>, sanispaAddresses: Array<Address | null>, waitingAddresses: Array<Address | null>) {
   function addressKey(address: Address) {
     return partnerClientAddress(address).toLowerCase();
   }
@@ -255,6 +259,24 @@ export async function GET(request: Request) {
       }
       const offset = z.coerce.number().int().min(0).max(1000000).parse(params.get("offset") ?? 0);
       const section = params.get("section");
+      if (section === "map-clients") {
+        const clients = await allRows((from, to) => supabase.from("partner_private_clients")
+          .select("id,name,street,postal_code,city,latitude,longitude")
+          .eq("partner_id", partner.id).is("deleted_at", null).order("name").order("id").range(from, to));
+        const location = await mapLocations(clients, [], []);
+        const result: PartnerMapContacts = { points: [], unresolved: [] };
+        for (const client of clients) {
+          const point = location(client);
+          if (point?.latitude == null || point.longitude == null) {
+            result.unresolved.push({ id: client.id, name: client.name });
+            continue;
+          }
+          result.points.push({ id: "client:" + client.id, title: client.name, address: partnerClientAddress(client),
+            clientPath: partnerClientPath(client.id), latitude: point.latitude, longitude: point.longitude,
+            detail: point.approximateLocation ? "Client · Position approximative (commune)" : "Client" });
+        }
+        return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
+      }
       if (section === "client" || section === "client-spas") {
         const id = z.string().uuid().parse(params.get("id"));
         const filter = z.enum(partnerClientHistoryFilters).parse(params.get("filter") ?? "all");
@@ -437,6 +459,20 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ deleted: true });
     }
+    if (command.action === "unplanVisit") {
+      const table = supabase.from("partner_private_visits");
+      const result = await table.update({ starts_at: null, ends_at: null, updated_at })
+        .eq("partner_id", partner.id).eq("id", command.id).eq("updated_at", command.expected_at).not("starts_at", "is", null)
+        .select("id").maybeSingle();
+      if (result.error) throw result.error;
+      if (!result.data) {
+        const current = await table.select("starts_at").eq("partner_id", partner.id).eq("id", command.id).maybeSingle();
+        if (current.error) throw current.error;
+        if (!current.data) throw new HttpError(404, "Cette intervention est introuvable.");
+        if (current.data.starts_at) throw new HttpError(409, "Le créneau a changé. Actualisez la page avant de déplanifier.");
+      }
+      return NextResponse.json({ saved: true });
+    }
     if (command.action === "createVisitWithClient") {
       validatePrivateVisitTimes(command.visit);
       const location = await locateAddress(command.client);
@@ -500,7 +536,10 @@ export async function POST(request: Request) {
       if (!data) throw new HttpError(404, "Client introuvable dans votre carnet.");
       if (data.latitude !== null && data.longitude !== null) return NextResponse.json({ client: data });
       const position = await locateAddress(data);
-      if (position.latitude === null) return NextResponse.json({ client: data });
+      if (position.latitude === null) {
+        const approximate = await locateAddress(data, undefined, true);
+        return NextResponse.json({ client: { ...data, ...approximate }, approximateLocation: approximate.latitude !== null });
+      }
       const saved = await supabase.from("partner_private_clients").update(position)
         .eq("partner_id", partner.id).eq("id", data.id).eq("street", data.street)
         .eq("postal_code", data.postal_code).eq("city", data.city).select(privateClientColumns).maybeSingle();
@@ -525,24 +564,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ client: data });
     }
 
-    const { action: _action, expected_at, ...input } = command;
+    const { action: _action, expected_at, address, ...input } = command;
     validatePrivateVisitTimes(input);
-    if (!expected_at) {
-      const { data, error } = await supabase.from("partner_private_clients").select("id")
-        .eq("partner_id", partner.id).eq("id", input.client_id).is("deleted_at", null).maybeSingle();
-      if (error) throw error;
-      if (!data) throw new HttpError(404, "Client introuvable dans votre carnet.");
-    }
+    if (expected_at && address) throw new HttpError(400, "Modifiez l’adresse depuis la fiche client.");
     const table = supabase.from("partner_private_visits");
     const result = expected_at
       ? await table.update({ ...input, updated_at }).eq("partner_id", partner.id).eq("id", input.id)
         .eq("updated_at", expected_at).select("id").maybeSingle()
-      : await table.upsert({ ...input, partner_id: partner.id, updated_at }, { onConflict: "partner_id,id" });
+      : await supabase.rpc("create_partner_visit_for_client", {
+        p_partner: partner.id, p_actor: user.id, p_visit: input,
+        p_address: address ? { ...address, ...await locateAddress(address) } : null,
+      });
     const { error } = result;
+    if (error?.message.includes("CLIENT_NOT_FOUND")) throw new HttpError(404, "Client introuvable dans votre carnet.");
+    if (error?.message.includes("CLIENT_ADDRESS_REQUIRED")) throw new HttpError(400, "Renseignez la rue, le code postal et la ville du client.");
+    if (error?.message.includes("CLIENT_ADDRESS_CHANGED"))
+      throw new HttpError(409, "L’adresse du client a changé. Rouvrez l’intervention pour utiliser son adresse actuelle.");
+    if (error?.code === "23505") throw new HttpError(409, "L’intervention a déjà été enregistrée. Actualisez le planning.");
     if (error?.code === "23503" && error.message.includes("technician")) throw new HttpError(404, "Ce technicien est introuvable dans votre planning.");
     if (error?.code === "23503" && error.message.includes("client_spa")) throw new HttpError(400, "Choisissez un spa de cette fiche client.");
     if (error?.code === "23503") throw new HttpError(404, "Client introuvable dans votre carnet.");
-    if (error) throw error;
+    if (error) throw interventionError(error);
     if (expected_at && !result.data) throw new HttpError(409, "Ce rendez-vous a été modifié. Revenez au planning avant de réessayer.");
     return NextResponse.json({ saved: true });
   } catch (error) {

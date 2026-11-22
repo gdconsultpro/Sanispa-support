@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/Button";
 import { PartnerDrivingTour, type ApplyDrivingTour, type LoadDrivingTour } from "@/components/PartnerDrivingTour";
-import { matchesPlannerMapFilters, nearbyPendingVisits, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
-  type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
+import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
+import { matchesPlannerMapFilters, nearbyPendingVisits, partnerClientPath, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
+  type PartnerMapContacts, type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
   type PlannerMapStatus, type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
 
 const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
@@ -17,8 +18,10 @@ const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
 const filterClass = "focus-ring mt-1 min-h-12 w-full rounded-lg border border-sanispa-line bg-white px-3 text-base";
 const linkClass = "focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline";
 
-export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, onNextAppointment, status, highlightId, onStatus }: {
+export function PartnerTourMap({ items, contacts, contactError, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, onNextAppointment, autoNext, status, highlightId, onStatus, onUnplan }: {
   items: PlannerMapIntervention[] | null;
+  contacts: PartnerMapContacts | null;
+  contactError: string;
   team: PlannerTechnician[];
   period: "day" | "week";
   scope: string;
@@ -29,13 +32,16 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
   loadRoute: LoadDrivingTour;
   applyTour: ApplyDrivingTour;
   reloadTour: () => void;
-  onNextAppointment: (technician: string) => Promise<boolean>;
+  onNextAppointment: (technician: string, preservePeriod?: boolean) => Promise<boolean>;
+  autoNext: boolean;
   status: PlannerMapStatus;
   highlightId: string | null;
   onStatus: (status: PlannerMapStatus) => void;
+  onUnplan: (item: PlannerMapIntervention) => Promise<void>;
 }) {
   const [technician, setTechnician] = useState("all");
   const [showTour, setShowTour] = useState(false);
+  const [showContacts, setShowContacts] = useState(true);
   const [lastMap, setLastMap] = useState<{ waiting: PlannerMapIntervention[]; team: PlannerTechnician[] } | null>(null);
   const [nextPending, setNextPending] = useState(false);
   const [nextMessage, setNextMessage] = useState("");
@@ -48,11 +54,11 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
   useEffect(() => {
     if (items) setLastMap({ waiting: items.filter(item => !item.startsAt), team });
   }, [items, team]);
-  async function findNextAppointment() {
+  async function findNextAppointment(preservePeriod = false) {
     setNextMessage("");
     setNextPending(true);
     try {
-      if (!await onNextAppointment(technician)) setNextMessage("Aucun rendez-vous à venir pour cette sélection.");
+      if (!await onNextAppointment(technician, preservePeriod)) setNextMessage("Aucun rendez-vous à venir pour cette sélection.");
     } catch (error) {
       setNextMessage(error instanceof Error ? error.message : "Le prochain rendez-vous est temporairement indisponible.");
     } finally {
@@ -85,6 +91,7 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
     }] : []);
     return { entries, points };
   }, [displayItems, highlightId, period, status, technician, visibleTeam]);
+  const mapPoints = useMemo(() => showContacts && contacts?.points.length ? [...points, ...contacts.points] : points, [showContacts, contacts, points]);
   const mappedIds = new Set(points.map(point => point.id));
 
   return <>
@@ -101,17 +108,29 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
       <div>
         <label htmlFor={filterId + "-status"} className="text-sm font-bold">Statut</label>
         <select id={filterId + "-status"} className={filterClass} value={showTour ? "scheduled" : status} disabled={showTour || nextPending}
-          onChange={event => { setNextMessage(""); setSelected(null); onStatus(event.target.value as PlannerMapStatus); }}>
+          onChange={event => {
+            const selectedStatus = event.target.value as PlannerMapStatus;
+            setNextMessage(""); setSelected(null); onStatus(selectedStatus);
+            if (selectedStatus === "scheduled" && autoNext && !items?.some(item => matchesPlannerMapFilters(item, "scheduled", technician)))
+              void findNextAppointment(true);
+          }}>
           <option value="pending">À planifier</option>
           <option value="scheduled">Planifiées</option>
         </select>
       </div>
     </div>
-    <label className="mb-3 flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm font-bold">
+    <div className="mb-3 flex flex-wrap gap-x-5">
+    <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm font-bold">
       <input type="checkbox" className="h-5 w-5 accent-sanispa-blue" checked={showTour} disabled={busy || nextPending}
         onChange={event => setShowTour(event.target.checked)} />
       Afficher la tournée
     </label>
+    {!showTour ? <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm font-bold">
+      <input type="checkbox" className="h-5 w-5 accent-violet-700" checked={showContacts}
+        onChange={event => setShowContacts(event.target.checked)} />
+      Afficher les clients du carnet
+    </label> : null}
+    </div>
     {showTour ? <PartnerDrivingTour items={items} technician={tourTechnician} scope={scope} loadRoute={loadRoute}
       applyTour={applyTour} reloadTour={reloadTour} saving={busy} /> : <>
     <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4">
@@ -124,14 +143,25 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
     {displayItems ? <p className="mb-2 text-sm font-bold">
       {entries.length} {status === "scheduled" ? "rendez-vous planifié" + (entries.length === 1 ? "" : "s")
         : entries.length === 1 ? "intervention à planifier" : "interventions à planifier"}
+      {showContacts && contacts?.points.length ? <span className="font-normal text-sanispa-steel">
+        {" · "}{contacts.points.length} {contacts.points.length === 1 ? "adresse client sur la carte" : "adresses clients sur la carte"}
+      </span> : null}
     </p> : null}
-    <PrivateMap points={points} onAppointment={chooseAppointment}
+    <PrivateMap points={mapPoints} onAppointment={chooseAppointment}
       label={status === "pending" ? "Carte des interventions à planifier"
         : period === "week" ? "Carte des interventions de la semaine" : "Carte des interventions du jour"} />
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
       {status === "scheduled" ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Planifiées</span>
         : <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-600" /> À planifier, sans date</span>}
+      {showContacts ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-violet-700" /> Clients du carnet</span> : null}
     </div>
+    {showContacts && contactError ? <p role="status" className="mt-2 text-sm">{contactError}</p> : null}
+    {showContacts && contacts?.unresolved.length ? <details className="mt-2 text-sm">
+      <summary className="cursor-pointer font-semibold">{contacts.unresolved.length} {contacts.unresolved.length === 1 ? "adresse client à localiser" : "adresses clients à localiser"}</summary>
+      <ul className="mt-1 flex flex-wrap gap-x-4">{contacts.unresolved.map(client => <li key={client.id}>
+        <Link className={linkClass} href={partnerClientPath(client.id)}>{client.name}</Link>
+      </li>)}</ul>
+    </details> : null}
     {displayItems && entries.length > points.length ? <p className="mt-2 text-sm text-sanispa-steel">
       {entries.length - points.length} {entries.length - points.length === 1 ? "intervention sans adresse localisée" : "interventions sans adresse localisée"}. Retrouvez-les dans la liste ci-dessous.
     </p> : null}
@@ -154,6 +184,8 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
             </button> : null}
             {item.startsAt && mappedIds.has(item.id) ? <button type="button" disabled={busy} className={linkClass}
               onClick={() => chooseAppointment(item.id)}>Interventions à proximité</button> : null}
+            {item.startsAt && (item.visit || item.dossierId && !item.reschedule?.closed && Date.parse(item.startsAt) > Date.now()) ?
+              <PartnerVisitUnplan disabled={busy} onUnplan={() => onUnplan(item)} /> : null}
             {item.client && (item.approximateLocation || !mappedIds.has(item.id)) ? <button type="button" disabled={busy} className={linkClass}
               onClick={() => item.client && onAddress(item.client)}>Compléter l’adresse</button> : null}
             {item.dossierId ? <Link className={linkClass} href={"/partenaire/interventions/" + item.dossierId + (item.startsAt ? "" : "#rendez-vous")}>

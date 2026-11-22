@@ -44,14 +44,17 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
       const first = group[0];
       const steps = group.flatMap(point => point.step ?? []);
       const highlighted = group.some(point => point.highlighted);
+      const contactsOnly = group.every(point => point.clientPath);
+      const mixed = !contactsOnly && group.some(point => point.clientPath);
       const title = group.length > 1
-        ? steps.length ? "Étapes " + steps.join(", ") : `${group.length} interventions à cette adresse`
+        ? steps.length ? "Étapes " + steps.join(", ") : contactsOnly ? `${group.length} clients à cette adresse`
+          : mixed ? "Clients et interventions à cette adresse" : `${group.length} interventions à cette adresse`
         : first.step ? `Étape ${first.step} · ${first.title}` : first.title;
       const pinLabel = steps.length
         ? steps.length > 3 ? `${steps[0]} +${steps.length - 1}` : steps.join("·")
-        : group.length > 1 ? "+" + group.length : String(points.indexOf(first) + 1);
+        : group.length > 1 ? "+" + group.length : contactsOnly ? "C" : String(points.indexOf(first) + 1);
       const width = Math.max(36, pinLabel.length * 8 + 10);
-      const pinColor = group.every(point => point.pending) ? "bg-amber-600" : "bg-sanispa-blue";
+      const pinColor = contactsOnly ? "bg-violet-700" : group.every(point => point.pending || point.clientPath) ? "bg-amber-600" : "bg-sanispa-blue";
       const pin = marker([first.latitude, first.longitude], {
         icon: divIcon({
           className: `grid place-items-center rounded-full border-[3px] border-white ${pinColor} text-sm font-bold text-white shadow-lg ${highlighted ? "ring-4 ring-sanispa-navy" : ""}`,
@@ -64,7 +67,7 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
         alt: title,
         zIndexOffset: highlighted ? 1000 : 0,
       }).addTo(instance);
-      if (group.length === 1 && !first.pending && onAppointment) {
+      if (group.length === 1 && !first.pending && !first.clientPath && onAppointment) {
         pin.on("click", () => onAppointment(first.id));
         continue;
       }
@@ -89,7 +92,14 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
             address.textContent = point.address + " · Itinéraire";
             item.append(address);
           }
-          if (!point.pending && onAppointment) {
+          if (point.clientPath) {
+            const link = document.createElement("a");
+            link.href = point.clientPath;
+            link.className = "block min-h-11 pt-2 font-bold text-sanispa-blue underline";
+            link.textContent = "Ouvrir la fiche client";
+            item.append(link);
+          }
+          if (!point.pending && !point.clientPath && onAppointment) {
             const choose = document.createElement("button");
             choose.type = "button";
             choose.className = "block min-h-11 text-left font-bold text-sanispa-blue underline";

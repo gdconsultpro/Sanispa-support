@@ -186,6 +186,37 @@ test("a private intervention can only reference a spa of its own partner and cli
   } finally { await db.close(); }
 });
 
+test("a new intervention requires the client's address and completes old addresses in the same transaction", async () => {
+  const db = await fullDatabase();
+  const id = (n: number) => `133bf6f1-d846-446b-a743-${String(n).padStart(12, "0")}`;
+  const partner = id(1), user = id(2), client = id(3), visit = id(4);
+  const appointment = { id: visit, client_id: client, title: "SAV", description: "" };
+  const address = { street: "1 place Kléber", city: "Strasbourg", postal_code: "67000", latitude: 48.58, longitude: 7.74 };
+  const create = (details: object, location: object | null) => db.query(
+    "select public.create_partner_visit_for_client($1,$2,$3,$4)", [partner, user, details, location],
+  );
+  try {
+    await db.exec(`
+      insert into auth.users(id,email) values ('${user}','address@example.invalid');
+      insert into public.partners(id,company_name,email) values ('${partner}','Test','address@example.invalid');
+      insert into public.partner_users(partner_id,user_id) values ('${partner}','${user}');
+      insert into public.partner_private_clients(partner_id,id,name,street,postal_code,city)
+      values ('${partner}','${client}','Client','','67000','Strasbourg');
+    `);
+    await assert.rejects(create(appointment, null), /CLIENT_ADDRESS_REQUIRED/);
+    await assert.rejects(create(appointment, { ...address, street: "  " }), /CLIENT_ADDRESS_REQUIRED/);
+    await assert.rejects(create({ ...appointment, technician_id: id(9) }, address), /partner_private_visits_technician_fk/);
+    assert.deepEqual((await db.query("select street from public.partner_private_clients where id=$1", [client])).rows, [{ street: "" }]);
+    await create(appointment, address);
+    await create(appointment, address);
+    await assert.rejects(create({ ...appointment, id: id(6) }, { ...address, street: "Autre adresse" }), /CLIENT_ADDRESS_CHANGED/);
+    await create({ ...appointment, id: id(5) }, null);
+    assert.deepEqual((await db.query("select street, city from public.partner_private_clients where id=$1", [client])).rows,
+      [{ street: "1 place Kléber", city: "Strasbourg" }]);
+    assert.equal((await db.query("select id from public.partner_private_visits where client_id=$1", [client])).rows.length, 2);
+  } finally { await db.close(); }
+});
+
 test("moving a private or assigned visit preserves its duration and rejects stale or foreign changes", async () => {
   const db = await fullDatabase();
   const id = (n: number) => `e541ef0c-b9ce-486f-be19-${String(n).padStart(12, "0")}`;

@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/Button";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
-import { partnerAuthError, partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
+import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
+import { partnerAuthError } from "@/lib/partner-browser";
+import { plannerRequest } from "@/lib/partner-planner-browser";
 import { partnerClientAddress, partnerVisitMapPath, plannerTime, type PlannerTechnician, type PrivatePartnerClient } from "@/lib/partner-planner";
 
 type VisitListItem = {
@@ -12,7 +14,7 @@ type VisitListItem = {
   client: Pick<PrivatePartnerClient, "name" | "street" | "postal_code" | "city">;
 };
 type VisitPage = { visits: VisitListItem[]; technicians: PlannerTechnician[]; more: boolean };
-const returnPath = "/partenaire/interventions";
+const endpoint = "/api/partner/planning";
 const date = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" });
 
 export function PartnerPrivateInterventionList() {
@@ -28,35 +30,22 @@ export function PartnerPrivateInterventionList() {
     setPage(null);
     setError("");
     async function load() {
-      const token = await partnerToken(returnPath);
-      if (!token || controller.signal.aborted) return;
       const query = new URLSearchParams({ section: "visits", name: search, offset: String(offset) });
-      const response = await fetch("/api/partner/planning?" + query, {
-        headers: { Authorization: "Bearer " + token }, signal: controller.signal, cache: "no-store",
-      });
-      if (redirectPartnerAccess(response, returnPath)) return;
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-      if (!controller.signal.aborted) setPage(result);
+      const result = await plannerRequest(endpoint + "?" + query, { signal: controller.signal });
+      if (result && !controller.signal.aborted) setPage(result);
     }
     void load().catch(cause => { if (!controller.signal.aborted) setError(partnerAuthError(cause)); });
     return () => controller.abort();
   }, [search, offset, attempt]);
 
-  async function remove(visit: VisitListItem) {
+  async function change(visit: VisitListItem, action: "deleteVisit" | "unplanVisit") {
     setNotice("");
-    const token = await partnerToken(returnPath);
-    if (!token) throw new Error("Reconnectez-vous pour supprimer l’intervention.");
-    const response = await fetch("/api/partner/planning", {
-      method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "deleteVisit", id: visit.id, expected_at: visit.updated_at }),
-      signal: AbortSignal.timeout(20000),
-    });
-    if (redirectPartnerAccess(response, returnPath)) return;
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "L’intervention est temporairement indisponible.");
-    setNotice("Intervention supprimée. La fiche client est conservée.");
-    if (page?.visits.length === 1 && offset > 0) setOffset(value => value - 30);
+    if (!await plannerRequest(endpoint, { payload: { action, id: visit.id, expected_at: visit.updated_at } }))
+      throw new Error("Reconnectez-vous pour modifier l’intervention.");
+    setNotice(action === "unplanVisit" ? "Le créneau a été retiré. L’intervention est de nouveau à planifier."
+      : "Intervention supprimée. La fiche client est conservée.");
+    if (action === "unplanVisit" && offset > 0) setOffset(0);
+    else if (action === "deleteVisit" && page?.visits.length === 1 && offset > 0) setOffset(value => value - 30);
     else setAttempt(value => value + 1);
   }
 
@@ -90,7 +79,8 @@ export function PartnerPrivateInterventionList() {
             <div className="flex flex-wrap items-start gap-x-4">
               <Link className="focus-ring inline-flex min-h-11 items-center text-sm font-bold text-sanispa-blue underline"
                 href={partnerVisitMapPath(visit.id, visit.starts_at)}>Retrouver sur la carte</Link>
-              <PartnerVisitDelete onDelete={() => remove(visit)} />
+              {visit.starts_at ? <PartnerVisitUnplan onUnplan={() => change(visit, "unplanVisit")} /> : null}
+              <PartnerVisitDelete onDelete={() => change(visit, "deleteVisit")} />
             </div>
           </li>;
         })}
