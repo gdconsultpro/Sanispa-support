@@ -8,15 +8,15 @@ import type { RouteLine } from "@/lib/partner-tour-routing";
 
 const tiles = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png";
 
-export default function PartnerPrivateMap({ points, label = "Carte de l’adresse", onAppointment, routeLines }: {
-  points: PartnerMapPoint[]; label?: string; onAppointment?: (id: string) => void; routeLines?: RouteLine[];
+export default function PartnerPrivateMap({ points, label = "Carte de l’adresse", onAppointment, routeLines, overview = false }: {
+  points: PartnerMapPoint[]; label?: string; onAppointment?: (id: string) => void; routeLines?: RouteLine[]; overview?: boolean;
 }) {
   const element = useRef<HTMLDivElement>(null);
   const routeLayer = useRef<LayerGroup | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
     if (!element.current) return;
-    const instance = map(element.current, { scrollWheelZoom: false, minZoom: 3 });
+    const instance = map(element.current, { scrollWheelZoom: false, minZoom: 2 });
     const groups = new Map<string, PartnerMapPoint[]>();
     for (const point of points) {
       const key = `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)}`;
@@ -26,15 +26,17 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
     }
     const highlighted = points.find(point => point.highlighted);
     if (highlighted) {
-      instance.setView([highlighted.latitude, highlighted.longitude], 14);
+      instance.setView([highlighted.latitude, highlighted.longitude], overview ? 12 : 14);
     } else if (points.length) {
       const bounds = latLngBounds(points.map(point => [point.latitude, point.longitude]));
-      instance.fitBounds(bounds, { maxZoom: 16, padding: [36, 36] });
+      instance.fitBounds(bounds, { maxZoom: overview ? 13 : 16, padding: overview ? [50, 44] : [36, 36] });
+      if (overview && groups.size > 1) instance.zoomOut(1, { animate: false });
     } else {
       instance.setView([46.6, 2.45], 5);
     }
     let loaded = false;
     tileLayer(tiles, {
+      minZoom: 2,
       maxZoom: 19,
       referrerPolicy: "no-referrer",
       attribution: '© <a href="https://www.ign.fr/">IGN</a>',
@@ -72,53 +74,72 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
         continue;
       }
       pin.bindPopup(() => {
+        const options = pin.getPopup()?.options;
+        const size = instance.getSize();
+        if (options) {
+          const width = Math.max(110, Math.min(352, size.x - 72));
+          options.minWidth = width;
+          options.maxWidth = width;
+          options.maxHeight = Math.max(100, Math.min(300, size.y - 96));
+        }
         const popup = document.createElement("div");
-        popup.className = "grid gap-2";
+        popup.className = "divide-y divide-sanispa-line";
         for (const point of group) {
           const item = document.createElement("div");
+          item.className = "min-w-0 break-words py-2 first:pt-0 last:pb-0";
           const name = document.createElement("strong");
+          name.className = "block text-base font-bold text-sanispa-navy";
           name.textContent = point.step ? `${point.step}. ${point.title}` : point.title;
           item.append(name);
           if (point.detail) {
             const detail = document.createElement("div");
+            detail.className = "mt-0.5 text-xs text-sanispa-steel";
             detail.textContent = point.detail;
             item.append(detail);
           }
+          const actions = document.createElement("div");
+          actions.className = "flex flex-wrap gap-x-4 gap-y-1";
           if (point.address) {
+            const location = document.createElement("div");
+            location.className = "mt-1 text-sm";
+            location.textContent = point.address;
+            item.append(location);
             const address = document.createElement("a");
             address.href = partnerDirections(point.address);
             address.target = "_blank";
             address.rel = "noreferrer";
-            address.textContent = point.address + " · Itinéraire";
-            item.append(address);
+            address.className = "focus-ring inline-flex min-h-11 items-center text-sm font-bold underline";
+            address.textContent = "Itinéraire";
+            actions.append(address);
           }
           if (point.clientPath) {
             const link = document.createElement("a");
             link.href = point.clientPath;
-            link.className = "block min-h-11 pt-2 font-bold text-sanispa-blue underline";
-            link.textContent = "Ouvrir la fiche client";
-            item.append(link);
+            link.className = "focus-ring inline-flex min-h-11 items-center text-sm font-bold underline";
+            link.textContent = "Ouvrir la fiche contact";
+            actions.append(link);
           }
           if (!point.pending && !point.clientPath && onAppointment) {
             const choose = document.createElement("button");
             choose.type = "button";
-            choose.className = "block min-h-11 text-left font-bold text-sanispa-blue underline";
+            choose.className = "focus-ring min-h-11 text-left text-sm font-bold text-sanispa-blue underline";
             choose.textContent = "Interventions à proximité";
             choose.addEventListener("click", () => {
               pin.closePopup();
               onAppointment(point.id);
             });
-            item.append(choose);
+            actions.append(choose);
           }
+          if (actions.childElementCount) item.append(actions);
           popup.append(item);
         }
         return popup;
-      });
+      }, { autoPanPadding: [14, 14] });
     }
     const observer = new ResizeObserver(() => instance.invalidateSize());
     observer.observe(element.current);
     return () => { observer.disconnect(); instance.remove(); routeLayer.current = null; };
-  }, [points, onAppointment]);
+  }, [points, onAppointment, overview]);
   useEffect(() => {
     const layer = routeLayer.current;
     if (!layer) return;
@@ -128,7 +149,7 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
       polyline(coordinates, { color: "#fff", weight: 8, opacity: 0.95, interactive: false }).addTo(layer);
       polyline(coordinates, { color: "#096fd0", weight: 5, opacity: 0.92, interactive: false }).addTo(layer);
     }
-  }, [points, onAppointment, routeLines]);
+  }, [points, onAppointment, overview, routeLines]);
 
   return <>
     <div ref={element} role="region" aria-label={label} className="isolate h-72 w-full rounded-xl bg-sanispa-ice sm:h-96" />

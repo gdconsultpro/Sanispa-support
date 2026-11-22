@@ -147,7 +147,7 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
         {" · "}{contacts.points.length} {contacts.points.length === 1 ? "adresse client sur la carte" : "adresses clients sur la carte"}
       </span> : null}
     </p> : null}
-    <PrivateMap points={mapPoints} onAppointment={chooseAppointment}
+    <PrivateMap points={mapPoints} onAppointment={chooseAppointment} overview
       label={status === "pending" ? "Carte des interventions à planifier"
         : period === "week" ? "Carte des interventions de la semaine" : "Carte des interventions du jour"} />
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
