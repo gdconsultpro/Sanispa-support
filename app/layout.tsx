@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PWARegister } from "@/components/PWARegister";
 import { SessionPrivacy } from "@/components/SessionPrivacy";
+import { ProfessionalAccountProvider } from "@/components/ProfessionalAccountLink";
 
 export const metadata: Metadata = {
   title: "SANISPA Diagnostic",
@@ -31,7 +32,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="fr">
       <body>
         <PWARegister />
-        <SessionPrivacy>{children}</SessionPrivacy>
+        <SessionPrivacy><ProfessionalAccountProvider>{children}</ProfessionalAccountProvider></SessionPrivacy>
       </body>
     </html>
   );

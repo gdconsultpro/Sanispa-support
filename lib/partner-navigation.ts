@@ -1,9 +1,10 @@
 import { partnerClientIdPattern, partnerClientsPath, partnerEditVisitPrefix, partnerMapPath, partnerNewClientPath, partnerNewVisitPath, partnerPrivateVisitsPath } from "./partner-planner";
+export const partnerAccountPath = "/partenaire/compte";
 
 /** Only known partner screens may be used as post-authentication destinations. */
 export function partnerReturnPath(value: string | null | undefined) {
   if (!value) return "/partenaire";
-  if (value === partnerClientsPath || value === partnerNewClientPath || value === partnerMapPath || value === partnerNewVisitPath) return value;
+  if (value === partnerAccountPath || value === partnerClientsPath || value === partnerNewClientPath || value === partnerMapPath || value === partnerNewVisitPath) return value;
   for (const prefix of [partnerClientsPath + "&fiche=", partnerPrivateVisitsPath, partnerEditVisitPrefix]) {
     if (value.startsWith(prefix) && partnerClientIdPattern.test(value.slice(prefix.length))) return value;
   }

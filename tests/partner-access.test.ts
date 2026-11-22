@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import { createPartnerAccess, partnerAccessSchema } from "../lib/partner-access";
-import { partnerReturnPath, needsPartnerPasswordChange, withPartnerTimeout } from "../lib/partner-navigation";
+import { partnerAccountPath, partnerReturnPath, needsPartnerPasswordChange, withPartnerTimeout } from "../lib/partner-navigation";
 import { canViewPartnerOffer } from "../lib/partner-release";
 import { buildPartnerLeadEmail, sendPartnerLeadNotification } from "../lib/email";
 const id="00000000-0000-4000-8000-000000000001";
@@ -41,6 +41,7 @@ test("account schema rejects weak credentials and unexpected permission fields",
 });
 test("only validated internal destinations survive login and password replacement",()=>{
  const path=`/partenaire/leads/${id}`;assert.equal(partnerReturnPath(path),path);
+ assert.equal(partnerReturnPath(partnerAccountPath),partnerAccountPath);
  for(const invalid of ["//evil.example","https://evil.example","/partenaire/connexion?next=evil","/admin","/partenaire/leads/%2f%2fevil","/partenaire/leads/../admin",`${path}?next=https://evil.example`]) assert.equal(partnerReturnPath(invalid),"/partenaire/leads");
 });
 test("charter preserves the original proposal across authentication", () => {
