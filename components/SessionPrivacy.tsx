@@ -48,7 +48,7 @@ function ApplicationSessionPrivacy({ children }: { children: React.ReactNode }) 
         const path = window.location.pathname;
         if ((path === "/admin" || path.startsWith("/admin/")) && path !== "/admin/connexion" && (!userId || changed || synchronization.adminCleared)) {
           const query = new URLSearchParams(window.location.search);
-          window.location.replace(adminLoginPath(query.get("dossier"), query.get("section")));
+          window.location.replace(adminLoginPath(query.get("dossier"), query.get("section"), query.get("tab")));
           return;
         }
         // Password recovery owns its fields and must retain its completion message.
