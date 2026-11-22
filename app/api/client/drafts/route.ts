@@ -9,7 +9,7 @@ export async function GET(request: Request) {
         const id = new URL(request.url).searchParams.get("id");
         if (id) {
             z.string().uuid().parse(id);
-            const { data, error } = await supabase.from("diagnostic_drafts").select("*").eq("id", id).eq("user_id", user.id).maybeSingle();
+            const { data, error } = await supabase.from("diagnostic_drafts").select("*").eq("id", id).eq("user_id", user.id).is("cancelled_at", null).maybeSingle();
             if (error)
                 throw error;
             if (!data)
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
         }
         const { data, error } = await supabase.from("diagnostic_drafts")
             .select("id,step,updated_at,version,problemType:payload->>problemType,spaId:payload->>spaId,spaBrand:payload->>spaBrand,spaModel:payload->>spaModel")
-            .eq("user_id", user.id).is("submitted_at", null).order("updated_at", { ascending: false }).limit(50);
+            .eq("user_id", user.id).is("submitted_at", null).is("cancelled_at", null).order("updated_at", { ascending: false }).limit(50);
         if (error)
             throw error;
         return NextResponse.json({ drafts: data }, { headers: { "Cache-Control": "private, no-store" } });
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         const { data, error } = await supabase.rpc("claim_client_signup_draft", { p_id: id, p_user: user.id });
         if (error)
             throw error;
-        if (!data)
+        if (!data || data.cancelled_at)
             throw new HttpError(404, "Ce brouillon n’est plus disponible via ce lien. Vous pouvez retrouver vos déclarations dans votre espace spa.");
         return NextResponse.json({ draft: data }, { headers: { "Cache-Control": "private, no-store" } });
     }
@@ -56,11 +56,32 @@ export async function PUT(request: Request) {
                 throw new HttpError(403, "Spa introuvable.");
         }
         const { data, error } = await supabase.rpc("save_diagnostic_draft", { p_id: input.id, p_user: user.id, p_version: input.version, p_step: input.step, p_payload: input.payload });
-        if (error?.message.includes("DRAFT_CONFLICT"))
-            throw new HttpError(409, "Ce diagnostic a changé sur un autre appareil. Reprenez-le depuis votre espace client.");
+        if (error?.message.includes("DRAFT_CONFLICT") || error?.message.includes("cancelled_draft_is_empty"))
+            throw new HttpError(409, "Ce brouillon a été modifié ou annulé. Retrouvez vos brouillons dans Mon espace spa.");
         if (error)
             throw error;
         return NextResponse.json({ draft: data });
+    }
+    catch (e) {
+        return apiError(e);
+    }
+}
+
+export async function DELETE(request: Request) {
+    try {
+        const { user, supabase } = await requireUser(request);
+        const id = z.string().uuid().parse(new URL(request.url).searchParams.get("id"));
+        await rateLimit(supabase, `cancel-draft:${user.id}`, 30);
+        const { data, error } = await supabase.rpc("cancel_diagnostic_draft", { p_id: id, p_user: user.id });
+        if (error) throw error;
+        if (data?.status === "submitted") throw new HttpError(409, "Cette demande a déjà été envoyée. Retrouvez-la dans Mes demandes.", "DRAFT_SUBMITTED");
+        if (data?.status === "not_found") throw new HttpError(404, "Brouillon introuvable.");
+        if (data?.status !== "cancelled") throw new Error("Annulation du brouillon non confirmée.");
+        if (data.video_paths.length) {
+            const removed = await supabase.storage.from("moving-videos").remove(data.video_paths);
+            if (removed.error) console.error("Impossible de retirer les vidéos du brouillon annulé.");
+        }
+        return new NextResponse(null, { status: 204 });
     }
     catch (e) {
         return apiError(e);

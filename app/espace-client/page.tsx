@@ -12,7 +12,7 @@ import { Button, ButtonLink } from "@/components/Button";
 import { LagoonHero } from "@/components/LagoonHero";
 import { Field, SelectField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
-import { clearDraft, authHeaders, readLocalProgress } from "@/lib/storage";
+import { cancelDraft, clearDraft, authHeaders, readLocalProgress } from "@/lib/storage";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { downloadBlob } from "@/lib/download";
 import { CarePreviewCards, ClientCaseCard, DraftCard, type CarePreview } from "@/components/ClientSpaceCards";
@@ -94,6 +94,7 @@ function currentView(): View {
 export default function EspaceClientPage() {
   const [drafts, setDrafts] = useState<DraftListItem[]>([]);
   const [draftsLoaded, setDraftsLoaded] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
   const [local, setLocal] = useState<ReturnType<typeof readLocalProgress>>(null);
   const [sessionEmail, setSessionEmail] = useState("");
   const [care, setCare] = useState<CarePreview | null>(null);
@@ -355,8 +356,18 @@ export default function EspaceClientPage() {
     local: true,
   } : null;
   const availableDrafts = localDraft
-    ? [localDraft, ...drafts.filter(draft => draft.id !== local?.draft.draftId || draft.version !== local?.draft.version)]
+    ? [localDraft, ...drafts.filter(draft => draft.id !== local?.draft.draftId)]
     : drafts;
+  async function cancelClientDraft(draft: DraftListItem) {
+    const localId = local?.draft.draftId;
+    const serverId = draft.local ? (token ? localId : undefined) : draft.id;
+    setDraftMessage("");
+    const { submitted } = await cancelDraft(localId, serverId);
+    if (serverId) setDrafts(current => current.filter(item => item.id !== serverId));
+    setLocal(readLocalProgress());
+    setDraftMessage(submitted ? "Cette demande a déjà été envoyée. Retrouvez-la dans Mes demandes." : "Brouillon annulé.");
+    if (submitted) void loadAll(token).catch(() => setLoadError("Certaines informations n’ont pas pu être chargées. Réessayez."));
+  }
   const dossierToHighlight = diagnostics.find(dossier => clientCaseProgress(dossier).needsAttention) ||
     diagnostics.find(dossier => clientCaseProgress(dossier).label !== "Dossier terminé") || diagnostics[0];
   const reportsToRead = diagnostics.filter(dossier => clientCaseProgress(dossier).needsAttention);
@@ -381,7 +392,8 @@ export default function EspaceClientPage() {
           title="Mon espace spa"
           description="Retrouvez l’historique de votre spa, votre carnet, vos rappels, vos relevés, vos factures et vos rapports dans un seul espace. Services gratuits pour le moment."
         />
-        {localDraft ? <div className="mb-5 max-w-xl"><DraftCard draft={localDraft} spas={[]} /></div> : null}
+        {localDraft ? <div className="mb-5 max-w-xl"><DraftCard draft={localDraft} spas={[]} onCancel={() => cancelClientDraft(localDraft)} /></div> : null}
+        <div role="status">{draftMessage ? <p className="mb-4 text-sm font-semibold">{draftMessage}</p> : null}</div>
         <div className="flex flex-wrap gap-3">
           <Link
             href={localDraft ? "/connexion?next=diagnostic" : "/connexion?next=compte"}
@@ -426,10 +438,11 @@ export default function EspaceClientPage() {
           </LagoonHero>
         </div>
       ) : null}
+      <div role="status">{draftMessage ? <p className="mb-4 text-sm font-semibold">{draftMessage}</p> : null}</div>
       {view === "accueil" && availableDrafts[0] ? (
         <section className="mb-5" aria-label="Votre déclaration en cours">
           <h2 className="mb-2 text-xl font-bold">Reprendre ma déclaration</h2>
-          <DraftCard draft={availableDrafts[0]} spas={spas} />
+          <DraftCard key={availableDrafts[0].id} draft={availableDrafts[0]} spas={spas} onCancel={() => cancelClientDraft(availableDrafts[0])} />
           {availableDrafts.length > 1 ? <button type="button" onClick={() => selectView("demandes")} className="focus-ring mt-2 min-h-11 font-bold underline">Voir tous mes brouillons</button> : null}
         </section>
       ) : null}
@@ -480,7 +493,7 @@ export default function EspaceClientPage() {
                 <h2 className="mb-2 text-xl font-bold">Mes brouillons</h2>
                 <p className="mb-3 text-sm text-sanispa-steel">Les brouillons n’ont pas encore été envoyés à SANISPA.</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {availableDrafts.map(draft => <DraftCard key={draft.id} draft={draft} spas={spas} />)}
+                  {availableDrafts.map(draft => <DraftCard key={draft.id} draft={draft} spas={spas} onCancel={() => cancelClientDraft(draft)} />)}
                 </div>
               </section>
             ) : null}

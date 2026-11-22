@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { useRef, useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { ButtonLink } from "./Button";
+import { Button, ButtonLink } from "./Button";
 import { draftStepLabel, type DraftListItem } from "@/lib/client-drafts";
 import { clientCaseProgress, type ClientCase } from "@/lib/client-case-progress";
 import { problemLabel } from "@/lib/display-labels";
@@ -22,9 +23,25 @@ function spaLabel(id: string | null | undefined, spas: SpaLabel[]) {
   return spa ? [spa.brand, spa.model].filter(Boolean).join(" ") : "";
 }
 
-export function DraftCard({ draft, spas }: { draft: DraftListItem; spas: SpaLabel[] }) {
+export function DraftCard({ draft, spas, onCancel }: { draft: DraftListItem; spas: SpaLabel[]; onCancel: () => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [error, setError] = useState("");
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const problem = draft.problemType ? problemLabel(draft.problemType) : "";
   const spa = spaLabel(draft.spaId, spas) || [draft.spaBrand, draft.spaModel].filter(Boolean).join(" ");
+  async function confirmCancellation() {
+    setCancelling(true);
+    setError("");
+    try {
+      await onCancel();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Impossible d’annuler ce brouillon. Réessayez.");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   return (
     <article className={card}>
       <h3 className="break-words text-lg font-bold">{problem || "Déclaration en cours"}</h3>
@@ -34,11 +51,26 @@ export function DraftCard({ draft, spas }: { draft: DraftListItem; spas: SpaLabe
         {draft.local ? "Enregistré sur cet appareil" : "Enregistré dans votre compte"}
         {draft.updated_at ? ` · ${formatDate(draft.updated_at)}` : ""}
       </p>
-      <div className="mt-4">
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <ButtonLink href={draft.local ? "/reprendre?local=1" : `/reprendre?id=${encodeURIComponent(draft.id)}`}>
           Reprendre ma déclaration
         </ButtonLink>
+        <button type="button" ref={cancelButton} aria-expanded={confirming} disabled={cancelling}
+          onClick={() => { setConfirming(!confirming); setError(""); }}
+          className="focus-ring min-h-11 rounded-md px-2 text-sm font-bold text-sanispa-steel underline">
+          Annuler ce brouillon
+        </button>
       </div>
+      {confirming ? (
+        <div className="mt-3 rounded-xl border border-sanispa-line bg-sanispa-ice p-3">
+          <p className="text-sm font-semibold">Annuler ce brouillon et effacer votre saisie ?</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" disabled={cancelling} onClick={() => { setConfirming(false); setError(""); cancelButton.current?.focus(); }}>Garder le brouillon</Button>
+            <Button type="button" disabled={cancelling} onClick={() => void confirmCancellation()}>{cancelling ? "Annulation en cours…" : "Confirmer l’annulation"}</Button>
+          </div>
+          {error ? <p className="mt-2 text-sm text-red-700" role="alert">{error}</p> : null}
+        </div>
+      ) : null}
     </article>
   );
 }

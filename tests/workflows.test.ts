@@ -137,6 +137,46 @@ test("signup drafts stay private, can be claimed once, and cannot replace later 
     await db.close();
   }
 });
+test("only the owner can cancel an unsent draft, and an older tab cannot recreate it", async () => {
+  const db = await database();
+  const movingId = "00000000-0000-4000-8000-000000000018";
+  const sentId = "00000000-0000-4000-8000-000000000019";
+  const cancel = async (draftId: string, userId: string) => (await db.query<{ result: { status: string; video_paths?: string[] } }>(
+    "select public.cancel_diagnostic_draft($1,$2) as result", [draftId, userId],
+  )).rows[0].result;
+  const save = (draftId: string, version: number, problemType = payload.problemType) => db.query(
+    "select save_diagnostic_draft($1,$2,$3,'/resume',$4)", [draftId, user, version, JSON.stringify({ ...payload, problemType })],
+  );
+  const submit = (draftId: string) => db.query("select submit_diagnostic($1,$2,1,'75','{}','[]','[]','[]')", [draftId, user]);
+  try {
+    await db.exec("set role authenticated");
+    await assert.rejects(cancel(id, user), /permission denied/);
+    await db.exec("set role service_role");
+    await save(id, 0);
+    assert.equal((await cancel(id, other)).status, "not_found");
+    assert.equal((await cancel(id, user)).status, "cancelled");
+    assert.equal((await cancel(id, user)).status, "cancelled");
+    await assert.rejects(save(id, 0), /DRAFT_CONFLICT/);
+    await assert.rejects(save(id, 1), /DRAFT_CONFLICT/);
+    await assert.rejects(submit(id), /DRAFT_CONFLICT/);
+    await save(movingId, 0, "demenagement");
+    const path = `${user}/${movingId}/video.mp4`;
+    await db.query("insert into moving_media_uploads(draft_id,user_id,slot,storage_path,file_name,mime_type,file_size) values($1,$2,0,$3,'video.mp4','video/mp4',512)", [movingId, user, path]);
+    const media = await db.query<{ id: string }>("select id from moving_media_uploads where draft_id=$1", [movingId]);
+    const mediaId = media.rows[0].id;
+    await db.query("select complete_moving_media_upload($1,$2)", [mediaId, user]);
+    assert.deepEqual(await cancel(movingId, user), { status: "cancelled", video_paths: [path] });
+    assert.equal((await db.query("select id from client_documents where id=$1", [mediaId])).rows.length, 0);
+    await save(sentId, 0);
+    await db.exec("reset role");
+    await submit(sentId);
+    await db.exec("set role service_role");
+    assert.equal((await cancel(sentId, user)).status, "submitted");
+    assert.equal((await db.query("select id from diagnostics where id=$1", [sentId])).rows.length, 1);
+  } finally {
+    await db.close();
+  }
+});
 test("submitting a breakdown fills empty profile details and preserves existing contact information", async () => {
   const db = await database();
   try {

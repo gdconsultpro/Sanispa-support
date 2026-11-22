@@ -51,8 +51,11 @@ export function writeDraft(draft: DiagnosticDraft, step?: DraftStep, pending = t
     }
 }
 export function clearDraft() {
-    window.localStorage.removeItem(draftKey);
     window.localStorage.removeItem("sanispa-water-session-token");
+    clearLocalDraft();
+}
+function clearLocalDraft() {
+    window.localStorage.removeItem(draftKey);
     notifyDeclarationChange();
 }
 export async function authHeaders() {
@@ -63,6 +66,30 @@ export async function authHeaders() {
 }
 const versions = new Map<string, number>();
 let queue: Promise<unknown> = Promise.resolve();
+export async function cancelDraft(localId: string | undefined, serverId?: string) {
+    const snapshot = readLocalProgress();
+    if (serverId) {
+        await queue.catch(() => {});
+        const response = await fetch(`/api/client/drafts?id=${encodeURIComponent(serverId)}`, {
+            method: "DELETE",
+            headers: await authHeaders(),
+        });
+        if (!response.ok) {
+            const result = await response.json().catch(() => null);
+            if (result?.code !== "DRAFT_SUBMITTED") throw new Error(result?.error || "Impossible d’annuler ce brouillon. Réessayez.");
+            if (readLocalProgress()?.draft.draftId === serverId) clearLocalDraft();
+            return { submitted: true };
+        }
+        versions.delete(serverId);
+    }
+    const current = readLocalProgress();
+    if (current && (serverId ? current.draft.draftId === serverId
+        : snapshot && current.draft.draftId === localId && current.updatedAt === snapshot.updatedAt)) {
+        clearLocalDraft();
+    }
+    return { submitted: false };
+}
+
 export async function saveDraft(input: DiagnosticDraft, step: DraftStep) {
     const draft = normalizeDiagnostic(input);
     const id = draft.draftId || crypto.randomUUID();

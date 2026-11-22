@@ -14,7 +14,7 @@ export async function POST(request: Request) {
         const { user, supabase } = await requireUser(request);
         await rateLimit(supabase, `submit:${user.id}`, 10);
         const { draftId } = z.object({ draftId: z.string().uuid() }).parse(await readJson(request, 1000));
-        const { data: draft, error } = await supabase.from("diagnostic_drafts").select("*").eq("id", draftId).eq("user_id", user.id).maybeSingle();
+        const { data: draft, error } = await supabase.from("diagnostic_drafts").select("*").eq("id", draftId).eq("user_id", user.id).is("cancelled_at", null).maybeSingle();
         if (error)
             throw error;
         if (!draft)
