@@ -4,6 +4,7 @@ import { adminToken } from "@/lib/admin-auth";
 import { verifySessionToken } from "@/lib/session-auth";
 import { apiError, HttpError } from "@/lib/http";
 import { attachmentDisposition } from "@/lib/documents";
+import { hasPartnerAppointment } from "@/lib/partner-auth";
 import { externalReportType } from "@/lib/client-external-report";
 
 export async function GET(
@@ -49,11 +50,13 @@ export async function GET(
         throw new HttpError(404, "Fichier introuvable.");
       const { data: membership, error: memberError } = await supabase
         .from("partner_users")
-        .select("partner_id,partners!inner(active)")
+        .select("partner_id,role,technician_id,partners!inner(active,verification_status)")
         .eq("user_id", session.user.id)
         .eq("partner_id", offer.matched_partner_ids[0])
+        .eq("role", "owner")
         .eq("active", true)
         .eq("partners.active", true)
+        .neq("partners.verification_status", "pending")
         .maybeSingle();
       if (
         memberError ||
@@ -135,16 +138,18 @@ export async function GET(
     if (!allowed && assignedPartner) {
       const { data, error } = await supabase
         .from("partner_users")
-        .select("partner_id,partners!inner(active)")
+        .select("partner_id,role,technician_id,partners!inner(active,verification_status)")
         .eq("user_id", session.user.id)
         .eq("partner_id", assignedPartner)
         .eq("active", true)
         .eq("partners.active", true)
+        .neq("partners.verification_status", "pending")
         .maybeSingle();
       if (error) throw error;
-      allowed =
-        Boolean(data) &&
-        session.user.app_metadata?.partner_password_change_required !== true;
+      if (data && session.user.app_metadata?.partner_password_change_required !== true) {
+        allowed = data.role === "owner" || (kind === "photo" && Boolean(diagnosticId) &&
+          (await hasPartnerAppointment(supabase, assignedPartner, diagnosticId!, data.technician_id)));
+      }
     }
     if (!allowed) throw new HttpError(404, "Fichier introuvable.");
     if (bucket === "moving-videos") {

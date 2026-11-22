@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuthenticatedPartner } from "@/lib/partner-auth";
+import { requirePartnerOwner } from "@/lib/partner-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { rateLimit } from "@/lib/client-auth";
 import { interventionActionSchema, interventionCase, interventionError, loadIntervention } from "@/lib/interventions";
@@ -7,8 +7,7 @@ import { processNotifications } from "@/lib/notifications";
 type Context = { params: Promise<{ id: string }> };
 export async function GET(request: Request, context: Context) {
   try {
-    const { partner, supabase } = await getAuthenticatedPartner(request);
-    if (!partner) throw new HttpError(401, "Connexion partenaire requise.");
+    const { partner, supabase } = await requirePartnerOwner(request);
     const { id } = await context.params;
     const dossier = await interventionCase(supabase, id, { partnerId: partner.id });
     const [workspace, details, contact] = await Promise.all([
@@ -39,8 +38,7 @@ export async function GET(request: Request, context: Context) {
 }
 export async function POST(request: Request, context: Context) {
   try {
-    const { user, partner, supabase } = await getAuthenticatedPartner(request);
-    if (!user || !partner) throw new HttpError(401, "Connexion partenaire requise.");
+    const { user, partner, supabase } = await requirePartnerOwner(request);
     const { id } = await context.params;
     await interventionCase(supabase, id, { partnerId: partner.id });
     await rateLimit(supabase, `intervention:${partner.id}`, 30);

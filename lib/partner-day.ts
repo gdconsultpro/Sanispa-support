@@ -20,6 +20,7 @@ export type PartnerDay = {
   day: string;
   scope: "team" | "personal" | "unlinked";
   appointments: PartnerDayAppointment[];
+  more?: boolean;
 };
 export type PartnerTeamLinks = {
   technicians: { id: string; name: string }[];

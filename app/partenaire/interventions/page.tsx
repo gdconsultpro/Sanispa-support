@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ButtonLink } from "@/components/Button";
+import { PartnerAppointments } from "@/components/PartnerAppointments";
+import { useProfessionalAccount } from "@/components/ProfessionalAccountLink";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
@@ -19,6 +21,13 @@ const actionClass = "focus-ring inline-flex min-h-11 items-center text-sm font-b
 const searchable = (value: string) => value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
 export default function InterventionsPage() {
+  const access = useProfessionalAccount();
+  if (access.status === "checking") return <AppShell compact><p role="status">Chargement des interventions…</p></AppShell>;
+  return access.status === "partner" && access.role === "technician"
+    ? <PartnerAppointments personalSchedule /> : <TeamInterventions />;
+}
+
+function TeamInterventions() {
   const [selection, setSelection] = useState<WorkspaceSelection | null>(null);
   const [data, setData] = useState<PartnerWorkspaceData | null>(null);
   const [search, setSearch] = useState("");

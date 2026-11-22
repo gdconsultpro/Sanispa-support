@@ -53,3 +53,46 @@ test("only the partner owner can link a registered technician to a line of the s
     await assert.rejects(link(owner, first, alice), /permission denied/);
   } finally { await db.close(); }
 });
+
+test("a reassigned field visit follows its new technician and stale mutations lose access", async () => {
+  const db = await fullDatabase();
+  const [partner, owner, previous, next, firstLine, secondLine, client, visit, pending, customer, dossier, photo] =
+    Array.from({ length: 12 }, () => randomUUID());
+  try {
+    for (const id of [owner, previous, next])
+      await db.query("insert into auth.users(id,email) values($1,$2)", [id, id + "@example.invalid"]);
+    await db.query("insert into public.partners(id,company_name,email) values($1,'Entreprise fictive','partner@example.invalid')", [partner]);
+    await db.query("insert into public.partner_planning_technicians(partner_id,id,name) values($1,$2,'Alice'),($1,$3,'Bob')", [partner, firstLine, secondLine]);
+    await db.query(`insert into public.partner_users(partner_id,user_id,role,technician_id)
+      values($1,$2,'owner',null),($1,$3,'technician',$4),($1,$5,'technician',$6)`, [partner, owner, previous, firstLine, next, secondLine]);
+    await db.query("insert into public.partner_private_clients(partner_id,id,name,street,postal_code,city) values($1,$2,'Client','Place Rapp','68000','Colmar')", [partner, client]);
+    await db.query(`insert into public.partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at,technician_id)
+      values($1,$2,$3,'Visite à déplacer',now()+interval '1 day',now()+interval '25 hours',$4),
+            ($1,$5,$3,'Visite en attente',null,null,$4)`, [partner, visit, client, firstLine, pending]);
+    await db.query(`insert into public.customers(id,name,phone,email,address,spa_brand,spa_year,installation_type,power_supply)
+      values($1,'Client fictif','0600000000','fake@example.invalid','Place Rapp - 68000 - Colmar','Test','2020','exterieur','230V')`, [customer]);
+    await db.query(`insert into public.diagnostics(id,customer_id,problem_type,status,assigned_partner_id)
+      values($1,$2,'fuite','ASSIGNED',$3)`, [dossier, customer, partner]);
+    await db.query(`insert into public.partner_appointments(diagnostic_id,partner_id,starts_at,ends_at,technician_id)
+      values($1,$2,now()-interval '3 hours',now()-interval '2 hours',$3)`, [dossier, partner, firstLine]);
+    await db.exec("set role service_role");
+    const start = (actor: string, source: string, id: string) => db.query<{ session: string }>(
+      "select start_partner_field_visit($1,$2,$3,$4) session", [partner, actor, source, id]);
+    await assert.rejects(start(next, "private", visit), /FIELD_NOT_FOUND/);
+    await assert.rejects(start(previous, "private", pending), /FIELD_NOT_FOUND/);
+    await assert.rejects(start(previous, "private", visit), /FIELD_TOO_EARLY/);
+    await db.query(`select move_partner_planned_appointment($1,$2,'private',id,updated_at,starts_at,$4)
+      from partner_private_visits where id=$3`, [partner, owner, visit, secondLine]);
+    await assert.rejects(start(previous, "private", visit), /FIELD_NOT_FOUND/);
+    await assert.rejects(start(next, "private", visit), /FIELD_TOO_EARLY/);
+
+    const { session } = (await start(previous, "sanispa", dossier)).rows[0];
+    await db.query("update partner_appointments set technician_id=$1 where diagnostic_id=$2", [secondLine, dossier]);
+    const addPhoto = (actor: string) => db.query("select store_partner_field_photo($1,$2,$3,$4,'extra')", [partner, actor, session, photo]);
+    await assert.rejects(addPhoto(previous), /FIELD_NOT_FOUND/);
+    await addPhoto(next);
+    assert.equal((await start(next, "sanispa", dossier)).rows[0].session, session);
+    await db.query("select set_partner_technician_account($1,$2,$3,null,$4)", [partner, owner, next, secondLine]);
+    await assert.rejects(addPhoto(next), /FIELD_NOT_FOUND/);
+  } finally { await db.close(); }
+});

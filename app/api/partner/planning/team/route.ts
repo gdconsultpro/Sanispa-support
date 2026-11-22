@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
-import { requirePartnerPlanner } from "@/lib/partner-auth";
+import { requirePartnerPlanningOwner } from "@/lib/partner-auth";
 
 const headers = { "Cache-Control": "private, no-store" };
 const uuid = z.string().uuid();
@@ -10,15 +10,9 @@ const command = z.object({
   user_id: uuid, technician_id: uuid.nullable(), expected: uuid.nullable(),
 }).strict();
 
-async function requireTeamOwner(request: Request) {
-  const context = await requirePartnerPlanner(request);
-  if (context.partner.role !== "owner") throw new HttpError(403, "Seul le responsable peut gérer les comptes de l’équipe.");
-  return context;
-}
-
 export async function GET(request: Request) {
   try {
-    const { partner, supabase } = await requireTeamOwner(request);
+    const { partner, supabase } = await requirePartnerPlanningOwner(request);
     const [lines, members] = await Promise.all([
       supabase.from("partner_planning_technicians").select("id,name").eq("partner_id", partner.id).order("name").order("id"),
       supabase.from("partner_users").select("user_id,contact_name,active,technician_id").eq("partner_id", partner.id)
@@ -43,7 +37,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { partner, supabase, user } = await requireTeamOwner(request);
+    const { partner, supabase, user } = await requirePartnerPlanningOwner(request);
     const fields = command.parse(await readJson(request, 3000));
     await rateLimit(supabase, `partner-team-links:${partner.id}`, 40);
     const { error } = await supabase.rpc("set_partner_technician_account", {

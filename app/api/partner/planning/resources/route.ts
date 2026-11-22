@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
-import { requirePartnerPlanner } from "@/lib/partner-auth";
+import { requirePartnerPlanningOwner } from "@/lib/partner-auth";
 import { planningDurations, planningTypeKey, type TechnicianAbsence, type WeeklyHours } from "@/lib/partner-availability";
 
 const uuid = z.string().uuid();
@@ -27,7 +27,7 @@ const headers = { "Cache-Control": "private, no-store" };
 
 export async function GET(request: Request) {
   try {
-    const { partner, supabase } = await requirePartnerPlanner(request);
+    const { partner, supabase } = await requirePartnerPlanningOwner(request);
     const params = new URL(request.url).searchParams;
     if (params.has("day")) {
       const day = date.parse(params.get("day"));
@@ -70,8 +70,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { partner, supabase } = await requirePartnerPlanner(request);
-    if (partner.role !== "owner") throw new HttpError(403, "Seul le responsable du compte peut modifier ces réglages.");
+    const { partner, supabase } = await requirePartnerPlanningOwner(request);
     const command = commands.parse(await readJson(request, 6000));
     await rateLimit(supabase, `partner-planning-resources:${partner.id}`, 40);
     const partner_id = partner.id;

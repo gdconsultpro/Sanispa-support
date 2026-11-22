@@ -6,15 +6,16 @@ import { fullDatabase } from "./helpers/full-database";
 test("stock movements reconcile inventory and field usage, including returns and retried requests", async () => {
   const db = await fullDatabase();
   try {
-    const [owner, technician, partner, other, client, visit, customer, dossier, part, spa, foreignPart] = Array.from({ length: 11 }, () => randomUUID());
+    const [owner, technician, partner, other, client, visit, customer, dossier, part, spa, foreignPart, line] = Array.from({ length: 12 }, () => randomUUID());
     await db.query("insert into auth.users(id,email) values($1,'owner@example.invalid'),($2,'tech@example.invalid')", [owner, technician]);
     await db.query("insert into partners(id,company_name,email) values($1,'Entreprise','owner@example.invalid'),($2,'Autre','other@example.invalid')", [partner, other]);
-    await db.query("insert into partner_users(partner_id,user_id,role) values($1,$2,'owner'),($1,$3,'technician')", [partner, owner, technician]);
+    await db.query("insert into partner_planning_technicians(partner_id,id,name) values($1,$2,'Technicien')", [partner, line]);
+    await db.query("insert into partner_users(partner_id,user_id,role,technician_id) values($1,$2,'owner',null),($1,$3,'technician',$4)", [partner, owner, technician, line]);
     await db.query("insert into partner_private_clients(partner_id,id,name,street,postal_code,city) values($1,$2,'Client','10 rue Test','67000','Strasbourg')", [partner, client]);
-    await db.query("insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at) values($1,$2,$3,'SAV',now()-interval '1 hour',now()+interval '1 hour')", [partner, visit, client]);
+    await db.query("insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at,technician_id) values($1,$2,$3,'SAV',now()-interval '1 hour',now()+interval '1 hour',$4)", [partner, visit, client, line]);
     await db.query("insert into customers(id,name,phone,email,address,spa_brand,spa_year,installation_type,power_supply) values($1,'Client','0600000000','client@example.invalid','Strasbourg','Spa test','2024','exterieur','230V')", [customer]);
     await db.query("insert into diagnostics(id,customer_id,problem_type,choice,status,assigned_partner_id) values($1,$2,'fuite','intervention','ASSIGNED',$3)", [dossier, customer, partner]);
-    await db.query("insert into partner_appointments(diagnostic_id,partner_id,starts_at,ends_at) values($1,$2,now()-interval '1 hour',now()+interval '1 hour')", [dossier, partner]);
+    await db.query("insert into partner_appointments(diagnostic_id,partner_id,starts_at,ends_at,technician_id) values($1,$2,now()-interval '3 hours',now()-interval '2 hours',$3)", [dossier, partner, line]);
     await db.query("insert into partner_private_stock(partner_id,id,category,label,quantity) values($1,$2,'piece','Pièce externe',10)", [other, foreignPart]);
 
     await db.exec("set role service_role");

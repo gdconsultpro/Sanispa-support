@@ -3,7 +3,7 @@ import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
-import { requirePartnerPlanner } from "@/lib/partner-auth";
+import { requirePartnerPlanningOwner } from "@/lib/partner-auth";
 import { interventionError } from "@/lib/interventions";
 import { processNotifications } from "@/lib/notifications";
 import { getPartnerRoadRoute } from "@/lib/partner-road-route";
@@ -227,7 +227,7 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
 
 export async function GET(request: Request) {
   try {
-    const { partner, supabase } = await requirePartnerPlanner(request);
+    const { partner, supabase } = await requirePartnerPlanningOwner(request);
     const params = new URL(request.url).searchParams;
     const forMap = params.get("map") === "1";
     const withPending = forMap || params.get("queue") === "1";
@@ -433,7 +433,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { partner, supabase, user } = await requirePartnerPlanner(request);
+    const { partner, supabase, user } = await requirePartnerPlanningOwner(request);
     const command = actions.parse(await readJson(request, 22000));
     if (command.action === "routeTour") {
       await rateLimit(supabase, `partner-tour-route:${partner.id}`, 12);

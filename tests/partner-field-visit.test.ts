@@ -6,20 +6,21 @@ import { fullDatabase } from "./helpers/full-database";
 
 test("technicians close private field reports, keep photos and can prepare a single follow-up for either kind of intervention", async () => {
   const db = await fullDatabase();
-  const [actor, clientUser, stranger, company, client, visit, pending, customer, dossier, photo, report, sanispaReport] = Array.from({ length: 12 }, () => randomUUID());
+  const [actor, clientUser, stranger, company, client, visit, pending, customer, dossier, photo, report, sanispaReport, line] = Array.from({ length: 13 }, () => randomUUID());
   try {
     await db.query("insert into auth.users(id,email) values($1,'worker@example.invalid'),($2,'client@example.invalid'),($3,'other@example.invalid')", [actor, clientUser, stranger]);
     await db.query("insert into partners(id,company_name,email) values($1,'Entreprise de test','company@example.invalid')", [company]);
-    await db.query("insert into partner_users(partner_id,user_id,role) values($1,$2,'technician')", [company, actor]);
+    await db.query("insert into partner_planning_technicians(partner_id,id,name) values($1,$2,'Technicien')", [company, line]);
+    await db.query("insert into partner_users(partner_id,user_id,role,technician_id) values($1,$2,'technician',$3)", [company, actor, line]);
     await db.query("insert into partner_private_clients(partner_id,id,name,street,postal_code,city) values($1,$2,'Fiche fictive','Place Rapp','68000','Colmar')", [company, client]);
-    await db.query(`insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at) values
-      ($1,$2,$3,'Visite fictive',now()-interval '1 hour',now()+interval '1 hour'),
-      ($1,$4,$3,'Visite future',now()+interval '2 hours',now()+interval '3 hours')`, [company, visit, client, pending]);
+    await db.query(`insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at,technician_id) values
+      ($1,$2,$3,'Visite fictive',now()-interval '1 hour',now()+interval '1 hour',$5),
+      ($1,$4,$3,'Visite future',now()+interval '2 hours',now()+interval '3 hours',$5)`, [company, visit, client, pending, line]);
     await db.query("insert into customers(id,name,phone,email,address,spa_brand,spa_year,installation_type,power_supply) values($1,'Client fictif','0600000000','client@example.invalid','Place Rapp - 68000 - Colmar','Test','2020','exterieur','230V')", [customer]);
     await db.query("insert into diagnostics(id,customer_id,user_id,problem_type,status,assigned_partner_id,created_at) values($1,$2,$3,'fuite','ASSIGNED',$4,now()-interval '1 day')", [dossier, customer, clientUser, company]);
     const offer = (await db.query<{ offered_at: string }>(`update diagnostics set partner_released_at=now(),matched_partner_ids=array[$2::uuid]
       where id=$1 returning partner_released_at::text offered_at`, [dossier, company])).rows[0].offered_at;
-    await db.query("insert into partner_appointments(diagnostic_id,partner_id,starts_at,ends_at) values($1,$2,now()-interval '1 hour',now()+interval '1 hour')", [dossier, company]);
+    await db.query("insert into partner_appointments(diagnostic_id,partner_id,starts_at,ends_at,technician_id) values($1,$2,now()-interval '3 hours',now()-interval '2 hours',$3)", [dossier, company, line]);
     await db.exec("set role service_role");
     const acknowledge = (user = actor, offeredAt = offer) => db.query("select acknowledge_partner_offer($1,$2,$3,$4)", [company, user, dossier, offeredAt]);
     await assert.rejects(acknowledge(stranger), /FIELD_ACCESS_REQUIRED/);
@@ -88,15 +89,16 @@ test("technicians close private field reports, keep photos and can prepare a sin
 
 test("structured SAV and installation reports require their evidence and keep extra photos optional", async () => {
   const db = await fullDatabase();
-  const [actor, partner, client, sav, installation] = Array.from({ length: 5 }, () => randomUUID());
+  const [actor, partner, client, sav, installation, line] = Array.from({ length: 6 }, () => randomUUID());
   try {
     await db.query("insert into auth.users(id,email) values($1,'specialist@example.invalid')", [actor]);
     await db.query("insert into partners(id,company_name,email) values($1,'Entreprise fictive','specialist@example.invalid')", [partner]);
-    await db.query("insert into partner_users(partner_id,user_id,role) values($1,$2,'technician')", [partner, actor]);
+    await db.query("insert into partner_planning_technicians(partner_id,id,name) values($1,$2,'Technicien')", [partner, line]);
+    await db.query("insert into partner_users(partner_id,user_id,role,technician_id) values($1,$2,'technician',$3)", [partner, actor, line]);
     await db.query("insert into partner_private_clients(partner_id,id,name,street,postal_code,city) values($1,$2,'Client fictif','Place Rapp','68000','Colmar')", [partner, client]);
-    await db.query(`insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at) values
-      ($1,$2,$3,'Intervention SAV',now()-interval '1 hour',now()+interval '1 hour'),
-      ($1,$4,$3,'Mise en service',now()-interval '1 hour',now()+interval '1 hour')`, [partner, sav, client, installation]);
+    await db.query(`insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at,technician_id) values
+      ($1,$2,$3,'Intervention SAV',now()-interval '1 hour',now()+interval '1 hour',$5),
+      ($1,$4,$3,'Mise en service',now()-interval '3 hours',now()-interval '2 hours',$5)`, [partner, sav, client, installation, line]);
     await db.exec("set role service_role");
     async function start(visit: string) {
       return (await db.query<{ id: string }>("select start_partner_field_visit($1,$2,'private',$3) id", [partner, actor, visit])).rows[0].id;

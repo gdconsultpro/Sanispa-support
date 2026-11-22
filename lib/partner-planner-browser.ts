@@ -24,6 +24,10 @@ async function plannerResponse(url: string, options: PlannerRequestOptions) {
   if (redirectPartnerAccess(response, next)) return null;
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
+    if (response.status === 403 && result.code === "PARTNER_OWNER_REQUIRED" && /^\/partenaire\/planning(?:[?#]|$)/.test(next)) {
+      window.location.replace("/partenaire/interventions");
+      return null;
+    }
     throw new PlannerRequestError(result.error || "Votre planning est temporairement indisponible.", response.status, result.code);
   }
   return response;
@@ -34,7 +38,7 @@ export async function plannerRequest(url: string, options: PlannerRequestOptions
   return response ? response.json() : null;
 }
 
-export async function plannerDownload(url: string) {
-  const response = await plannerResponse(url, { signal: AbortSignal.timeout(45000) });
+export async function plannerDownload(url: string, signal = AbortSignal.timeout(45000)) {
+  const response = await plannerResponse(url, { signal });
   return response ? response.blob() : null;
 }

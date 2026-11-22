@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { getAuthenticatedPartner } from "@/lib/partner-auth";
+import { requirePartnerOwner } from "@/lib/partner-auth";
 import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readBytes } from "@/lib/http";
 import { validateDocument } from "@/lib/documents";
 import { interventionCase, interventionError } from "@/lib/interventions";
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user, partner, supabase } = await getAuthenticatedPartner(request);
-    if (!user || !partner) throw new HttpError(401, "Connexion partenaire requise.");
+    const { user, partner, supabase } = await requirePartnerOwner(request);
     const { id } = await params;
     const dossier = await interventionCase(supabase, id, { partnerId: partner.id });
     if (!dossier.user_id) throw new HttpError(409, "Le dossier doit être rattaché à un compte client par SANISPA.");

@@ -8,6 +8,7 @@ import { ButtonLink } from "@/components/Button";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { StepHeader } from "@/components/StepHeader";
 import { loadPartnerSession, partnerToken, partnerAuthError, redirectPartnerAccess } from "@/lib/partner-browser";
+import { partnerDayPath } from "@/lib/partner-day";
 import { partnerPasswordPath } from "@/lib/partner-navigation";
 import { partnerAppointmentLabel, partnerHasUpcomingAppointment, partnerJobState, partnerWorkLabels, type PartnerIntervention } from "@/lib/partner-work";
 import { problemLabel } from "@/lib/display-labels";
@@ -40,6 +41,10 @@ export default function PartnerHomePage() {
       const { company_name: company, verification_status } = session.partner;
       if (verification_status === "pending") {
         setDashboard({ company, pending: true, charterAccepted: false, offers: [], jobs: [] });
+        return;
+      }
+      if (session.partner.role === "technician") {
+        window.location.replace(partnerDayPath);
         return;
       }
       async function fetchSection(path: string) {

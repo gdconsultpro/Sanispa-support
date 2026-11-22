@@ -34,6 +34,7 @@ export type FieldVisit = {
   reportRecipient?: string | null;
   reportTemplate?: FieldTemplate | null;
   previousReport?: PreviousFieldReport | null;
+  canManage?: boolean;
   canStart: boolean;
   canValidate: boolean;
   canEditSpa: boolean;

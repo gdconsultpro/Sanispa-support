@@ -20,7 +20,7 @@ import type { SignatureStrokes } from "@/lib/partner-field-signature";
 import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoLabels, fieldReportRows, requiredFieldPhotos,
   type FieldPhotoKind } from "@/lib/partner-field-forms";
 import { partnerClientPath, partnerDirections, partnerEditVisitPath, partnerPrivateVisitPath, partnerSpaOption, plannerDate } from "@/lib/partner-planner";
-import { plannerDownload, plannerRequest } from "@/lib/partner-planner-browser";
+import { PlannerRequestError, plannerDownload, plannerRequest } from "@/lib/partner-planner-browser";
 import { workStatusLabels, workspacePath } from "@/lib/partner-workspace";
 
 const card = "min-w-0 rounded-2xl border border-sanispa-line bg-white p-4 sm:p-5";
@@ -69,7 +69,10 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   const draftKey = useRef("");
 
   const load = useCallback(async (signal?: AbortSignal) => {
-    const result: (FieldVisit & { userId: string }) | null = await plannerRequest(base, { signal });
+    const result: (FieldVisit & { userId: string }) | null = await plannerRequest(base, { signal }).catch(cause => {
+      if (!signal?.aborted && cause instanceof PlannerRequestError && [403, 404].includes(cause.status)) setData(null);
+      throw cause;
+    });
     if (!result || signal?.aborted) return;
     setData(result);
     if (signal) {
@@ -84,7 +87,15 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal).catch(cause => { if (!controller.signal.aborted) setError(partnerAuthError(cause)); });
-    return () => controller.abort();
+    function checkAccess() {
+      if (document.visibilityState !== "visible" || working.current) return;
+      void load().catch(cause => { if (!controller.signal.aborted) setError(partnerAuthError(cause)); });
+    }
+    document.addEventListener("visibilitychange", checkAccess);
+    return () => {
+      controller.abort();
+      document.removeEventListener("visibilitychange", checkAccess);
+    };
   }, [load]);
   const available = Boolean(data);
   useEffect(() => {
@@ -119,7 +130,11 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
         if (result.session && !result.session.submitted_at)
           setDraft(current => current.performed ? current : { ...current, performed: localDateTime(new Date(result.session!.started_at)) });
       }
-    } catch (cause) { setError(partnerAuthError(cause)); }
+    } catch (cause) {
+      if (cause instanceof PlannerRequestError && [403, 404].includes(cause.status))
+        await load().catch(() => null);
+      setError(partnerAuthError(cause));
+    }
     finally { working.current = false; setBusy(false); }
   }
 
@@ -184,9 +199,13 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   function createFollowup(reportId: string) {
     void action(async () => {
       const result = await plannerRequest(base, { payload: { action: "followup", reportId } });
-      if (result?.visitId) router.push(partnerPrivateVisitPath(result.visitId));
-      return null;
-    }, "");
+      if (!result?.visitId) return null;
+      if (data?.canManage) {
+        router.push(partnerPrivateVisitPath(result.visitId));
+        return null;
+      }
+      return result;
+    }, "La nouvelle intervention a été ajoutée à la liste À planifier.");
   }
 
   const session = data?.session;
@@ -251,7 +270,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
         <Link className={link} href={(data.previousReport.source === "private"
           ? partnerPrivateVisitPath(data.previousReport.visitId)
           : "/partenaire/interventions/" + data.previousReport.visitId) + "#rapport"}>Voir l’intervention précédente</Link>
-        {!data.appointment ? <div className="mt-2"><ButtonLink href={partnerEditVisitPath(id)}>Planifier le rendez-vous</ButtonLink></div> : null}
+        {data.canManage && !data.appointment ? <div className="mt-2"><ButtonLink href={partnerEditVisitPath(id)}>Planifier le rendez-vous</ButtonLink></div> : null}
       </section> : null}
 
       <section className={card} aria-labelledby="field-spa">
@@ -269,7 +288,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
           </label>
           <Button type="submit" variant="secondary" disabled={busy || spaId === (data.spaId ?? "")}>Enregistrer le spa</Button>
         </form> : null}
-        {data.customer.clientId ? <Link href={partnerClientPath(data.customer.clientId)} className={link}>Fiche client et équipements</Link> : null}
+        {data.canManage && data.customer.clientId ? <Link href={partnerClientPath(data.customer.clientId)} className={link}>Fiche client et équipements</Link> : null}
       </section>
 
       {active && data.appointment && !session ? <Button type="button" disabled={busy} onClick={() => {
@@ -320,10 +339,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
           </div> : null}
         </> : null}
         {data.photos.length ? <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">{data.photos.map((photo, index) => <li key={photo.id}>
-          <a className="focus-ring block" href={photo.url} target="_blank" rel="noreferrer">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={photo.url} className="aspect-square w-full rounded-lg object-cover" loading="lazy" alt={`Photo d’intervention ${index + 1}`} />
-          </a>
+          <FieldPhotoPreview url={photo.url} label={`Photo d’intervention ${index + 1}`} />
           <p className="mt-1 text-xs font-semibold">{fieldPhotoLabels[photo.kind]}</p>
           {draftOpen && session ? <button type="button" className={link} disabled={busy} onClick={() =>
             void action(() => plannerRequest(photoUrl(session.id, photo.id), { method: "DELETE" }), "Photo retirée.")}>Retirer la photo {index + 1}</button> : null}
@@ -415,7 +431,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
                 </Button>
               </>}
             </> : <p className="text-sm">Renseignez une adresse e-mail valide pour envoyer le PDF.
-              {source === "private" && data.customer.clientId ? <> <Link href={partnerClientPath(data.customer.clientId)}
+              {data.canManage && source === "private" && data.customer.clientId ? <> <Link href={partnerClientPath(data.customer.clientId)}
                 className="font-bold underline">Ouvrir la fiche client</Link></> : null}
             </p>}
             {mailError?.id === report.id ? <p role="alert" className="mt-2 text-sm text-red-800">{mailError.message}</p> : null}
@@ -433,7 +449,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
         </div> : null}
       </section>
 
-      {source === "sanispa" ? <Link className={link} href={`/partenaire/interventions/${id}/gestion#rendez-vous`}>Gestion du dossier SANISPA</Link> : <details className={card}>
+      {data.canManage ? (source === "sanispa" ? <Link className={link} href={`/partenaire/interventions/${id}/gestion#rendez-vous`}>Gestion du dossier SANISPA</Link> : <details className={card}>
         <summary className="cursor-pointer font-bold">Gestion de l’intervention</summary>
         <div className="mt-2 flex flex-wrap items-start gap-3">
           {active && !session ? <ButtonLink variant="secondary" href={partnerEditVisitPath(id)}>{data.appointment ? "Modifier le rendez-vous" : "Planifier le rendez-vous"}</ButtonLink> : null}
@@ -444,9 +460,36 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
           {active && !session && data.appointment && Date.parse(data.appointment.starts_at) > Date.now() ?
             <PartnerVisitUnplan disabled={busy} onUnplan={() => managePrivate("unplanVisit")} /> : null}
         </div>
-      </details>}
+      </details>) : null}
     </> : null}
   </div>;
+}
+
+function FieldPhotoPreview({ url, label }: { url: string; label: string }) {
+  const [image, setImage] = useState("");
+  const [unavailable, setUnavailable] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = "";
+    void plannerDownload(url, controller.signal).then(blob => {
+      if (!blob || controller.signal.aborted) return;
+      objectUrl = URL.createObjectURL(blob);
+      setImage(objectUrl);
+    }).catch(() => {
+      if (!controller.signal.aborted) setUnavailable(true);
+    });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  if (!image) return <p className="aspect-square rounded-lg bg-sanispa-ice p-2 text-sm">{unavailable ? "Photo indisponible" : "Chargement de la photo…"}</p>;
+  return <a className="focus-ring block" href={image} target="_blank" rel="noreferrer">
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img src={image} className="aspect-square w-full rounded-lg object-cover" alt={label} />
+  </a>;
 }
 
 function FieldReportDetails({ report }: { report: Pick<FieldReport, "performed_at" | "findings" | "actions" | "next_steps" | "details"> }) {

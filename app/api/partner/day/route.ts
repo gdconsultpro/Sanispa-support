@@ -1,44 +1,60 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { problemLabel } from "@/lib/display-labels";
-import { apiError } from "@/lib/http";
+import { apiError, HttpError } from "@/lib/http";
 import { requirePartnerPlanner } from "@/lib/partner-auth";
 import { partnerDayRange, type PartnerDay, type PartnerDayAppointment } from "@/lib/partner-day";
 import { partnerClientAddress, type PrivatePartnerClient, type SanispaPartnerVisit } from "@/lib/partner-planner";
 import { privateWorkStatus, sanispaWorkStatus } from "@/lib/partner-workspace";
 
+const scheduleViews = z.enum(["today", "upcoming", "history"]);
+const scheduleCursor = z.object({ start: z.string().datetime({ offset: true }), id: z.string().uuid() });
+const pageSize = 30;
 const headers = { "Cache-Control": "private, no-store" };
 const related = <T,>(row: T | T[] | null) => Array.isArray(row) ? row[0] : row;
 
 export async function GET(request: Request) {
   try {
-    const { partner, user, supabase } = await requirePartnerPlanner(request);
+    const { partner, technicianId, supabase } = await requirePartnerPlanner(request);
     const now = new Date();
     const { day, from, to } = partnerDayRange(now);
-    let scope: PartnerDay["scope"] = "team";
-    let technician: string | null = null;
-    if (partner.role !== "owner") {
-      const membership = await supabase.from("partner_users").select("technician_id").eq("partner_id", partner.id)
-        .eq("user_id", user.id).eq("active", true).maybeSingle();
-      if (membership.error) throw membership.error;
-      technician = membership.data?.technician_id ?? null;
-      if (!technician) return NextResponse.json({ day, scope: "unlinked", appointments: [] } satisfies PartnerDay, { headers });
-      scope = "personal";
-    }
+    const params = new URL(request.url).searchParams;
+    const view = scheduleViews.parse(params.get("view") ?? "today");
+    const personal = partner.role !== "owner";
+    if (!personal && view !== "today") throw new HttpError(400, "Utilisez le planning de l’équipe.");
+    if (personal && !technicianId)
+      return NextResponse.json({ day, scope: "unlinked", appointments: [] } satisfies PartnerDay, { headers });
+    const scope = personal ? "personal" : "team";
+    const ascending = view !== "history";
+    const cursor = params.has("start") || params.has("id")
+      ? scheduleCursor.parse({ start: params.get("start"), id: params.get("id") }) : null;
     let privateVisits = supabase.from("partner_private_visits")
       .select("id,title,starts_at,ends_at,technician_id,completed_at,validated_at,field_started_at,client:partner_private_clients!inner(name,phone,street,postal_code,city)")
-      .eq("partner_id", partner.id).eq("client.partner_id", partner.id).lt("starts_at", to).gt("ends_at", from);
+      .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
     let sanispaVisits = supabase.from("partner_appointments")
       .select("diagnostic_id,starts_at,ends_at,technician_id,diagnostic:diagnostics!inner(problem_type,status,intervened_at,created_at,customer:customers(name,address,phone),intervention_reports(performed_at,submitted_at,client_validated_at,client_outcome),partner_field_sessions(appointment_start,submitted_at))")
       .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id).is("diagnostic.archived_at", null)
-      .eq("diagnostic.intervention_reports.partner_id", partner.id).eq("diagnostic.partner_field_sessions.partner_id", partner.id)
-      .lt("starts_at", to).gt("ends_at", from);
-    if (technician) {
-      privateVisits = privateVisits.eq("technician_id", technician);
-      sanispaVisits = sanispaVisits.eq("technician_id", technician);
+      .eq("diagnostic.intervention_reports.partner_id", partner.id).eq("diagnostic.partner_field_sessions.partner_id", partner.id);
+    if (personal && technicianId) {
+      privateVisits = privateVisits.eq("technician_id", technicianId);
+      sanispaVisits = sanispaVisits.eq("technician_id", technicianId);
+    }
+    if (view === "today") {
+      privateVisits = privateVisits.lt("starts_at", to).gt("ends_at", from);
+      sanispaVisits = sanispaVisits.lt("starts_at", to).gt("ends_at", from);
+    } else {
+      const bound = view === "history" ? "lte" : "gt";
+      privateVisits = privateVisits[bound]("ends_at", now.toISOString()).limit(pageSize + 1);
+      sanispaVisits = sanispaVisits[bound]("ends_at", now.toISOString()).limit(pageSize + 1);
+      if (cursor) {
+        const op = ascending ? "gt" : "lt";
+        privateVisits = privateVisits.or(`starts_at.${op}.${cursor.start},and(starts_at.eq.${cursor.start},id.${op}.${cursor.id})`);
+        sanispaVisits = sanispaVisits.or(`starts_at.${op}.${cursor.start},and(starts_at.eq.${cursor.start},diagnostic_id.${op}.${cursor.id})`);
+      }
     }
     const [privateRows, sanispaRows, lines] = await Promise.all([
-      privateVisits.order("starts_at").order("id"),
-      sanispaVisits.order("starts_at").order("diagnostic_id"),
+      privateVisits.order("starts_at", { ascending }).order("id", { ascending }),
+      sanispaVisits.order("starts_at", { ascending }).order("diagnostic_id", { ascending }),
       scope === "team" ? supabase.from("partner_planning_technicians").select("id,name").eq("partner_id", partner.id) : null,
     ]);
     if (privateRows.error || sanispaRows.error || lines?.error) throw privateRows.error || sanispaRows.error || lines?.error;
@@ -63,7 +79,8 @@ export async function GET(request: Request) {
           technician: names.get(row.technician_id) ?? null, status: sanispaWorkStatus(visit.diagnostic, visit, +now).workStatus,
         };
       }),
-    ].sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id));
-    return NextResponse.json({ day, scope, appointments } satisfies PartnerDay, { headers });
+    ].sort((a, b) => (ascending ? 1 : -1) * (Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id)));
+    const more = view !== "today" && appointments.length > pageSize;
+    return NextResponse.json({ day, scope, appointments: more ? appointments.slice(0, pageSize) : appointments, more } satisfies PartnerDay, { headers });
   } catch (error) { return apiError(error); }
 }

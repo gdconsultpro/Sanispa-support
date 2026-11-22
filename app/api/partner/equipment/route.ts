@@ -3,7 +3,7 @@ import { z } from "zod";
 import { rateLimit } from "@/lib/client-auth";
 import { validateDocument } from "@/lib/documents";
 import { apiError, HttpError, readBytes, readJson } from "@/lib/http";
-import { requirePartnerPlanner } from "@/lib/partner-auth";
+import { requirePartnerPlanningOwner } from "@/lib/partner-auth";
 
 const bucket = "partner-client-spa-photos";
 const privateHeaders = { "Cache-Control": "private, no-store" };
@@ -20,7 +20,7 @@ const commandSchema = z.discriminatedUnion("action", [
 ]);
 
 async function requireEquipmentClient(request: Request, clientId: string) {
-  const { partner, supabase, user } = await requirePartnerPlanner(request);
+  const { partner, supabase, user } = await requirePartnerPlanningOwner(request);
   const { data, error } = await supabase.from("partner_private_clients").select("source_diagnostic_id")
     .eq("partner_id", partner.id).eq("id", clientId).is("deleted_at", null).maybeSingle();
   if (error) throw error;

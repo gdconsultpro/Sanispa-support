@@ -2,26 +2,14 @@ import { loadOfferBilling } from "@/lib/partner-offers";
 import { canViewPartnerOffer } from "@/lib/partner-release";
 import { apiError } from "@/lib/http";
 import { NextResponse } from "next/server";
-import { getAuthenticatedPartner } from "@/lib/partner-auth";
+import { requirePartnerOwner } from "@/lib/partner-auth";
 import { partnerLeadStatuses, sanitizePartnerLead } from "@/lib/partner-leads";
 
 export async function GET(request: Request) {
   try {
-    const { user, partner, supabase } = await getAuthenticatedPartner(request);
+    const { user, partner, supabase } = await requirePartnerOwner(request);
 
-    if (!user) {
-      return NextResponse.json(
-        { error: "Connexion partenaire requise." },
-        { status: 401 },
-      );
-    }
 
-    if (!partner) {
-      return NextResponse.json(
-        { error: "Aucun accès partenaire actif n'est associé à ce compte." },
-        { status: 403 },
-      );
-    }
 
     const { data, error } = await supabase
       .from("diagnostics")

@@ -6,10 +6,11 @@ export function fieldPhotoPath(partner: string, session: string, photo: string) 
   return [partner, session, photo + ".jpg"].join("/");
 }
 
-export async function loadFieldPhotos(supabase: ReturnType<typeof getSupabaseAdmin>, partner: string, session: string, includeReceipt = false): Promise<FieldPhoto[]> {
+export async function loadFieldPhotos(supabase: ReturnType<typeof getSupabaseAdmin>, partner: string, session: string, includeReceipt = false, protectedPhotoEndpoint?: string): Promise<FieldPhoto[]> {
   const query = supabase.from("partner_field_photos").select("id,kind").eq("session_id", session);
   const { data, error } = await (includeReceipt ? query : query.neq("kind", "receipt")).order("created_at").order("id");
   if (error) throw error;
+  if (protectedPhotoEndpoint) return data.map(({ id, kind }) => ({ id, kind, url: protectedPhotoEndpoint + id }));
   if (!data.length) return [];
   const paths = data.map(photo => fieldPhotoPath(partner, session, photo.id));
   const signed = await supabase.storage.from(fieldPhotoBucket).createSignedUrls(paths, 300);

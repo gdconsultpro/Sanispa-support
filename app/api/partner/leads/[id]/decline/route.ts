@@ -3,11 +3,11 @@ import { z } from "zod";
 import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { processNotifications } from "@/lib/notifications";
-import { getAuthenticatedPartner } from "@/lib/partner-auth";
+import { requirePartnerOwner } from "@/lib/partner-auth";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user, partner, supabase } = await getAuthenticatedPartner(request);
+    const { user, partner, supabase } = await requirePartnerOwner(request);
     if (!user || !partner) throw new HttpError(401, "Connexion partenaire requise.");
     const id = z.string().uuid().parse((await params).id);
     const { offeredAt } = z.object({ offeredAt: z.string().datetime({ offset: true }) }).strict().parse(await readJson(request, 1000));

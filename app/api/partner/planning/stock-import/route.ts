@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
-import { requirePartnerPlanner } from "@/lib/partner-auth";
+import { requirePartnerPlanningOwner } from "@/lib/partner-auth";
 import { maxStockCsvBytes, parsePartnerStockCsv } from "@/lib/partner-stock-csv";
 
 const payloadSchema = z.object({ csv: z.string().max(maxStockCsvBytes), preview: z.boolean() }).strict();
 
 export async function POST(request: Request) {
   try {
-    const { partner, user, supabase } = await requirePartnerPlanner(request);
+    const { partner, user, supabase } = await requirePartnerPlanningOwner(request);
     const { csv, preview } = payloadSchema.parse(await readJson(request, 4_000_000));
     if (Buffer.byteLength(csv) > maxStockCsvBytes) throw new HttpError(413, "Le fichier CSV est limité à 2 Mo.");
     await rateLimit(supabase, `partner-stock-import:${partner.id}`, 15);

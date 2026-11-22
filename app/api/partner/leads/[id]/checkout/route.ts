@@ -1,7 +1,7 @@
 import { processNotifications } from "@/lib/notifications";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getAuthenticatedPartner } from "@/lib/partner-auth";
+import { requirePartnerOwner } from "@/lib/partner-auth";
 import { acquireOffer } from "@/lib/partner-offers";
 import { apiError } from "@/lib/http";
 
@@ -14,17 +14,7 @@ export async function POST(
       .string()
       .uuid()
       .parse((await params).id);
-    const { user, partner, supabase } = await getAuthenticatedPartner(request);
-    if (!user)
-      return NextResponse.json(
-        { error: "Connexion partenaire requise." },
-        { status: 401 },
-      );
-    if (!partner)
-      return NextResponse.json(
-        { error: "Aucun accès partenaire actif n’est associé à ce compte." },
-        { status: 403 },
-      );
+    const { user, partner, supabase } = await requirePartnerOwner(request);
     const origin =
       process.env.NEXT_PUBLIC_SITE_URL ??
       process.env.NEXT_PUBLIC_APP_URL ??

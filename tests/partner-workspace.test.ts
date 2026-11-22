@@ -54,14 +54,15 @@ test("agenda, map and list keep the selected period and status in authenticated 
 
 test("a private intervention only advances within its own company and validation preserves the scheduled history", async () => {
   const db = await fullDatabase();
-  const ids = Array.from({ length: 7 }, (_, index) => "a4a10000-0000-4000-8000-00000000000" + (index + 1));
-  const [owner, technician, otherOwner, partner, otherPartner, client, visit] = ids;
+  const ids = Array.from({ length: 8 }, (_, index) => "a4a10000-0000-4000-8000-00000000000" + (index + 1));
+  const [owner, technician, otherOwner, partner, otherPartner, client, visit, line] = ids;
   try {
     await db.query("insert into auth.users(id,email) values ($1,'owner@example.invalid'),($2,'tech@example.invalid'),($3,'outside@example.invalid')", [owner, technician, otherOwner]);
     await db.query("insert into partners(id,company_name,email) values ($1,'Partenaire fictif','company@example.invalid'),($2,'Partenaire extérieur','outside@example.invalid')", [partner, otherPartner]);
-    await db.query("insert into partner_users(partner_id,user_id,role) values ($1,$2,'owner'),($1,$3,'technician'),($4,$5,'owner')", [partner, owner, technician, otherPartner, otherOwner]);
+    await db.query("insert into partner_planning_technicians(partner_id,id,name) values($1,$2,'Technicien')", [partner, line]);
+    await db.query("insert into partner_users(partner_id,user_id,role,technician_id) values ($1,$2,'owner',null),($1,$3,'technician',$6),($4,$5,'owner',null)", [partner, owner, technician, otherPartner, otherOwner, line]);
     await db.query("insert into partner_private_clients(partner_id,id,name,street,postal_code,city) values ($1,$2,'Fiche fictive','1 rue Essai','68000','Colmar')", [partner, client]);
-    await db.query("insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at,updated_at) values ($1,$2,$3,'Entretien',$4,$5,$5)", [partner, visit, client, before, after]);
+    await db.query("insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at,updated_at,technician_id) values ($1,$2,$3,'Entretien',$4,$5,$5,$6)", [partner, visit, client, before, after, line]);
     await db.exec("set role service_role");
     const advance = (actor: string, version: string | Date, validate: boolean) => db.query(
       "select advance_partner_private_visit($1,$2,$3,$4,$5)", [partner, actor, visit, version, validate]);

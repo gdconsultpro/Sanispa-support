@@ -10,7 +10,7 @@ import { canViewPartnerOffer } from "@/lib/partner-release";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { protectedPhotos } from "@/lib/photos";
 import { NextResponse } from "next/server";
-import { getAuthenticatedPartner, requirePartnerPlanner } from "@/lib/partner-auth";
+import { assertPartnerOwner, getAuthenticatedPartner, requirePartnerPlanningOwner } from "@/lib/partner-auth";
 import {
   partnerLeadStatuses,
   sanitizePartnerLead,
@@ -41,6 +41,7 @@ export async function GET(
         { status: 403 },
       );
     }
+    assertPartnerOwner(partner);
     const { data, error } = await supabase
       .from("diagnostics")
       .select(
@@ -181,7 +182,7 @@ export async function GET(
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user, partner, supabase } = await requirePartnerPlanner(request);
+    const { user, partner, supabase } = await requirePartnerPlanningOwner(request);
     const id = z.string().uuid().parse((await params).id);
     const { offeredAt } = z.object({ offeredAt: z.string().datetime({ offset: true }) }).strict().parse(await readJson(request, 1000));
     const { data: receivedAt, error } = await supabase.rpc("acknowledge_partner_offer", {

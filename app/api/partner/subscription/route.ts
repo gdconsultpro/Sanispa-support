@@ -1,7 +1,7 @@
 import { paymentsPaused } from "@/lib/commercial-mode";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getAuthenticatedPartner } from "@/lib/partner-auth";
+import { requirePartnerOwner } from "@/lib/partner-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { subscriptionCheckout } from "@/lib/partner-subscriptions";
 import { getStripe } from "@/lib/stripe";
@@ -9,8 +9,7 @@ import { rateLimit } from "@/lib/client-auth";
 import { createSanispaPortal } from "@/lib/stripe-portal";
 export async function GET(request: Request) {
   try {
-    const { partner, supabase } = await getAuthenticatedPartner(request);
-    if (!partner) throw new HttpError(401, "Connexion partenaire requise.");
+    const { partner, supabase } = await requirePartnerOwner(request);
     const { data, error } = await supabase
       .from("partner_subscriptions")
       .select("plan,status,paid_until")
@@ -27,9 +26,7 @@ export async function GET(request: Request) {
 }
 export async function POST(request: Request) {
   try {
-    const { user, partner, supabase } = await getAuthenticatedPartner(request);
-    if (!partner || !user)
-      throw new HttpError(401, "Connexion partenaire requise.");
+    const { user, partner, supabase } = await requirePartnerOwner(request);
     await rateLimit(supabase, `subscription:${partner.id}`, 6);
     const payload = z
       .discriminatedUnion("action", [
