@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   billingFromPurchase,
   purchaseTermsColumns,
@@ -6,10 +7,10 @@ import { loadOfferBilling } from "@/lib/partner-offers";
 import { paymentsPaused } from "@/lib/commercial-mode";
 import { partnerCharterVersion } from "@/lib/partner-charter";
 import { canViewPartnerOffer } from "@/lib/partner-release";
-import { apiError } from "@/lib/http";
+import { apiError, HttpError, readJson } from "@/lib/http";
 import { protectedPhotos } from "@/lib/photos";
 import { NextResponse } from "next/server";
-import { getAuthenticatedPartner } from "@/lib/partner-auth";
+import { getAuthenticatedPartner, requirePartnerPlanner } from "@/lib/partner-auth";
 import {
   partnerLeadStatuses,
   sanitizePartnerLead,
@@ -47,7 +48,7 @@ export async function GET(
         id, public_reference, offer_version, lead_category, lead_amount, preview_description, preview_photo_paths,
         created_at,
         choice,
-        partner_released_at, partner_kept_at,
+        partner_released_at, partner_kept_at, partner_received_at,
         status,
         request_type,
         archived_at,
@@ -177,6 +178,22 @@ export async function GET(
     return apiError(error);
   }
 }
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { user, partner, supabase } = await requirePartnerPlanner(request);
+    const id = z.string().uuid().parse((await params).id);
+    const { offeredAt } = z.object({ offeredAt: z.string().datetime({ offset: true }) }).strict().parse(await readJson(request, 1000));
+    const { data: receivedAt, error } = await supabase.rpc("acknowledge_partner_offer", {
+      p_partner: partner.id, p_actor: user.id, p_diagnostic: id, p_offered_at: offeredAt,
+    });
+    if (error?.message === "LEAD_UNAVAILABLE") throw new HttpError(409, "Cette proposition a changé. Actualisez le dossier.");
+    if (error?.message === "FIELD_ACCESS_REQUIRED") throw new HttpError(403, "Cette proposition n’est pas accessible à votre compte.");
+    if (error) throw error;
+    return NextResponse.json({ receivedAt }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) { return apiError(error); }
+}
+
 async function loadLeadDocuments(supabase: any, diagnosticId: string) {
   const { data } = await supabase
     .from("client_documents")

@@ -11,6 +11,7 @@ export type PartnerLeadPreview = {
   access: "preview";
   createdAt: string;
   offeredAt?: string | null;
+  receivedAt?: string | null;
   charterRequired?: boolean;
   problemType: string;
   problemTypeKey: string;
@@ -44,6 +45,7 @@ export function sanitizePartnerLead(
     access: "preview",
     createdAt: row.created_at,
     offeredAt: row.partner_released_at || null,
+    receivedAt: row.partner_received_at || null,
     problemType:
       problemTypes.find((type) => type.value === row.problem_type)?.label ??
       "Demande technique",

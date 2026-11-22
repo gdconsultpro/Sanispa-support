@@ -37,12 +37,13 @@ export async function loadPartnerDispatch(supabase: any, id: string) {
   const { data: d, error } = await supabase
     .from("diagnostics")
     .select(
-      "choice,request_type,status,archived_at,department,problem_type,partner_kept_at,partner_kept_by,partner_released_at,partner_released_by,matched_partner_ids,assigned_partner_id,lead_category,preview_description,preview_photo_paths,diagnostic_photos(storage_path,photo_type),customers(address,spa_brand,spa_model)",
+      "choice,request_type,status,archived_at,department,problem_type,partner_kept_at,partner_kept_by,partner_released_at,partner_released_by,partner_received_at,matched_partner_ids,assigned_partner_id,intervened_at,intervened_partner_id,lead_category,preview_description,preview_photo_paths,diagnostic_photos(storage_path,photo_type),customers(address,spa_brand,spa_model)",
     )
     .eq("id", id)
     .single();
   if (error) throw error;
-  const [sector, purchases, notification, refusal] = await Promise.all([
+  const tracking = Boolean(d.partner_released_at && !d.partner_kept_at);
+  const [sector, purchases, notification, refusal, unlocked, appointment] = await Promise.all([
     supabase
       .from("partner_departments")
       .select("partners!inner(id,company_name,active,verification_status,leads_paid)")
@@ -64,9 +65,17 @@ export async function loadPartnerDispatch(supabase: any, id: string) {
       ? Promise.resolve({ data: null, error: null })
       : supabase.from("diagnostic_activity").select("created_at,metadata")
         .eq("diagnostic_id", id).eq("event_type", "partner_declined").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    tracking && d.assigned_partner_id
+      ? supabase.from("lead_purchases").select("status,payment_required,paid_at,purchased_at")
+        .eq("request_id", id).eq("partner_id", d.assigned_partner_id).in("status", ["paid", "granted"])
+        .order("purchased_at", { ascending: false }).limit(1).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    tracking && d.assigned_partner_id
+      ? supabase.from("partner_appointments").select("starts_at,updated_at").eq("diagnostic_id", id).eq("partner_id", d.assigned_partner_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
-  if (sector.error || purchases.error || notification.error || refusal.error)
-    throw sector.error || purchases.error || notification.error || refusal.error;
+  const loadError = sector.error || purchases.error || notification.error || refusal.error || unlocked.error || appointment.error;
+  if (loadError) throw loadError;
   const coveringPartners = (sector.data ?? []).map((row: any) => Array.isArray(row.partners) ? row.partners[0] : row.partners).filter(Boolean);
   const partners = coveringPartners.filter((partner: any) => partner.active && partner.verification_status !== "pending");
   const pendingPartners = coveringPartners.filter((partner: any) => partner.active && partner.verification_status === "pending");
@@ -78,9 +87,22 @@ export async function loadPartnerDispatch(supabase: any, id: string) {
     lead_purchase: purchases.data?.[0],
   });
   const statusAllowsRelease = partnerLeadStatuses.includes(d.status);
+  const paidAt = unlocked.data?.status === "paid" ? unlocked.data.paid_at : null;
+  const free = unlocked.data?.status === "granted" && unlocked.data.payment_required === false;
+  const unlockAt = paidAt || (free ? unlocked.data.purchased_at : null);
   return {
     decision,
     assigned: Boolean(d.assigned_partner_id),
+    progress: tracking ? {
+      received: Boolean(d.partner_received_at || d.assigned_partner_id),
+      receivedAt: d.partner_received_at || unlockAt,
+      unlocked: Boolean(d.assigned_partner_id),
+      unlockAt,
+      payment: paidAt ? "paid" as const : free ? "free" as const : null,
+      appointmentAt: appointment.data?.starts_at ?? null,
+      appointmentConfirmedAt: appointment.data?.updated_at ?? null,
+      completedAt: d.intervened_partner_id && d.intervened_partner_id === d.assigned_partner_id ? d.intervened_at : null,
+    } : null,
     declined: refusal.data ? { at: refusal.data.created_at, company: refusal.data.metadata?.company_name || null } : null,
     blockedReason: d.archived_at ? "Restaurez ce dossier avant de le proposer." : !statusAllowsRelease
       ? "Le statut « " + statusLabel(d.status) + " » bloque la diffusion. Traitez le dossier ou placez-le en analyse si la demande est toujours ouverte."

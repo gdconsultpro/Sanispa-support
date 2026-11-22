@@ -18,6 +18,8 @@ function eventLabel(item: AdminActivity) {
     partner_kept: "Dossier conservé chez SANISPA · aucune diffusion partenaire",
     partner_released: "Diffusion validée par SANISPA vers le partenaire sélectionné",
     partner_assigned: "Prise en charge confirmée par le partenaire",
+    partner_offer_received: "Réception de la proposition confirmée par le partenaire",
+    partner_intervention_confirmed: "Intervention réalisée · confirmation du partenaire",
     partner_declined: typeof item.metadata?.company_name === "string" ? item.metadata.company_name + " a indiqué son indisponibilité" : "Partenaire indisponible · dossier à réattribuer",
     appointment_scheduled: "Rendez-vous enregistré ou déplacé",
     appointment_cancelled: "Rendez-vous annulé",

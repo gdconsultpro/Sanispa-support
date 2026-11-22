@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Camera, ClipboardCheck, MapPin, Phone, Play } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Camera, ClipboardCheck, Download, MapPin, Phone, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, ButtonLink } from "@/components/Button";
 import { partnerEquipmentEndpoint, PartnerSpaOptions } from "@/components/PartnerClientSpas";
@@ -9,10 +10,11 @@ import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import { localDateTime } from "@/lib/client-browser-api";
 import { compressPhoto } from "@/lib/compress-photo";
+import { downloadBlob } from "@/lib/download";
 import { partnerAuthError } from "@/lib/partner-browser";
-import type { FieldSource, FieldVisit } from "@/lib/partner-field";
-import { partnerClientPath, partnerDirections, partnerEditVisitPath, partnerSpaOption, plannerDate } from "@/lib/partner-planner";
-import { plannerRequest } from "@/lib/partner-planner-browser";
+import type { FieldReport, FieldSource, FieldVisit } from "@/lib/partner-field";
+import { partnerClientPath, partnerDirections, partnerEditVisitPath, partnerPrivateVisitPath, partnerSpaOption, plannerDate } from "@/lib/partner-planner";
+import { plannerDownload, plannerRequest } from "@/lib/partner-planner-browser";
 import { workStatusLabels, workspacePath } from "@/lib/partner-workspace";
 
 const card = "min-w-0 rounded-2xl border border-sanispa-line bg-white p-4 sm:p-5";
@@ -34,6 +36,7 @@ function draftOnDevice(key: string, reports: FieldVisit["reports"], start?: stri
 }
 
 export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSource }) {
+  const router = useRouter();
   const base = `/api/partner/field/${source}/${id}`;
   const [data, setData] = useState<FieldVisit | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -43,6 +46,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [confirmValidation, setConfirmValidation] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const [pendingPhotos, setPendingPhotos] = useState<{ id: string; file: File }[]>([]);
   const working = useRef(false);
   const draftKey = useRef("");
@@ -129,6 +133,24 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
     }, "L’intervention est de nouveau à planifier.");
   }
 
+  async function downloadReport(reportId: string) {
+    setDownloading(reportId);
+    setError("");
+    try {
+      const pdf = await plannerDownload(base + "?" + new URLSearchParams({ rapport: reportId }));
+      if (pdf) downloadBlob(pdf, `compte-rendu-${reportId.slice(0, 8)}.pdf`);
+    } catch (cause) { setError(partnerAuthError(cause)); }
+    finally { setDownloading(null); }
+  }
+
+  function createFollowup(reportId: string) {
+    void action(async () => {
+      const result = await plannerRequest(base, { payload: { action: "followup", reportId } });
+      if (result?.visitId) router.push(partnerPrivateVisitPath(result.visitId));
+      return null;
+    }, "");
+  }
+
   const session = data?.session;
   const spa = data?.spas.find(item => item.id === data.spaId);
   const draftOpen = Boolean(session && !session.submitted_at);
@@ -167,6 +189,15 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
         {session ? <p className="mt-1 text-sm">Démarrée le {dateLabel.format(new Date(session.started_at))}</p> : null}
         {data.description ? <p className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-sanispa-ice p-3 text-sm">{data.description}</p> : null}
       </section>
+
+      {data.previousReport ? <section className={card} aria-labelledby="previous-report">
+        <h2 id="previous-report" className="text-lg font-bold">Compte rendu précédent</h2>
+        <FieldReportDetails report={data.previousReport} />
+        <Link className={link} href={(data.previousReport.source === "private"
+          ? partnerPrivateVisitPath(data.previousReport.visitId)
+          : "/partenaire/interventions/" + data.previousReport.visitId) + "#rapport"}>Voir l’intervention précédente</Link>
+        {!data.appointment ? <div className="mt-2"><ButtonLink href={partnerEditVisitPath(id)}>Planifier le rendez-vous</ButtonLink></div> : null}
+      </section> : null}
 
       <section className={card} aria-labelledby="field-spa">
         <h2 id="field-spa" className="text-lg font-bold">Spa concerné</h2>
@@ -241,7 +272,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
           void action(() => plannerRequest(base, { payload: {
             action: "report", session: session.id, id: draft.id, performedAt: performed.toISOString(),
             findings: draft.findings, actions: draft.actions, nextSteps: draft.nextSteps, onSite: draft.onSite,
-          } }), source === "sanispa" ? "Compte rendu transmis au client pour validation." : "Compte rendu transmis au responsable pour validation.", () => {
+          } }), source === "sanispa" ? "Compte rendu validé et transmis au client." : "Compte rendu validé. Intervention terminée.", () => {
             try { localStorage.removeItem(draftKey.current); } catch { /* Cleared on the next load. */ }
             setDraft(emptyDraft);
             setDraftNote("");
@@ -260,17 +291,19 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
             </label>)}
             <label className="flex items-start gap-2 py-2 text-sm"><input type="checkbox" required checked={draft.onSite}
               onChange={event => editDraft({ onSite: event.target.checked })} className="mt-0.5 h-5 w-5" /> Je confirme avoir réalisé l’intervention sur place.</label>
-            <Button type="submit"><ClipboardCheck aria-hidden="true" size={18} /> Transmettre pour validation</Button>
+            <Button type="submit"><ClipboardCheck aria-hidden="true" size={18} /> {source === "sanispa" ? "Valider et transmettre au client" : "Valider le compte rendu"}</Button>
           </fieldset>
         </form> : null}
         {data.reports.map(report => <article key={report.id} className="mt-3 rounded-xl border border-sanispa-line p-3">
-          <p className="text-sm font-semibold">{dateLabel.format(new Date(report.performed_at))}</p>
-          <dl className="mt-2 grid gap-1 text-sm">
-            <dt className="font-bold">Constat</dt><dd className="whitespace-pre-wrap break-words">{report.findings}</dd>
-            <dt className="mt-2 font-bold">Travaux et contrôles</dt><dd className="whitespace-pre-wrap break-words">{report.actions}</dd>
-            <dt className="mt-2 font-bold">Suite à donner</dt><dd className="whitespace-pre-wrap break-words">{report.next_steps}</dd>
-          </dl>
+          <FieldReportDetails report={report} />
           {source === "sanispa" ? <p className="mt-3 text-sm font-bold">{report.client_validated_at ? "Validé par le client" : "En attente de validation par le client"}</p> : null}
+          {source === "private" && data.workStatus === "validated" ? <p className="mt-3 text-sm font-bold">Compte rendu validé</p> : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" disabled={downloading !== null} onClick={() => void downloadReport(report.id)}>
+              <Download aria-hidden="true" size={18} /> {downloading === report.id ? "Préparation du PDF…" : "Télécharger le PDF"}
+            </Button>
+            <Button type="button" variant="secondary" disabled={busy} onClick={() => createFollowup(report.id)}>Prévoir une nouvelle intervention</Button>
+          </div>
         </article>)}
         {!draftOpen && !data.reports.length ? <p className="mt-2 text-sm">{data.workStatus === "review" || data.workStatus === "validated"
           ? "Cette intervention a été enregistrée sans compte rendu terrain." : "Démarrez l’intervention pour rédiger son compte rendu."}</p> : null}
@@ -298,4 +331,15 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
       </details>}
     </> : null}
   </div>;
+}
+
+function FieldReportDetails({ report }: { report: Pick<FieldReport, "performed_at" | "findings" | "actions" | "next_steps"> }) {
+  return <>
+    <p className="mt-1 text-sm font-semibold">{dateLabel.format(new Date(report.performed_at))}</p>
+    <dl className="mt-2 grid gap-1 text-sm">
+      <dt className="font-bold">Constat</dt><dd className="whitespace-pre-wrap break-words">{report.findings}</dd>
+      <dt className="mt-2 font-bold">Travaux et contrôles</dt><dd className="whitespace-pre-wrap break-words">{report.actions}</dd>
+      <dt className="mt-2 font-bold">Suite à donner</dt><dd className="whitespace-pre-wrap break-words">{report.next_steps}</dd>
+    </dl>
+  </>;
 }

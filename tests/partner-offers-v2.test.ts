@@ -236,7 +236,7 @@ test("declining an exact proposal returns it to manual dispatch and queues only 
     assert.deepEqual(dossier, { matched_partner_ids: [], assigned_partner_id: null, partner_released_at: null });
     assert.equal((await db.query("select * from lead_purchases")).rows.length, 0);
     const jobs = (await db.query("select kind,state from notification_jobs order by kind")).rows;
-    assert.deepEqual(jobs, [{ kind: "partner", state: "cancelled" }, { kind: "partner_declined", state: "pending" }]);
+    assert.deepEqual(jobs, [{ kind: "partner", state: "cancelled" }, { kind: "partner_declined", state: "cancelled" }]);
     await db.exec("reset role");
     await publish(db);
     await db.query(decline, params);

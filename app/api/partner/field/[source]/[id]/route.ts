@@ -9,8 +9,9 @@ import { processNotifications } from "@/lib/notifications";
 import { requirePartnerPlanner } from "@/lib/partner-auth";
 import type { FieldReport, FieldVisit } from "@/lib/partner-field";
 import { fieldPhotoBucket, fieldPhotoPath, loadFieldPhotos } from "@/lib/partner-field-photos";
-import { partnerClientAddress } from "@/lib/partner-planner";
+import { partnerClientAddress, partnerSpaOption } from "@/lib/partner-planner";
 import { privateWorkStatus, sanispaWorkStatus } from "@/lib/partner-workspace";
+import { buildSummaryPdf } from "@/lib/pdf";
 
 type Context = { params: Promise<{ source: string; id: string }> };
 const uuid = z.string().uuid();
@@ -20,17 +21,19 @@ const fieldCommands = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start") }).strict(),
   reportSchema.extend({ session: uuid }),
   z.object({ action: z.literal("validate"), version: timestamp }).strict(),
+  z.object({ action: z.literal("followup"), reportId: uuid }).strict(),
   z.object({ action: z.literal("spa"), spaId: uuid.nullable(), version: timestamp }).strict(),
 ]);
 const spaFields = "id,brand,model,serial_number,updated_at";
-const sessions = "id,started_at,appointment_start,report_id,submitted_at,performed_at,findings,actions,next_steps";
+const sessions = "id,started_at,started_by,appointment_start,report_id,submitted_at,performed_at,findings,actions,next_steps";
+const pdfDate = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" });
 
 async function fieldCase(request: Request, context: Context) {
   const { partner, supabase, user } = await requirePartnerPlanner(request);
   const { source, id } = z.object({ source: z.enum(["private", "sanispa"]), id: uuid }).parse(await context.params);
   if (source === "private") {
     const { data: visit, error } = await supabase.from("partner_private_visits")
-      .select("id,client_id,title,description,spa_id,starts_at,ends_at,field_started_at,completed_at,validated_at,updated_at,client:partner_private_clients!inner(name,phone,street,postal_code,city,deleted_at)")
+      .select("id,client_id,title,description,spa_id,starts_at,ends_at,field_started_at,completed_at,validated_at,updated_at,previous_report,client:partner_private_clients!inner(name,phone,street,postal_code,city,deleted_at)")
       .eq("partner_id", partner.id).eq("id", id).maybeSingle();
     if (error) throw error;
     if (!visit) throw new HttpError(404, "Cette intervention est introuvable.");
@@ -53,9 +56,12 @@ function fieldError(error: { message?: string }) {
     case "FIELD_TOO_EARLY": return new HttpError(409, "Le démarrage sera disponible à l’heure prévue du rendez-vous.");
     case "FIELD_ALREADY_FINISHED": return new HttpError(409, "Cette intervention est déjà terminée. Actualisez la fiche.");
     case "FIELD_PHOTO_LIMIT": return new HttpError(409, "Vous pouvez joindre jusqu’à 12 photos par intervention.");
-    case "PARTNER_WORK_ROLE_REQUIRED": return new HttpError(403, "La validation est réservée au responsable de l’entreprise.");
+    case "PARTNER_WORK_ROLE_REQUIRED": return new HttpError(403, "Demandez au technicien qui a démarré l’intervention de valider le compte rendu.");
     case "PARTNER_VISIT_STATE_CHANGED": return new HttpError(409, "L’intervention a évolué. Actualisez la fiche.");
     case "INVALID_FIELD_REPORT": return new HttpError(400, "Vérifiez la date et les trois réponses du compte rendu.");
+    case "FIELD_REPORT_NOT_FOUND": return new HttpError(404, "Compte rendu introuvable.");
+    case "FIELD_CLIENT_REQUIRED": return new HttpError(409, "Rétablissez la fiche client dans votre carnet pour prévoir une nouvelle intervention.");
+    case "FIELD_ADDRESS_REQUIRED": return new HttpError(409, "Complétez l’adresse dans la fiche client pour prévoir une nouvelle intervention.");
     default: return interventionError(error);
   }
 }
@@ -73,6 +79,8 @@ export async function GET(request: Request, context: Context) {
   try {
     const field = await fieldCase(request, context);
     const { supabase, partner, id } = field;
+    const reportParam = new URL(request.url).searchParams.get("rapport");
+    const pdfReport = reportParam === null ? null : uuid.parse(reportParam);
     const sessionResult = supabase.from("partner_field_sessions").select(sessions).eq("partner_id", partner.id)
       .eq(field.source === "private" ? "private_visit_id" : "diagnostic_id", id)
       .order("started_at", { ascending: false }).limit(1).maybeSingle();
@@ -94,10 +102,12 @@ export async function GET(request: Request, context: Context) {
         title: visit.title, description: visit.description, workStatus, version: visit.updated_at,
         customer: { name: client.name, phone: client.phone, address: partnerClientAddress(client), clientId: client.deleted_at ? null : visit.client_id },
         appointment: visit.starts_at && visit.ends_at ? { starts_at: visit.starts_at, ends_at: visit.ends_at } : null,
-        session, photos: session ? await loadFieldPhotos(supabase, partner.id, session.id) : [], reports,
+        session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
+        photos: session && !pdfReport ? await loadFieldPhotos(supabase, partner.id, session.id) : [], reports, previousReport: visit.previous_report,
         spaId: visit.spa_id, spas: equipment.data,
         canStart: !session && !visit.completed_at && Boolean(visit.starts_at && Date.parse(visit.starts_at) <= now),
-        canValidate: partner.role === "owner" && workStatus === "review", canEditSpa: !visit.completed_at,
+        canValidate: workStatus === "review" && (partner.role === "owner" || Boolean(session?.submitted_at && session.started_by === field.user.id)),
+        canEditSpa: !visit.completed_at,
       };
     } else {
       const { dossier } = field;
@@ -128,12 +138,46 @@ export async function GET(request: Request, context: Context) {
         title: problemLabel(dossier.problem_type), reference: dossier.public_reference,
         description: dossier.preview_description?.trim() || dossier.diagnostic_answers.map(answer => answer.answer).filter(Boolean).join("\n"),
         customer: { name: customer?.name || "Client", phone: customer?.phone, address: customer?.address, clientId },
-        appointment: appointment ?? null, session, photos: session ? await loadFieldPhotos(supabase, partner.id, session.id) : [],
+        appointment: appointment ?? null, session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
+        photos: session && !pdfReport ? await loadFieldPhotos(supabase, partner.id, session.id) : [],
         workStatus, reports, spaId: link?.data?.spa_id ?? null, spas: equipment?.data ?? [],
         declaredSpa: [customer?.spa_brand, customer?.spa_model].filter(Boolean).join(" "),
         canStart: !session && Boolean(appointment && Date.parse(appointment.starts_at) <= now) && (workStatus === "scheduled" || workStatus === "due"),
         canValidate: false, canEditSpa: Boolean(clientId) && (["pending", "scheduled", "due", "in_progress"].includes(workStatus)),
       };
+    }
+    if (pdfReport) {
+      const report = result.reports.find(item => item.id === pdfReport);
+      if (!report) throw fieldError({ message: "FIELD_REPORT_NOT_FOUND" });
+      const session = await supabase.from("partner_field_sessions").select("id")
+        .eq("partner_id", partner.id).eq("report_id", report.id)
+        .eq(field.source === "private" ? "private_visit_id" : "diagnostic_id", id).maybeSingle();
+      if (session.error) throw session.error;
+      const photos: Uint8Array[] = [];
+      if (session.data) {
+        const sessionId = session.data.id;
+        const saved = await supabase.from("partner_field_photos").select("id").eq("session_id", sessionId).order("created_at").order("id");
+        if (saved.error) throw saved.error;
+        photos.push(...await Promise.all(saved.data.map(async photo => {
+          const asset = await supabase.storage.from(fieldPhotoBucket).download(fieldPhotoPath(partner.id, sessionId, photo.id));
+          if (asset.error) throw new HttpError(503, "Une photo est temporairement indisponible. Réessayez de télécharger le PDF.");
+          return new Uint8Array(await asset.data.arrayBuffer());
+        })));
+      }
+      const spa = result.spas.find(item => item.id === result.spaId);
+      const bytes = await buildSummaryPdf([
+        "Intervention", ...(result.reference ? ["Numéro de dossier : " + result.reference] : []),
+        "Client : " + result.customer.name,
+        ...(result.customer.address ? ["Adresse : " + result.customer.address] : []),
+        "Date : " + pdfDate.format(new Date(report.performed_at)),
+        "Motif : " + result.title,
+        "Spa : " + ((spa ? partnerSpaOption(spa) : result.declaredSpa) || "Non renseigné"),
+        "Constat sur place", report.findings,
+        "Travaux et contrôles effectués", report.actions,
+        "Suite à donner", report.next_steps,
+      ], { field: { company: partner.company_name, photos } });
+      return new NextResponse(bytes, { headers: { ...headers, "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="compte-rendu-${report.id.slice(0, 8)}.pdf"` } });
     }
     return NextResponse.json({ ...result, userId: field.user.id }, { headers });
   } catch (error) { return apiError(error); }
@@ -160,6 +204,13 @@ export async function POST(request: Request, context: Context) {
         try { await processNotifications(`report:${command.id}`); }
         catch { console.error("Notification du compte rendu à relancer."); }
       }
+    } else if (command.action === "followup") {
+      const { data: visitId, error } = await supabase.rpc("create_partner_field_followup", {
+        ...actor, p_source: source, p_id: id, p_report: command.reportId,
+        p_title: field.source === "sanispa" ? problemLabel(field.dossier.problem_type) : field.visit.title,
+      });
+      if (error) throw fieldError(error);
+      return NextResponse.json({ visitId }, { headers });
     } else {
       if (field.source !== "private") throw new HttpError(400, "Cette action est réservée aux interventions privées.");
       if (command.action === "validate") {

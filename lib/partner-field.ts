@@ -7,6 +7,10 @@ export type FieldReport = {
   submitted_at: string; client_validated_at?: string | null;
 };
 export type FieldPhoto = { id: string; url: string };
+export type PreviousFieldReport = Pick<FieldReport, "id" | "performed_at" | "findings" | "actions" | "next_steps"> & {
+  source: FieldSource;
+  visitId: string;
+};
 export type FieldVisit = {
   title: string;
   reference?: string;
@@ -20,6 +24,7 @@ export type FieldVisit = {
   session: { id: string; started_at: string; submitted_at: string | null } | null;
   photos: FieldPhoto[];
   reports: FieldReport[];
+  previousReport?: PreviousFieldReport | null;
   canStart: boolean;
   canValidate: boolean;
   canEditSpa: boolean;

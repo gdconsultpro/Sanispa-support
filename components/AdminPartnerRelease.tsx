@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
+import { adminDate } from "@/lib/admin-presentation";
 import { paymentsPaused } from "@/lib/commercial-mode";
 import { photoLabel } from "@/lib/display-labels";
 import { leadCatalog, type LeadCategory } from "@/lib/partner-catalog";
@@ -24,6 +25,10 @@ type Release = {
   };
   decision: PartnerDispatchDecision | null;
   assigned?: boolean;
+  progress?: {
+    received: boolean; receivedAt: string | null; unlocked: boolean; unlockAt: string | null; payment: "paid" | "free" | null;
+    appointmentAt: string | null; appointmentConfirmedAt: string | null; completedAt: string | null;
+  } | null;
   blockedReason?: string | null;
   declined?: { at: string; company: string | null } | null;
   pendingPartners?: string[];
@@ -155,6 +160,7 @@ export function AdminPartnerRelease({
               {data.selectedPartner ? ` · ${data.selectedPartner}` : ""}.
             </p>
           ) : null}
+          {data.progress ? <DispatchProgress progress={data.progress} /> : null}
           {data.declined ? <p className="mt-2 text-sm">
             {data.declined.company || "Le partenaire précédent"} a indiqué son indisponibilité le {new Date(data.declined.at).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}.
           </p> : null}
@@ -189,7 +195,7 @@ export function AdminPartnerRelease({
                   {new Date(data.notification.sentAt).toLocaleString("fr-FR", {
                     timeZone: "Europe/Paris",
                   })}
-                  . La réception par le destinataire n’est pas confirmée ici.
+                  .
                 </p>
               ) : null}
             </div>
@@ -393,4 +399,26 @@ export function AdminPartnerRelease({
       ) : null}
     </section>
   );
+}
+
+function DispatchProgress({ progress }: { progress: NonNullable<Release["progress"]> }) {
+  const stages = [
+    { title: "Réception", done: progress.received, date: progress.receivedAt, detail: progress.received ? "Réception confirmée" : "Confirmation du partenaire attendue" },
+    { title: "Déblocage du lead", done: progress.unlocked, date: progress.unlockAt, detail: progress.payment === "paid"
+      ? "Paiement confirmé" : progress.payment === "free" ? "Prise en charge gratuite" : progress.unlocked ? "Lead débloqué" : "Prise en charge attendue" },
+    { title: "Rendez-vous", done: Boolean(progress.appointmentAt), date: progress.appointmentConfirmedAt,
+      detail: progress.appointmentAt ? "Créneau du " + adminDate(progress.appointmentAt) : "Rendez-vous à confirmer" },
+    { title: "Intervention", done: Boolean(progress.completedAt), date: progress.completedAt,
+      detail: progress.completedAt ? "Intervention réalisée" : "Confirmation du technicien attendue" },
+  ];
+  return <section className="mt-4 rounded-xl border border-sanispa-line p-3" aria-labelledby="dispatch-progress">
+    <h4 id="dispatch-progress" className="font-bold">Suivi de la prise en charge</h4>
+    <ol className="mt-2 grid gap-2 sm:grid-cols-2">
+      {stages.map((stage, index) => <li key={stage.title} className="rounded-lg bg-sanispa-ice p-2.5 text-sm">
+        <p className="font-bold">{index + 1}. {stage.title}</p>
+        <p className={stage.done ? "font-semibold text-emerald-800" : "text-sanispa-steel"}>{stage.detail}</p>
+        {stage.date ? <p className="text-xs text-sanispa-steel">{stage.title === "Rendez-vous" ? "Confirmé le " : ""}{adminDate(stage.date)}</p> : null}
+      </li>)}
+    </ol>
+  </section>;
 }

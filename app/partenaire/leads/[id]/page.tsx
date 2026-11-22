@@ -11,6 +11,7 @@ import { AppShell } from "@/components/AppShell";
 import { StepHeader } from "@/components/StepHeader";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
+import { plannerRequest } from "@/lib/partner-planner-browser";
 import { partnerCharterPath, partnerLoginPath, withPartnerTimeout } from "@/lib/partner-navigation";
 import type { PartnerLeadPreview, PartnerLeadFull } from "@/lib/partner-leads";
 
@@ -27,6 +28,7 @@ export default function PartnerLeadDetailPage() {
   const [confirmingDecline, setConfirmingDecline] = useState(false);
   const [declined, setDeclined] = useState(false);
   const [unlockError, setUnlockError] = useState("");
+  const [confirmingReceipt, setConfirmingReceipt] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [acquisitionConfirmed, setAcquisitionConfirmed] = useState(false);
   const unlockPending = useRef(false);
@@ -178,6 +180,20 @@ export default function PartnerLeadDetailPage() {
       setDeclining(false);
       unlockPending.current = false;
     }
+  }
+
+  async function confirmReceipt() {
+    if (lead?.access !== "preview" || !lead.offeredAt || confirmingReceipt) return;
+    const offeredAt = lead.offeredAt;
+    setConfirmingReceipt(true);
+    setUnlockError("");
+    try {
+      const result = await plannerRequest(`/api/partner/leads/${lead.id}`, { method: "PATCH", payload: { offeredAt } });
+      if (result?.receivedAt) setLead(current => current?.access === "preview" && current.offeredAt === offeredAt
+        ? { ...current, receivedAt: result.receivedAt } : current);
+    } catch (cause) {
+      setUnlockError(cause instanceof Error ? cause.message : "La réception n’a pas pu être confirmée.");
+    } finally { setConfirmingReceipt(false); }
   }
 
   const unlockStatus = searchParams.get("unlock");
@@ -347,6 +363,11 @@ export default function PartnerLeadDetailPage() {
           ) : null}
           {lead.access === "preview" ? (
             <div id="decision" className="mt-6 scroll-mt-4 border-t border-sanispa-line pt-5">
+              {lead.offeredAt ? <div className="mb-3">
+                {lead.receivedAt ? <p role="status" className="text-sm font-bold text-emerald-800">Réception confirmée</p>
+                  : <Button type="button" variant="secondary" disabled={confirmingReceipt || unlocking || declining}
+                    onClick={() => void confirmReceipt()}>{confirmingReceipt ? "Confirmation…" : "Confirmer la réception"}</Button>}
+              </div> : null}
               {lead.charterRequired ? <div className="mb-4 rounded-xl bg-amber-50 p-4">
                 <p className="mb-3">Le responsable du compte doit accepter la charte pour prendre en charge ce dossier.</p>
                 <ButtonLink href={partnerCharterPath("/partenaire/leads/" + lead.id)}>Lire et accepter la charte</ButtonLink>
@@ -364,7 +385,7 @@ export default function PartnerLeadDetailPage() {
                   !lead.canUnlock ||
                   !lead.billing.available ||
                   (!paymentsPaused() && lead.billing.paymentRequired && !amountLabel) ||
-                  unlocking || declining || confirmingDecline
+                  unlocking || declining || confirmingDecline || confirmingReceipt
                 }
                 onClick={unlockLead}
                 className="inline-flex min-h-12 items-center justify-center rounded-md bg-sanispa-navy px-5 py-3 text-sm font-bold text-white focus-ring disabled:cursor-not-allowed disabled:bg-sanispa-steel/30 disabled:text-sanispa-navy"

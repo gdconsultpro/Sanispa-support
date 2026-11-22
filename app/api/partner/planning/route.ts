@@ -454,7 +454,7 @@ export async function POST(request: Request) {
         p_partner: partner.id, p_actor: user.id, p_visit: command.id,
         p_expected: command.expected_at, p_validate: command.action === "validateVisit",
       });
-      if (error?.message === "PARTNER_WORK_ROLE_REQUIRED") throw new HttpError(403, "La validation est réservée au responsable de l’entreprise.");
+      if (error?.message === "PARTNER_WORK_ROLE_REQUIRED") throw new HttpError(403, "Votre compte ne peut pas valider cette intervention.");
       if (error?.message === "PARTNER_VISIT_NOT_FOUND") throw new HttpError(404, "Cette intervention est introuvable.");
       if (error?.message === "PARTNER_VISIT_STATE_CHANGED") throw new HttpError(409, "L’intervention a évolué. Rouvrez la fiche pour retrouver son statut.");
       if (error) throw error;

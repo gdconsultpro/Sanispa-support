@@ -27,12 +27,16 @@ const sections = new Set([
 export function summaryPdfMode(choice?: string | null) {
   return choice === "intervention" ? "matchmaking" as const : "company" as const;
 }
-export async function buildSummaryPdf(input: string[], options: { mode?: "matchmaking" | "company" } = {}) {
+export async function buildSummaryPdf(input: string[], options: {
+  mode?: "matchmaking" | "company";
+  field?: { company: string; photos: Uint8Array[] };
+} = {}) {
   const matchmaking = options.mode === "matchmaking";
+  const field = options.field;
   const pdf = await PDFDocument.create();
-  pdf.setTitle("Résumé de demande d’assistance SANISPA");
-  pdf.setAuthor(matchmaking ? "Application SANISPA" : sanispaCompany.name);
-  pdf.setSubject("Déclaration client - pré-diagnostic de spa");
+  pdf.setTitle(field ? "Compte rendu d’intervention" : "Résumé de demande d’assistance SANISPA");
+  pdf.setAuthor(field?.company ?? (matchmaking ? "Application SANISPA" : sanispaCompany.name));
+  pdf.setSubject(field ? "Intervention technique sur spa" : "Déclaration client - pré-diagnostic de spa");
   const regular = await pdf.embedFont(StandardFonts.Helvetica),
     bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const logo = await pdf.embedPng(
@@ -104,7 +108,8 @@ export async function buildSummaryPdf(input: string[], options: { mode?: "matchm
       width: logo.width * scale,
       height: logo.height * scale,
     });
-    (matchmaking ? ["APPLICATION SANISPA", "Mise en relation avec un technicien", sanispaCompany.support] : [
+    (field ? ["Entreprise intervenante", ...wrap(field.company, bold, 10, 255).slice(0, 2)] :
+      matchmaking ? ["APPLICATION SANISPA", "Mise en relation avec un technicien", sanispaCompany.support] : [
       sanispaCompany.activity,
       sanispaCompany.address,
       `Standard : ${sanispaCompany.phone}`,
@@ -118,8 +123,8 @@ export async function buildSummaryPdf(input: string[], options: { mode?: "matchm
       thickness: 1,
       color: line,
     });
-    text(matchmaking ? "CONFIRMATION DE VOTRE DEMANDE" : "VOTRE DEMANDE D’ASSISTANCE", 48, 714, 10, bold, teal);
-    text(matchmaking ? "Rapport de mise en relation" : "Résumé de votre déclaration", 48, 689, 21, bold);
+    text(field ? "INTERVENTION TECHNIQUE" : matchmaking ? "CONFIRMATION DE VOTRE DEMANDE" : "VOTRE DEMANDE D’ASSISTANCE", 48, 714, 10, bold, teal);
+    text(field ? "Compte rendu d’intervention" : matchmaking ? "Rapport de mise en relation" : "Résumé de votre déclaration", 48, 689, 21, bold);
     y = 662;
   };
   const ensure = (height: number) => {
@@ -133,7 +138,7 @@ export async function buildSummaryPdf(input: string[], options: { mode?: "matchm
       y -= 8;
       continue;
     }
-    if (sections.has(raw)) {
+    if (sections.has(raw) || field && ["Intervention", "Constat sur place", "Travaux et contrôles effectués", "Suite à donner"].includes(raw)) {
       questionnaire = raw === "Réponses au questionnaire";
       ensure(72);
       y -= 8;
@@ -194,6 +199,21 @@ export async function buildSummaryPdf(input: string[], options: { mode?: "matchm
       y -= 5;
     }
   }
+  if (field?.photos.length) {
+    newPage();
+    text("Photos d’intervention", 48, y, 14, bold, teal);
+    y -= 30;
+    for (const [index, bytes] of field.photos.entries()) {
+      const photo = await pdf.embedJpg(bytes);
+      const scale = Math.min(499 / photo.width, 250 / photo.height, 1);
+      const height = photo.height * scale;
+      ensure(height + 36);
+      page.drawImage(photo, { x: 48, y: y - height, width: photo.width * scale, height });
+      y -= height + 15;
+      text(`Photo ${index + 1}`, 48, y, 9, regular, muted);
+      y -= 22;
+    }
+  }
   if (hasTitle) {
     ensure(92);
     y -= 6;
@@ -239,7 +259,7 @@ export async function buildSummaryPdf(input: string[], options: { mode?: "matchm
     });
     p.drawText(
       printable(
-        `${matchmaking ? "Application SANISPA" : "SANISPA"} | ${reference ? "Dossier " + reference + " | " : ""}${matchmaking ? sanispaCompany.support : sanispaCompany.phone}`,
+        `${matchmaking || field ? "Application SANISPA" : "SANISPA"} | ${reference ? "Dossier " + reference + " | " : ""}${matchmaking || field ? sanispaCompany.support : sanispaCompany.phone}`,
       ),
       { x: 48, y: 32, size: 8, font: regular, color: muted },
     );
