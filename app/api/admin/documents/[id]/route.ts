@@ -1,4 +1,5 @@
 import { attachmentDisposition } from "@/lib/documents";
+import { externalReportType } from "@/lib/client-external-report";
 import { adminDenied } from "@/lib/admin-auth";
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -13,7 +14,7 @@ export async function GET(_request: Request, { params }: {
     const { id } = await params;
     const supabase = getSupabaseAdmin();
     const { data: document, error } = await supabase.from("client_documents").select("*").eq("id", id).single();
-    if (error || !document)
+    if (error || !document || document.document_type === externalReportType)
         return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   if (document.storage_bucket === "moving-videos") {
     const signed = await supabase.storage.from("moving-videos").createSignedUrl(document.storage_path, 60, { download: document.file_name });

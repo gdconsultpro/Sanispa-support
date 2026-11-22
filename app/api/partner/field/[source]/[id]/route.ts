@@ -7,27 +7,20 @@ import { apiError, HttpError, readBytes, readJson } from "@/lib/http";
 import { interventionError, reportSchema } from "@/lib/interventions";
 import { processNotifications } from "@/lib/notifications";
 import { requirePartnerPlanner } from "@/lib/partner-auth";
-import { deliverFieldReport, fieldReportFilename } from "@/lib/partner-field-delivery";
-import type { FieldReport, FieldVisit } from "@/lib/partner-field";
-import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoKinds, fieldPhotoLabels, fieldReportRows, fieldTemplate, requiredFieldPhotos,
+import { deliverFieldReport } from "@/lib/partner-field-delivery";
+import { fieldReportFilename, type FieldReport, type FieldVisit } from "@/lib/partner-field";
+import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoKinds, fieldReportRows, fieldTemplate, requiredFieldPhotos,
   type FieldReportDetails } from "@/lib/partner-field-forms";
 import { fieldPhotoBucket, fieldPhotoPath, loadFieldPhotos } from "@/lib/partner-field-photos";
-import { hasSignatureStroke, maxSignaturePoints, maxSignatureStrokes, signatureHeight, signatureWidth } from "@/lib/partner-field-signature";
+import { buildFieldReportPdf, customerSignature } from "@/lib/partner-field-pdf";
 import { partnerClientAddress, partnerSpaOption } from "@/lib/partner-planner";
 import { privateWorkStatus, sanispaWorkStatus } from "@/lib/partner-workspace";
-import { buildSummaryPdf } from "@/lib/pdf";
 
 type Context = { params: Promise<{ source: string; id: string }> };
 const uuid = z.string().uuid();
 const timestamp = z.string().datetime({ offset: true });
 const emailAddress = z.string().trim().max(254).email();
 const headers = { "Cache-Control": "private, no-store" };
-const signaturePoint = z.tuple([z.number().int().min(0).max(signatureWidth), z.number().int().min(0).max(signatureHeight)]);
-const customerSignature = z.object({
-  name: z.string().trim().min(1).max(140).transform(name => name.replace(/\s+/g, " ")),
-  strokes: z.array(z.array(signaturePoint).min(2).max(maxSignaturePoints)).min(1).max(maxSignatureStrokes)
-    .refine(strokes => strokes.every(hasSignatureStroke) && strokes.reduce((count, stroke) => count + stroke.length, 0) <= maxSignaturePoints),
-}).strict();
 const fieldCommands = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start") }).strict(),
   reportSchema.extend({ session: uuid, details: z.record(z.string().max(5000)).optional(), signature: customerSignature.optional(),
@@ -39,7 +32,6 @@ const fieldCommands = z.discriminatedUnion("action", [
 ]);
 const spaFields = "id,brand,model,serial_number,updated_at";
 const sessions = "id,started_at,started_by,appointment_start,report_id,submitted_at,performed_at,findings,actions,next_steps,report_details,customer_signer:customer_signature->>name";
-const pdfDate = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" });
 
 async function fieldCase(request: Request, context: Context) {
   const { partner, supabase, user } = await requirePartnerPlanner(request);
@@ -190,44 +182,12 @@ async function loadFieldVisit(field: FieldCase, includePhotos: boolean): Promise
 }
 
 async function buildFieldVisitPdf(field: FieldCase, result: FieldVisit, report: FieldReport) {
-  const { supabase, partner, id } = field;
-  const session = await supabase.from("partner_field_sessions").select("id,customer_signature,submitted_at")
-    .eq("partner_id", partner.id).eq("report_id", report.id)
-    .eq(field.source === "private" ? "private_visit_id" : "diagnostic_id", id).maybeSingle();
-  if (session.error) throw session.error;
-  const photos: { bytes: Uint8Array; caption?: string }[] = [];
-  if (session.data) {
-    const sessionId = session.data.id;
-    const saved = await supabase.from("partner_field_photos").select("id,kind").eq("session_id", sessionId)
-      .neq("kind", "receipt").order("created_at").order("id");
-    if (saved.error) throw saved.error;
-    photos.push(...await Promise.all(saved.data.map(async photo => {
-      const asset = await supabase.storage.from(fieldPhotoBucket).download(fieldPhotoPath(partner.id, sessionId, photo.id));
-      if (asset.error) throw new HttpError(503, "Une photo est temporairement indisponible. Réessayez de télécharger le PDF.");
-      return { bytes: new Uint8Array(await asset.data.arrayBuffer()), caption: fieldPhotoLabels[z.enum(fieldPhotoKinds).parse(photo.kind)] };
-    })));
-  }
   const spa = result.spas.find(item => item.id === result.spaId);
-  return buildSummaryPdf([
-    "Intervention", ...(result.reference ? ["Numéro de dossier : " + result.reference] : []),
-    "Client : " + result.customer.name,
-    ...(result.customer.address ? ["Adresse : " + result.customer.address] : []),
-    "Date : " + pdfDate.format(new Date(report.performed_at)),
-    "Motif : " + result.title,
-    ...(report.details ? [
-      fieldForms[report.details.template].title,
-      ...fieldReportRows(report.details).map(row => row.label + " : " + row.value),
-    ] : [
-      "Spa : " + ((spa ? partnerSpaOption(spa) : result.declaredSpa) || "Non renseigné"),
-      "Constat sur place", report.findings,
-      "Travaux et contrôles effectués", report.actions,
-    ]),
-    "Suite à donner", report.next_steps,
-  ], { field: {
-    company: partner.company_name, photos, issuedAt: report.submitted_at,
-    signature: session.data?.customer_signature
-      ? { ...customerSignature.parse(session.data.customer_signature), signedAt: pdfDate.format(new Date(session.data.submitted_at)) } : undefined,
-  } });
+  return buildFieldReportPdf(field.supabase, {
+    source: field.source, visitId: field.id, partnerId: field.partner.id, company: field.partner.company_name,
+    customerName: result.customer.name, address: result.customer.address, title: result.title, reference: result.reference,
+    spa: spa ? partnerSpaOption(spa) : result.declaredSpa,
+  }, report);
 }
 
 export async function GET(request: Request, context: Context) {

@@ -1,4 +1,5 @@
 "use client";
+import { externalReportType } from "@/lib/client-external-report";
 import {
   statusLabel,
   problemLabel,
@@ -61,6 +62,7 @@ const emptyProfile: Profile = {
   spa_year: "",
 };
 const documentTypes = [
+  externalReportType,
   "Photo du spa",
   "Photo de la panne",
   "Facture d'achat",
@@ -264,7 +266,7 @@ export default function EspaceClientPage() {
       formData.append("file", selectedFile);
       formData.append("documentType", documentForm.documentType);
       formData.append("spaId", documentForm.spaId);
-      formData.append("diagnosticId", documentForm.diagnosticId);
+      if (documentForm.documentType !== externalReportType) formData.append("diagnosticId", documentForm.diagnosticId);
       const response = await fetch("/api/client/documents/upload", {
         method: "POST",
         headers: { ...(await authHeaders()) },
@@ -347,6 +349,7 @@ export default function EspaceClientPage() {
   const reportsToRead = diagnostics.filter(dossier => clientCaseProgress(dossier).needsAttention);
   const casesWithReports = diagnostics.filter(dossier => dossier.reports?.length);
   const latestDocument = documents.find(document => document.kind === "uploaded" && document.issuedBy !== "client");
+  const externalReport = documentForm.documentType === externalReportType;
   const pendingInvoice = reportsToRead.find(dossier => !dossier.invoices?.length);
   if (loading) {
     return (
@@ -501,21 +504,17 @@ export default function EspaceClientPage() {
           <section>
             <h2 className="mb-2 text-xl font-bold">Rapports d’intervention</h2>
             <div className="grid gap-3 md:grid-cols-2">
-              {casesWithReports.map(dossier => {
-                const action = clientCaseProgress(dossier);
-                return (
-                  <article key={dossier.id} className="min-w-0 rounded-xl border border-sanispa-line bg-white p-4">
-                    <h3 className="break-words font-bold">{problemLabel(dossier.problem_type)}</h3>
-                    <p className="mt-1 text-sm">Dossier n°{dossier.public_reference || "Référence en cours"}</p>
-                    <div className="mt-3">
-                      <ButtonLink href={action.needsAttention ? action.href : `/espace-client/interventions/${dossier.id}#rapport`}
-                        variant={action.needsAttention ? "primary" : "secondary"}>
-                        {action.needsAttention ? "Valider le rapport" : "Lire le compte rendu"}
-                      </ButtonLink>
-                    </div>
-                  </article>
-                );
-              })}
+              {casesWithReports.map(dossier => (
+                <article key={dossier.id} className="min-w-0 rounded-xl border border-sanispa-line bg-white p-4">
+                  <h3 className="break-words font-bold">{problemLabel(dossier.problem_type)}</h3>
+                  <p className="mt-1 text-sm">Dossier n°{dossier.public_reference || "Référence en cours"}</p>
+                  <div className="mt-3">
+                    <ButtonLink href={`/espace-client/interventions/${dossier.id}#rapport`} variant="secondary">
+                      Lire le compte rendu
+                    </ButtonLink>
+                  </div>
+                </article>
+              ))}
             </div>
             {pendingInvoice ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm">La facture du dossier n°{pendingInvoice.public_reference || "en cours"} doit encore être déposée avant de clôturer une réparation.</p> : null}
           </section>
@@ -591,7 +590,7 @@ export default function EspaceClientPage() {
           {message ? <p role="status" className="mt-3 rounded-md bg-green-50 p-3 text-sm font-bold text-green-700">{message}</p> : null}
 
           <details className="my-4 rounded-xl border border-sanispa-line bg-sanispa-ice p-4">
-            <summary className="focus-ring cursor-pointer font-bold">Ajouter un document</summary>
+            <summary className="focus-ring cursor-pointer font-bold">Ajouter un document ou un rapport externe</summary>
           <form
             onSubmit={uploadDocument}
             className="mt-4 grid gap-4 rounded-md border border-dashed border-sanispa-line bg-sanispa-ice p-4"
@@ -624,7 +623,7 @@ export default function EspaceClientPage() {
                   label: [spa.brand, spa.model].filter(Boolean).join(" - "),
                 }))}
               />
-              <SelectField
+              {!externalReport ? <SelectField
                 label="Dossier SAV lié (facultatif)"
                 name="diagnosticId"
                 value={documentForm.diagnosticId}
@@ -638,9 +637,10 @@ export default function EspaceClientPage() {
                   value: diagnostic.id,
                   label: `Dossier ${diagnostic.public_reference || "Référence en cours"} - ${problemLabel(diagnostic.problem_type)}`,
                 }))}
-              />
+              /> : null}
             </div>
 
+            {externalReport ? <p className="text-sm text-sanispa-steel">Ajoutez ici le PDF reçu après une intervention organisée directement avec un professionnel. Le rapport est enregistré dans votre espace personnel.</p> : null}
             <label
               onDrop={(event) => {
                 event.preventDefault();
@@ -651,11 +651,12 @@ export default function EspaceClientPage() {
             >
               {selectedFile
                 ? selectedFile.name
-                : "Déposez un fichier ici ou cliquez pour le sélectionner (PDF, JPG, PNG, HEIC, HEIF ou Word ; 3 Mo maximum)."}
+                : externalReport ? "Sélectionnez le rapport (PDF, 3 Mo maximum)."
+                  : "Déposez un fichier ici ou cliquez pour le sélectionner (PDF, JPG, PNG, HEIC, HEIF ou Word, 3 Mo maximum)."}
               <input
                 className="hidden"
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.doc,.docx,application/pdf,image/jpeg,image/png,image/heic,image/heif,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept={externalReport ? ".pdf,application/pdf" : ".pdf,.jpg,.jpeg,.png,.heic,.heif,.doc,.docx,application/pdf,image/jpeg,image/png,image/heic,image/heif,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
                 onChange={(event) =>
                   setSelectedFile(event.target.files?.[0] ?? null)
                 }

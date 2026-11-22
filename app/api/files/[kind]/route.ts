@@ -4,6 +4,7 @@ import { adminToken } from "@/lib/admin-auth";
 import { verifySessionToken } from "@/lib/session-auth";
 import { apiError, HttpError } from "@/lib/http";
 import { attachmentDisposition } from "@/lib/documents";
+import { externalReportType } from "@/lib/client-external-report";
 
 export async function GET(
   request: Request,
@@ -105,10 +106,12 @@ export async function GET(
         throw new HttpError(404, "Fichier introuvable.");
       const { data, error } = await supabase
         .from("client_documents")
-        .select("diagnostic_id,user_id,storage_bucket,storage_path,file_name")
+        .select("diagnostic_id,user_id,storage_bucket,storage_path,file_name,document_type")
         .eq("id", selected)
         .maybeSingle();
       if (error || !data) throw new HttpError(404, "Fichier introuvable.");
+      if (data.document_type === externalReportType && data.user_id !== session.user.id)
+        throw new HttpError(404, "Fichier introuvable.");
       diagnosticId = data.diagnostic_id;
       owner = data.user_id;
       bucket = data.storage_bucket;

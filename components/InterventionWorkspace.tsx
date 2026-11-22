@@ -9,9 +9,10 @@ import { localDateTime } from "@/lib/client-browser-api";
 import { partnerLoginPath } from "@/lib/partner-navigation";
 import { clientCaseLoginPath, clientCaseReturnPath, clientDossierPath } from "@/lib/client-case-navigation";
 import { partnerWorkLabels, partnerWorkState } from "@/lib/partner-work";
-import type { FieldPhoto } from "@/lib/partner-field";
+import { fieldReportFilename, type FieldPhoto } from "@/lib/partner-field";
 type Report = { id: string; performed_at: string; submitted_at: string; findings: string; actions: string; next_steps: string; client_validated_at: string | null;
-  client_outcome: "repaired" | "quote_pending" | "abandoned" | null; responsiveness: number | null; professionalism: number | null; pricing: number | null };
+  client_outcome: "repaired" | "quote_pending" | "abandoned" | null; responsiveness: number | null; professionalism: number | null; pricing: number | null;
+  signedPdf?: boolean };
 type Workspace = { dossierReference?: string; dossierStatus?: string; assignedPartner?: boolean; appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[]; job?: PartnerAssignedVisit };
 const outcomes = { repaired: "Spa réparé", quote_pending: "Devis en cours", abandoned: "Projet abandonné" } as const;
 const criteria = [{ key: "responsiveness", label: "Réactivité" }, { key: "professionalism", label: "Professionnalisme" }, { key: "pricing", label: "Tarif" }] as const;
@@ -181,6 +182,8 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
         {!data.reports.length ? <p className="mt-3">{role === "client" ? "Aucun compte rendu disponible pour cette demande." : "Le compte rendu sera disponible après l’intervention."}</p> : null}
         {data.reports.map(report => <article className="mt-4 rounded-xl bg-sanispa-ice p-4" key={report.id}>
           <h3 className="font-bold">Intervention du {new Date(report.performed_at).toLocaleString("fr-FR")}</h3>
+          {role === "client" && report.signedPdf ? <PrivateFile
+            url={base + "?rapport=" + report.id} name={fieldReportFilename(report.id)} label="Télécharger le PDF signé" /> : null}
           <dl className="mt-3 grid gap-2"><dt className="font-bold">Constats</dt><dd className="whitespace-pre-wrap break-words">{report.findings}</dd><dt className="font-bold">Travaux et contrôles effectués</dt><dd className="whitespace-pre-wrap break-words">{report.actions}</dd><dt className="font-bold">Suite prévue</dt><dd className="whitespace-pre-wrap break-words">{report.next_steps}</dd></dl>
           <p className="mt-3 font-bold">{report.client_validated_at && report.client_outcome ? `${outcomes[report.client_outcome]} · Validé par le client` : "En attente de validation par le client"}</p>
           {role === "client" ? <ClientReportPhotos load={() => request(base + "?photos=" + report.id)} /> : null}

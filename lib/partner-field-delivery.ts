@@ -1,11 +1,8 @@
 import { createHash } from "node:crypto";
 import { sendFieldReportPdfEmail } from "./email";
 import { HttpError } from "./http";
+import { fieldReportFilename } from "./partner-field";
 import type { getSupabaseAdmin } from "./supabase";
-
-export function fieldReportFilename(reportId: string) {
-  return `compte-rendu-${reportId.slice(0, 8)}.pdf`;
-}
 
 export async function deliverFieldReport(
   supabase: ReturnType<typeof getSupabaseAdmin>,

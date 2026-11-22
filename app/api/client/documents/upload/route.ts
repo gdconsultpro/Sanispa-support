@@ -5,6 +5,7 @@ import { apiError, readBytes } from "@/lib/http";
 import { validateDocument } from "@/lib/documents";
 import { rateLimit } from "@/lib/client-auth";
 import { randomUUID } from "node:crypto";
+import { externalReportType } from "@/lib/client-external-report";
 const maxSize = 3 * 1024 * 1024;
 export async function POST(request: Request) {
   try {
@@ -19,8 +20,10 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     validateDocument(file.name, file.type, buffer);
     const documentType = String(formData.get("documentType") || "Autre document").slice(0,100);
+    if (documentType === externalReportType && file.type !== "application/pdf")
+        return NextResponse.json({ error: "Sélectionnez le compte rendu au format PDF." }, { status: 400 });
     const spaId = String(formData.get("spaId") || "") || null;
-    const diagnosticId = String(formData.get("diagnosticId") || "") || null;
+    const diagnosticId = documentType === externalReportType ? null : String(formData.get("diagnosticId") || "") || null;
     if (spaId) {
         const { data, error } = await supabase.from("customer_spas").select("id").eq("id", spaId).eq("user_id", user.id).maybeSingle();
         if (error || !data)

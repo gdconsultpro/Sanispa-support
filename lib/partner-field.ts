@@ -3,6 +3,9 @@ import type { FieldPhotoKind, FieldReportDetails, FieldTemplate } from "./partne
 import type { PartnerWorkStatus } from "./partner-workspace";
 
 export type FieldSource = "private" | "sanispa";
+export function fieldReportFilename(reportId: string) {
+  return `compte-rendu-${reportId.slice(0, 8)}.pdf`;
+}
 export type FieldReport = {
   id: string; performed_at: string; findings: string; actions: string; next_steps: string;
   submitted_at: string; client_validated_at?: string | null;

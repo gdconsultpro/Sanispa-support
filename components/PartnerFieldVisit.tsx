@@ -13,7 +13,7 @@ import { localDateTime } from "@/lib/client-browser-api";
 import { compressPhoto } from "@/lib/compress-photo";
 import { downloadBlob } from "@/lib/download";
 import { partnerAuthError } from "@/lib/partner-browser";
-import type { FieldReport, FieldSource, FieldVisit } from "@/lib/partner-field";
+import { fieldReportFilename, type FieldReport, type FieldSource, type FieldVisit } from "@/lib/partner-field";
 import type { SignatureStrokes } from "@/lib/partner-field-signature";
 import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoLabels, fieldReportRows, requiredFieldPhotos,
   type FieldPhotoKind } from "@/lib/partner-field-forms";
@@ -152,7 +152,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
     setError("");
     try {
       const pdf = await plannerDownload(base + "?" + new URLSearchParams({ rapport: reportId }));
-      if (pdf) downloadBlob(pdf, `compte-rendu-${reportId.slice(0, 8)}.pdf`);
+      if (pdf) downloadBlob(pdf, fieldReportFilename(reportId));
     } catch (cause) { setError(partnerAuthError(cause)); }
     finally { setDownloading(null); }
   }

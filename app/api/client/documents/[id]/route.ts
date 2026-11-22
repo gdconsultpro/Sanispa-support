@@ -43,6 +43,7 @@ export async function GET(
     headers: {
       "Content-Type": document.mime_type,
       "Content-Disposition": attachmentDisposition(document.file_name),
+      "Cache-Control": "private, no-store",
     },
   });
 }
