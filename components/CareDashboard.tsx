@@ -22,12 +22,18 @@ type Care = {
 };
 const input = "mt-2 w-full min-w-0 rounded-xl border border-sanispa-line bg-white p-3";
 const careKinds = { vidange: "Vidange", filtre: "Filtre", consommables: "Consommables", observation: "Observation" };
+const reminderTypes = [
+  { value: "vidange", kind: "vidange", label: "Vidange" },
+  { value: "nettoyage", kind: "filtre", label: "Nettoyage du filtre" },
+  { value: "remplacement", kind: "filtre", label: "Remplacement des filtres" },
+  { value: "reapprovisionnement", kind: "consommables", label: "Rachat de produits d’entretien" },
+] as const;
 const reminderLimits = { days: 3650, months: 120, years: 10 };
 type ReminderSchedule = { date: string; unit: "once" | keyof typeof reminderLimits; count: string };
 const emptySchedule: ReminderSchedule = { date: "", unit: "once", count: "1" };
 
 function scheduleFor(reminder: Reminder): ReminderSchedule {
-  const date = localDateTime(new Date(reminder.due_at));
+  const date = localDateTime(new Date(reminder.due_at)).slice(0, 10);
   if (reminder.repeat_days) return { date, unit: "days", count: String(reminder.repeat_days) };
   if (reminder.repeat_months) return { date, unit: "months", count: String(reminder.repeat_months) };
   if (reminder.repeat_years) return { date, unit: "years", count: String(reminder.repeat_years) };
@@ -36,10 +42,12 @@ function scheduleFor(reminder: Reminder): ReminderSchedule {
 
 function schedulePayload(schedule: ReminderSchedule, reminder?: Reminder) {
   const count = Number(schedule.count);
+  const previous = reminder ? localDateTime(new Date(reminder.due_at)) : null;
+  const time = previous?.slice(11) ?? "00:00";
   return {
-    date: reminder && schedule.date === localDateTime(new Date(reminder.due_at))
+    date: reminder && schedule.date === previous?.slice(0, 10)
       ? reminder.due_at
-      : new Date(schedule.date).toISOString(),
+      : new Date(`${schedule.date}T${time}`).toISOString(),
     repeatDays: schedule.unit === "days" ? count : null,
     repeatMonths: schedule.unit === "months" ? count : null,
     repeatYears: schedule.unit === "years" ? count : null,
@@ -54,7 +62,7 @@ function ScheduleFields({ schedule, onChange, dateInput }: {
   return (
     <>
       <label>Date du rappel
-        <input ref={dateInput} className={input} type="datetime-local" required value={schedule.date}
+        <input ref={dateInput} className={input} type="date" required value={schedule.date}
           onChange={event => onChange({ ...schedule, date: event.target.value })} />
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -91,7 +99,7 @@ function reminderFrequency(reminder: Reminder) {
 export function CareDashboard({ view = "carnet" }: { view?: "carnet" | "releves" }) {
   const [data, setData] = useState<Care | null>(null), [spaId, setSpaId] = useState(""), [error, setError] = useState(""), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
   const [date, setDate] = useState(""), [kind, setKind] = useState("observation"), [note, setNote] = useState("");
-  const [reminderKind, setReminderKind] = useState("filtre"), [title, setTitle] = useState("");
+  const [reminderType, setReminderType] = useState("");
   const [schedule, setSchedule] = useState(emptySchedule);
   const [editing, setEditing] = useState<{ reminder: Reminder; schedule: ReminderSchedule } | null>(null);
   const editDate = useRef<HTMLInputElement>(null);
@@ -132,12 +140,17 @@ export function CareDashboard({ view = "carnet" }: { view?: "carnet" | "releves"
   const reminders = data?.reminders.filter(r => r.spa_id === spaId) || [];
   function addReminder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const type = reminderTypes.find(option => option.value === reminderType);
+    if (!type) return;
     void save({
       action: "reminder",
       spaId,
-      kind: reminderKind,
-      title,
+      kind: type.kind,
+      title: type.label,
       ...schedulePayload(schedule),
+    }, () => {
+      setReminderType("");
+      setSchedule(emptySchedule);
     });
   }
   function editReminder(event: React.FormEvent<HTMLFormElement>) {
@@ -162,7 +175,18 @@ export function CareDashboard({ view = "carnet" }: { view?: "carnet" | "releves"
       <fieldset disabled={busy || !spaId} className="grid min-w-0 grid-cols-1 gap-5">
       {!spaId ? <p className="rounded-xl bg-sanispa-ice p-4 text-sm">Vos tableaux sont prêts. Ajoutez votre spa ci-dessus pour saisir votre première information.</p> : null}
       {view === "carnet" ? <>
-      <section className="min-w-0 rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Mes prochains rappels</h2><p className="mt-2 text-sm leading-6">Choisissez les dates et les fréquences adaptées à votre notice et à votre utilisation. Les rappels apparaissent ici et peuvent être envoyés par e-mail.</p>
+      <section className="min-w-0 rounded-2xl border border-sanispa-line bg-white p-5">
+        <h2 id="reminders-title" className="sanispa-display-title text-2xl">Mes rappels</h2>
+        {!editing ? <form aria-labelledby="reminders-title" className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={addReminder}>
+          <label>Type de rappel
+            <select className={`${input} text-sm sm:text-base`} required value={reminderType} onChange={e => setReminderType(e.target.value)}>
+              <option value="" disabled>Choisir un type</option>
+              {reminderTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+          </label>
+          <ScheduleFields schedule={schedule} onChange={setSchedule} />
+          <Button disabled={busy} type="submit">Ajouter mon rappel</Button>
+        </form> : null}
         {editing ? (
           <form onSubmit={editReminder} aria-labelledby="edit-reminder-title" className="mt-4 grid gap-4 rounded-xl border border-sanispa-line bg-sanispa-ice p-4 sm:grid-cols-2">
             <h3 id="edit-reminder-title" className="font-bold sm:col-span-2">Modifier le rappel « {editing.reminder.title} »</h3>
@@ -174,17 +198,12 @@ export function CareDashboard({ view = "carnet" }: { view?: "carnet" | "releves"
             </div>
           </form>
         ) : null}
-        <div className="mt-4 max-w-full overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><caption className="mb-3 text-left font-bold">Tableau de mes rappels</caption><thead><tr>{["À prévoir", "Date", "Répétition", "Actions"].map(c => <th key={c} className="p-3">{c}</th>)}</tr></thead><tbody>{reminders.map(r => <tr key={r.id} className={`border-t border-sanispa-line ${Date.parse(r.due_at) <= Date.now() ? "bg-amber-50" : ""}`}><td className="p-3 font-bold">{r.title}</td><td className="p-3">{new Date(r.due_at).toLocaleString("fr-FR")}</td><td className="p-3">{reminderFrequency(r)}</td><td className="p-3"><Button disabled={busy} onClick={() => void save({ action: "complete", id: r.id, version: r.version })}>C’est fait</Button><button type="button" className="focus-ring mt-2 block underline" aria-label={`Modifier le rappel ${r.title}`} onClick={() => {
+        <div className="mt-6 max-w-full overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><caption className="mb-3 text-left font-bold">Mes prochains rappels</caption><thead><tr>{["Rappel", "Date", "Répétition", "Actions"].map(c => <th key={c} className="p-3">{c}</th>)}</tr></thead><tbody>{reminders.map(r => <tr key={r.id} className={`border-t border-sanispa-line ${Date.parse(r.due_at) <= Date.now() ? "bg-amber-50" : ""}`}><td className="p-3 font-bold">{r.title}</td><td className="p-3"><time dateTime={r.due_at}>{new Date(r.due_at).toLocaleDateString("fr-FR", { dateStyle: "medium" })}</time></td><td className="p-3">{reminderFrequency(r)}</td><td className="p-3"><Button disabled={busy} onClick={() => void save({ action: "complete", id: r.id, version: r.version })}>C’est fait</Button><button type="button" className="focus-ring mt-2 block underline" aria-label={`Modifier le rappel ${r.title}`} onClick={() => {
           setError("");
           setMessage("");
           setEditing({ reminder: r, schedule: scheduleFor(r) });
-        }}>Modifier</button><button type="button" disabled={busy} className="mt-2 block underline" onClick={() => void save({ action: "delete", type: "reminder", id: r.id })}>Supprimer ce rappel</button></td></tr>)}</tbody></table>{!reminders.length ? <p className="py-4 text-sm">Aucun rappel enregistré. Ajoutez le premier ci-dessous.</p> : null}</div>
-        {!editing ? <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={addReminder}>
-          <label>Type de rappel<select className={input} value={reminderKind} onChange={e => setReminderKind(e.target.value)}>{Object.entries(careKinds).filter(([k]) => k !== "observation").map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-          <label>À prévoir<input className={input} required minLength={3} maxLength={200} value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex. nettoyer les filtres" /></label>
-          <ScheduleFields schedule={schedule} onChange={setSchedule} />
-          <Button disabled={busy} type="submit">Ajouter mon rappel</Button>
-        </form> : null}<div className="mt-5"><ShopLinks problemType="traitement-eau" /></div>
+        }}>Modifier</button><button type="button" disabled={busy} className="mt-2 block underline" onClick={() => void save({ action: "delete", type: "reminder", id: r.id })}>Supprimer ce rappel</button></td></tr>)}</tbody></table>{!reminders.length ? <p className="py-4 text-sm">Aucun rappel enregistré.</p> : null}</div>
+        <div className="mt-5"><ShopLinks problemType="traitement-eau" /></div>
       </section>
       <section className="min-w-0 rounded-2xl border border-sanispa-line bg-white p-5"><h2 className="text-xl font-bold">Mon journal de bord</h2><form className="mt-4 grid gap-4" onSubmit={e => { e.preventDefault(); void save({ action: "journal", spaId, kind, date: new Date(date).toISOString(), note }); }}>
         <label>Ce que j’ai fait ou observé<select className={input} value={kind} onChange={e => setKind(e.target.value)}>{Object.entries(careKinds).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></label>

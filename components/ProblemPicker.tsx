@@ -1,42 +1,22 @@
 "use client";
-import {
-  Droplets,
-  PlugZap,
-  Waves,
-  Fan,
-  Thermometer,
-  PanelTop,
-  Filter,
-  Volume2,
-  CircleHelp,
-  Truck,
-} from "lucide-react";
+import { useId } from "react";
 import { problemTypes } from "@/lib/questions";
 import type { ProblemType } from "@/lib/types";
-const icons = [
-  Droplets,
-  PlugZap,
-  Waves,
-  Fan,
-  Thermometer,
-  PanelTop,
-  Filter,
-  Volume2,
-  CircleHelp,
-  Truck,
-];
-const examples = [
-  "De l’eau s’échappe ou le niveau baisse",
-  "Plus de courant ou une protection déclenche",
-  "Eau trouble, mousse, odeur ou analyse",
-  "Une pompe ou des jets ne fonctionnent plus",
-  "L’eau ne chauffe pas ou chauffe trop",
-  "Affichage ou commandes qui ne répondent plus",
-  "L’eau circule mal ou le cycle semble anormal",
-  "Un bruit nouveau ou inhabituel",
-  "Éclairage, soufflerie, accessoires…",
-  "Transport, accès de départ et d’arrivée",
-];
+
+// The position identifies the corresponding square in the shared 3 × 4 photo sheet.
+const previews: Record<ProblemType, { detail: string; position: string }> = {
+  fuite: { detail: "De l’eau s’échappe ou le niveau baisse.", position: "0 0" },
+  electrique: { detail: "Le spa ne s’allume plus ou le disjoncteur se déclenche.", position: "50% 0" },
+  "traitement-eau": { detail: "Eau trouble, mousse, odeur ou résultats d’analyse.", position: "100% 0" },
+  pompe: { detail: "Une pompe ou des jets ne fonctionnent plus.", position: "0 33.333%" },
+  chauffage: { detail: "L’eau reste froide ou chauffe trop.", position: "50% 33.333%" },
+  "clavier-ecran": { detail: "L’écran ou les commandes ne répondent plus.", position: "100% 33.333%" },
+  filtration: { detail: "L’eau circule mal ou le cycle semble anormal.", position: "0 66.667%" },
+  "bruit-anormal": { detail: "Vous entendez un bruit nouveau ou inhabituel.", position: "50% 66.667%" },
+  autre: { detail: "Éclairage, soufflerie, accessoires ou symptôme difficile à identifier.", position: "100% 66.667%" },
+  demenagement: { detail: "Transport du spa et accès aux deux adresses.", position: "0 100%" },
+};
+
 export function ProblemPicker({
   value,
   onChange,
@@ -44,38 +24,41 @@ export function ProblemPicker({
   value: ProblemType | "";
   onChange: (value: ProblemType) => void;
 }) {
+  const id = useId();
   return (
-    <fieldset className="col-span-full">
-      <legend className="mb-2 text-xl font-bold">
-        Que se passe-t-il avec votre spa ? *
+    <fieldset className="min-w-0" aria-describedby={id + "-hint"}>
+      <legend className="sanispa-display-title mb-2 text-2xl leading-tight sm:text-3xl">
+        Que se passe-t-il avec votre spa ?
       </legend>
-      <p className="mb-4 text-sm text-sanispa-steel">
-        Choisissez le symptôme principal. Pas besoin d’en connaître la cause.
+      <p id={id + "-hint"} className="mb-4 text-sm leading-relaxed text-sanispa-steel">
+        Choisissez le symptôme principal. Décrivez simplement ce que vous observez.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {problemTypes.map((problem, index) => {
-          const Icon = icons[index];
+      <div className="problem-options">
+        {problemTypes.map(problem => {
+          const label = id + "-" + problem.value;
+          const preview = previews[problem.value];
           return (
-            <label
-              key={problem.value}
-              className={`problem-card ${value === problem.value ? "is-selected" : ""}`}
-            >
+            <label key={problem.value} className="problem-option">
+              <span className="problem-option__photo" style={{ backgroundPosition: preview.position }} aria-hidden="true" />
+              <span className="min-w-0">
+                <span id={label} className="block text-sm font-semibold leading-5 text-sanispa-navy sm:text-base sm:leading-6">
+                  {problem.label}
+                </span>
+                <span id={label + "-details"} className="mt-1 block text-xs leading-relaxed text-sanispa-steel sm:text-sm">
+                  {preview.detail}
+                </span>
+              </span>
               <input
-                className="peer sr-only"
+                className="problem-option__radio"
                 type="radio"
                 name="problemType"
                 value={problem.value}
+                aria-labelledby={label}
+                aria-describedby={label + "-details"}
                 checked={value === problem.value}
                 required
                 onChange={() => onChange(problem.value)}
               />
-              <span className="flex items-center gap-3 font-bold peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-sanispa-blue">
-                <Icon size={23} aria-hidden="true" />
-                {problem.label}
-              </span>
-              <span className="mt-2 block text-sm leading-6 text-sanispa-steel">
-                {examples[index]}
-              </span>
             </label>
           );
         })}

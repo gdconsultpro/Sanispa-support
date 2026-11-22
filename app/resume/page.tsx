@@ -92,9 +92,9 @@ export default function ResumePage() {
     }
   }
 
-  if (!draft.problemType) return <AppShell compact><p role="status">Chargement de votre demande…</p></AppShell>;
+  if (!draft.problemType) return <AppShell compact declarationFlow><p role="status">Chargement de votre demande…</p></AppShell>;
 
-  return <AppShell compact>
+  return <AppShell compact declarationFlow>
     <div className="mx-auto max-w-3xl">
       <StepHeader eyebrow={moving ? "Étape 3" : "Étape 4"}
         labels={moving ? ["Le transport", "Photos et vidéos", "La validation"] : undefined}

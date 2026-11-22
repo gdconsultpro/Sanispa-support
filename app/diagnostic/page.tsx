@@ -35,7 +35,7 @@ export default function DiagnosticPage() {
   return (
     <Suspense
       fallback={
-        <AppShell compact>
+        <AppShell compact declarationFlow>
           <div className="rounded-md border border-sanispa-line bg-white p-5 text-sanispa-steel">
             Chargement du formulaire...
           </div>
@@ -209,7 +209,7 @@ function DiagnosticContent() {
       <Field label="Année approximative si connue" name="spaYear" value={draft.spaYear} onChange={value => update("spaYear", value)} />
     </div>
   );
-  if (confirmNew) return <AppShell compact>
+  if (confirmNew) return <AppShell compact declarationFlow>
     <section className="max-w-xl rounded-2xl border border-sanispa-line bg-white p-5">
       <h1 className="text-2xl font-bold">Une déclaration est déjà en cours</h1>
       <p className="my-3">Reprenez votre brouillon ou remplacez-le par une nouvelle demande.</p>
@@ -223,77 +223,79 @@ function DiagnosticContent() {
       </div>
     </section>
   </AppShell>;
-  if (!ready) return <AppShell compact><p role="status">Chargement de votre déclaration…</p></AppShell>;
+  if (!ready) return <AppShell compact declarationFlow><p role="status">Chargement de votre déclaration…</p></AppShell>;
   return (
-    <AppShell compact>
-      <StepHeader
-        eyebrow="Étape 1"
-        labels={moving ? ["Le transport", "Photos et vidéos", "La validation"] : undefined}
-        title={moving ? "Préparer le déménagement de mon spa" : "Déclarer une panne"}
-        description={moving ? "Décrivez le spa, le trajet et les accès aux deux adresses. Vos photos et vidéos permettront à SANISPA d’étudier la faisabilité et de préparer un devis. Aucune réservation ni facturation à cette étape." : accountEmail ? "Choisissez la panne et le spa concerné. Vous pourrez vérifier vos coordonnées avant l’envoi." : "Choisissez le symptôme pour commencer. Vous pourrez décrire la panne avant de créer votre compte."}
-      />
-      <DraftSave draft={draft} step="/diagnostic" sync={Boolean(accountEmail && draft.email === accountEmail)} />
-      <BackLink href="/espace-client" label="Retour à mon espace client" />
+    <AppShell compact declarationFlow>
+      <div className="mx-auto max-w-5xl">
+        <StepHeader
+          eyebrow="Étape 1"
+          labels={moving ? ["Le transport", "Photos et vidéos", "La validation"] : undefined}
+          title={moving ? "Préparer le déménagement de mon spa" : "Déclarer une panne"}
+          description={moving ? "Décrivez le spa, le trajet et les accès aux deux adresses. Vos photos et vidéos permettront à SANISPA d’étudier la faisabilité et de préparer un devis. Aucune réservation ni facturation à cette étape." : accountEmail ? "Vous pourrez vérifier vos coordonnées avant l’envoi." : "Vous pourrez décrire la panne avant de créer votre compte."}
+        />
+        <DraftSave draft={draft} step="/diagnostic" sync={Boolean(accountEmail && draft.email === accountEmail)} />
+        <BackLink href="/espace-client" label="Retour à mon espace client" />
 
-      <form
-        onSubmit={submit}
-        className="space-y-5 rounded-md border border-sanispa-line bg-white p-4 shadow-soft sm:p-6"
-      >
-        {moving ? <p className="rounded-xl bg-sanispa-ice p-4 font-bold">Déménagement de spa · Étude de faisabilité et devis</p> : <ProblemPicker
-          value={draft.problemType}
-          onChange={(value) => update("problemType", value)}
-        />}
-        {!publicBreakdown ? <>
-        <h2 className="border-t border-sanispa-line pt-6 text-xl font-bold">
-          {moving ? "Vos coordonnées et le lieu d’enlèvement" : showContact ? "Votre spa et vos coordonnées" : "Le spa concerné"}
-        </h2>
-        {spas.length > 0 ? (
-          <SelectField
-            label="Choisir le spa concerné"
-            name="selectedSpa"
-            value={selectedSpa?.id || (manualSpa ? "autre" : "")}
-            onChange={selectSpa}
-            required={Boolean(accountEmail)}
-            options={[...spas.map((spa) => ({
-              value: spa.id,
-              label: [spa.brand, spa.model, spa.spa_year]
-                .filter(Boolean)
-                .join(" - "),
-            })), { value: "autre", label: "Un autre spa" }]}
-          />
-        ) : null}
+        <form
+          onSubmit={submit}
+          className="space-y-6 rounded-xl border border-sanispa-line bg-white px-4 py-5 sm:px-8 sm:py-8"
+        >
+          {moving ? <p className="rounded-xl bg-sanispa-ice p-4 font-bold">Déménagement de spa · Étude de faisabilité et devis</p> : <ProblemPicker
+            value={draft.problemType}
+            onChange={(value) => update("problemType", value)}
+          />}
+          {!publicBreakdown ? <>
+          <h2 className="sanispa-display-title text-2xl">
+            {moving ? "Vos coordonnées et le lieu d’enlèvement" : showContact ? "Votre spa et vos coordonnées" : "Le spa concerné"}
+          </h2>
+          {spas.length > 0 ? (
+            <SelectField
+              label="Choisir le spa concerné"
+              name="selectedSpa"
+              value={selectedSpa?.id || (manualSpa ? "autre" : "")}
+              onChange={selectSpa}
+              required={Boolean(accountEmail)}
+              options={[...spas.map((spa) => ({
+                value: spa.id,
+                label: [spa.brand, spa.model, spa.spa_year]
+                  .filter(Boolean)
+                  .join(" - "),
+              })), { value: "autre", label: "Un autre spa" }]}
+            />
+          ) : null}
 
-        {showContact ? <DiagnosticContactFields draft={draft} moving={moving} readOnlyEmail={Boolean(accountEmail)} onChange={update} /> : null}
-        {showSpaFields || selectedSpa ? (
-          <div className="space-y-4">
-            {showInstallation ? installationField : null}
-            {accountEmail && !moving ? (
-              <details key={draft.spaId || "autre"} className="rounded-xl border border-sanispa-line p-4">
-                <summary className="cursor-pointer font-bold">{selectedSpa ? "Modifier les infos du spa pour cette demande" : "Ajouter la marque, le modèle ou l’année"}</summary>
-                <div className="mt-4 space-y-4">
-                  {spaFields}
-                  {!showInstallation ? installationField : null}
-                </div>
-              </details>
-            ) : spaFields}
-          </div>
-        ) : null}
+          {showContact ? <DiagnosticContactFields draft={draft} moving={moving} readOnlyEmail={Boolean(accountEmail)} onChange={update} /> : null}
+          {showSpaFields || selectedSpa ? (
+            <div className="space-y-4">
+              {showInstallation ? installationField : null}
+              {accountEmail && !moving ? (
+                <details key={draft.spaId || "autre"} className="rounded-xl border border-sanispa-line p-4">
+                  <summary className="cursor-pointer font-bold">{selectedSpa ? "Modifier les infos du spa pour cette demande" : "Ajouter la marque, le modèle ou l’année"}</summary>
+                  <div className="mt-4 space-y-4">
+                    {spaFields}
+                    {!showInstallation ? installationField : null}
+                  </div>
+                </details>
+              ) : spaFields}
+            </div>
+          ) : null}
 
-        </> : null}
+          </> : null}
 
-        {moving ? <div className="space-y-5 border-t border-sanispa-line pt-6">{questionSets.demenagement.filter(q => isQuestionVisible(q, draft.answers, questionSets.demenagement)).map(q => <div key={q.id} className="space-y-3">{q.section ? <h2 className="text-xl font-bold">{q.section}</h2> : null}<DiagnosticQuestion question={q} value={draft.answers[q.id]} onChange={value => { setError(""); setDraft(current => ({ ...updateDiagnosticAnswer(current, q.id, value), ...(q.id === "moving_departure" ? { address: String(value) } : {}) })); }} /></div>)}<p className="rounded-xl bg-sanispa-ice p-4 text-sm leading-6">Ne déplacez pas le spa pour répondre. Le poids, les dimensions et les moyens de levage seront confirmés par le professionnel avant le transport.</p></div> : null}
-        {error ? (
-          <p role="alert" className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">
-            {error}
-          </p>
-        ) : null}
-        {!accountEmail && moving ? <p className="text-sm text-sanispa-steel">
-          Vous pourrez créer votre compte avec un mot de passe. L’e-mail de confirmation vous ramènera à votre demande.
-        </p> : null}
-        <Button type="submit" disabled={busy} className="w-full sm:w-auto">
-          {busy ? "Préparation de votre parcours…" : moving ? "Ajouter mon dossier photo ou vidéo" : "Continuer ma déclaration"}
-        </Button>
-      </form>
+          {moving ? <div className="space-y-5 border-t border-sanispa-line pt-6">{questionSets.demenagement.filter(q => isQuestionVisible(q, draft.answers, questionSets.demenagement)).map(q => <div key={q.id} className="space-y-3">{q.section ? <h2 className="text-xl font-bold">{q.section}</h2> : null}<DiagnosticQuestion question={q} value={draft.answers[q.id]} onChange={value => { setError(""); setDraft(current => ({ ...updateDiagnosticAnswer(current, q.id, value), ...(q.id === "moving_departure" ? { address: String(value) } : {}) })); }} /></div>)}<p className="rounded-xl bg-sanispa-ice p-4 text-sm leading-6">Ne déplacez pas le spa pour répondre. Le poids, les dimensions et les moyens de levage seront confirmés par le professionnel avant le transport.</p></div> : null}
+          {error ? (
+            <p role="alert" className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">
+              {error}
+            </p>
+          ) : null}
+          {!accountEmail && moving ? <p className="text-sm text-sanispa-steel">
+            Vous pourrez créer votre compte avec un mot de passe. L’e-mail de confirmation vous ramènera à votre demande.
+          </p> : null}
+          <Button type="submit" disabled={busy} className="diagnostic-submit w-full sm:w-auto">
+            {busy ? "Préparation de votre parcours…" : moving ? "Ajouter mon dossier photo ou vidéo" : "Continuer ma déclaration"}
+          </Button>
+        </form>
+      </div>
     </AppShell>
   );
 }

@@ -13,16 +13,16 @@ export function StepHeader({
   return (
     <div className="mb-6">
       {step ? (
-        <nav aria-label="Étapes de votre déclaration" className="mb-6">
-          <ol className={`grid gap-2 ${labels.length === 3 ? "grid-cols-3" : "grid-cols-4"}`}>
+        <nav aria-label="Étapes de votre déclaration" className="mb-5 sm:mb-7">
+          <ol className={`grid gap-1.5 sm:gap-3 ${labels.length === 3 ? "grid-cols-3" : "grid-cols-4"}`}>
             {labels.map(
               (label, index) => (
                 <li
                   key={label}
                   aria-current={step === index + 1 ? "step" : undefined}
-                  className={`rounded-2xl px-2 py-3 text-center text-xs font-bold sm:text-sm ${index + 1 <= step ? "bg-sanispa-blue text-white" : "bg-white text-sanispa-steel"}`}
+                  className={`declaration-step px-1 py-2 text-center text-[11px] font-semibold leading-tight sm:px-3 sm:py-3 sm:text-left sm:text-sm ${index + 1 < step ? "declaration-step--complete" : ""}`}
                 >
-                  <span className="block text-base">
+                  <span className="mb-1 block text-xs font-semibold tabular-nums sm:mb-0 sm:mr-2 sm:inline">
                     {index + 1 < step ? "✓" : index + 1}
                   </span>
                   {label}
@@ -32,10 +32,8 @@ export function StepHeader({
           </ol>
         </nav>
       ) : null}
-      <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-sanispa-blue">
-        {eyebrow}
-      </p>
-      <h1 className="text-2xl font-bold text-sanispa-navy sm:text-3xl">
+      {step ? null : <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-sanispa-blue">{eyebrow}</p>}
+      <h1 className="sanispa-display-title text-3xl leading-tight text-sanispa-navy sm:text-5xl">
         {title}
       </h1>
       <p className="mt-3 max-w-2xl text-base leading-7 text-sanispa-steel">

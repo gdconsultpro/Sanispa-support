@@ -10,15 +10,17 @@ export function AppShell({
   compact = false,
   clientSpace = false,
   clientHome = false,
+  declarationFlow = false,
 }: {
   children: React.ReactNode;
   compact?: boolean;
   clientSpace?: boolean;
   clientHome?: boolean;
+  declarationFlow?: boolean;
 }) {
   return (
     <main className="app-background min-h-screen">
-      {paymentsPaused() ? <div className="sanispa-service-banner bg-sanispa-blue px-4 py-2 text-center text-xs font-medium text-white">Services gratuits pour les particuliers et les partenaires · Sans carte bancaire</div> : null}
+      {paymentsPaused() ? <div className="sanispa-service-banner px-4 py-2 text-center text-xs font-medium">Services gratuits pour les particuliers et les partenaires · Sans carte bancaire</div> : null}
       <header className="border-b border-sanispa-line bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
           <Link href="/" className="inline-flex items-center focus-ring">
@@ -32,9 +34,9 @@ export function AppShell({
             />
           </Link>
           <nav aria-label="Navigation principale" className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm font-bold sm:justify-end">
-            {clientHome ? null : <DeclarationEntry />}
+            {clientHome || declarationFlow ? null : <DeclarationEntry />}
             <ClientAccountLink clientSpace={clientSpace} />
-            <ProfessionalAccountLink clientSpace={clientSpace} />
+            {declarationFlow ? null : <ProfessionalAccountLink clientSpace={clientSpace} />}
           </nav>
         </div>
       </header>

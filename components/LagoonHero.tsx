@@ -9,7 +9,7 @@ export function LagoonHero({ children, firstName, signedIn = false, description 
   const Heading = signedIn ? "h2" : "h1";
 
   return (
-    <section aria-labelledby="lagoon-title" className={`lagoon-hero rounded-2xl px-5 py-6 sm:px-8 sm:py-9 ${signedIn ? "lagoon-hero--photo" : ""}`}>
+    <section aria-labelledby="lagoon-title" className={`lagoon-hero rounded-xl px-5 py-7 sm:px-10 sm:py-12 ${signedIn ? "lagoon-hero--photo" : ""}`}>
       {signedIn ? (
         <>
           <div className="lagoon-hero__image">
@@ -19,12 +19,12 @@ export function LagoonHero({ children, firstName, signedIn = false, description 
         </>
       ) : null}
       <div className="relative max-w-md">
-        {firstName?.trim() ? <p className="mb-2 break-words text-sm font-semibold text-[#def3ed]">Bonjour {firstName.trim()}</p> : null}
-        <Heading id="lagoon-title" className="lagoon-hero__heading text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl">
-          Un souci avec votre spa ?
+        {firstName?.trim() ? <p className="mb-2 break-words text-sm font-medium text-[#f3e8d6]">Bonjour {firstName.trim()}</p> : null}
+        <Heading id="lagoon-title" className="sanispa-display-title lagoon-hero__heading text-4xl leading-tight sm:text-5xl lg:text-6xl">
+          Un souci avec votre spa ?
         </Heading>
-        {description ? <p className="mt-3 text-sm leading-6 text-[#def3ed] sm:text-base">{description}</p> : null}
-        <div className="lagoon-actions mt-5 flex flex-wrap gap-2">{children}</div>
+        {description ? <p className="mt-4 text-sm leading-6 text-[#e4e8ee] sm:text-base">{description}</p> : null}
+        <div className="lagoon-actions mt-6 flex flex-wrap gap-2">{children}</div>
       </div>
     </section>
   );

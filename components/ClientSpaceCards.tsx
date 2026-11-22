@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, CalendarCheck, Droplets } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { ButtonLink } from "./Button";
 import { draftStepLabel, type DraftListItem } from "@/lib/client-drafts";
 import { clientCaseProgress, type ClientCase } from "@/lib/client-case-progress";
@@ -88,21 +88,22 @@ export function CarePreviewCards({ care, spas, compact = false }: { care: CarePr
     reading.temperature == null ? null : `${reading.temperature.toLocaleString("fr-FR")} °C`,
   ].filter(Boolean) : [];
   const reminderSpa = spaLabel(reminder?.spa_id, spas);
+  const reminderDate = reminder ? new Date(reminder.due_at).toLocaleDateString("fr-FR", { dateStyle: "medium" }) : "";
   const readingSpa = spaLabel(reading?.spa_id, spas);
   const carnet = `/premium/carnet${reminder ? `?spa=${encodeURIComponent(reminder.spa_id)}` : ""}`;
   const releves = `/premium/releves${reading ? `?spa=${encodeURIComponent(reading.spa_id)}` : ""}`;
   if (compact) return (
     <div className="grid min-w-0 gap-2 min-[375px]:grid-cols-2 sm:gap-3">
       {[
-        { label: "Carnet et rappels", description: reminder ? `${reminder.title} · ${formatDate(reminder.due_at)}` : "", href: carnet, icon: CalendarCheck },
-        { label: "Relevés d’eau", description: values.join(" · "), href: releves, icon: Droplets },
-      ].map(({ label, description, href, icon: Icon }) => (
-        <Link key={href} href={href} className="focus-ring flex min-w-0 items-start gap-2 rounded-xl border border-sanispa-line bg-white p-3 hover:border-sanispa-blue">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sanispa-ice text-sanispa-blue"><Icon aria-hidden="true" size={18} /></span>
+        { label: "Carnet et rappels", description: reminder ? `${reminder.title} · ${reminderDate}` : "", href: carnet },
+        { label: "Relevés d’eau", description: values.join(" · "), href: releves },
+      ].map(({ label, description, href }) => (
+        <Link key={href} href={href} className="focus-ring flex min-h-12 min-w-0 items-start justify-between gap-2 rounded-lg border border-sanispa-line bg-white p-3 hover:border-sanispa-blue">
           <span className="min-w-0 break-words text-sm leading-5">
             <strong className="block">{label}</strong>
             {description ? <span className="block text-xs text-sanispa-steel">{description}</span> : null}
           </span>
+          <ArrowRight size={16} className="mt-0.5" aria-hidden="true" />
         </Link>
       ))}
     </div>
@@ -114,7 +115,7 @@ export function CarePreviewCards({ care, spas, compact = false }: { care: CarePr
         {reminder ? (
           <>
             <p className="mt-2 break-words font-semibold">{reminder.title}</p>
-            <p className="mt-1 break-words text-sm">{formatDate(reminder.due_at)}{reminderSpa ? ` · ${reminderSpa}` : ""}</p>
+            <p className="mt-1 break-words text-sm">{reminderDate}{reminderSpa ? ` · ${reminderSpa}` : ""}</p>
             {Date.parse(reminder.due_at) < Date.now() ? <p className="mt-1 text-sm font-bold text-amber-800">À faire</p> : null}
           </>
         ) : <p className="mt-2 text-sm">{care ? "Aucun rappel prévu." : "Consultez les rappels de votre spa dans le carnet."}</p>}

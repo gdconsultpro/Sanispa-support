@@ -390,7 +390,7 @@ export default function EspaceClientPage() {
   return (
     <AppShell compact clientSpace clientHome={view === "accueil"}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-x-3">
-        <h1 className="text-2xl font-bold text-sanispa-navy sm:text-3xl">Mon espace spa</h1>
+        <h1 className="sanispa-display-title text-3xl text-sanispa-navy sm:text-4xl">Mon espace spa</h1>
         <div className="flex flex-wrap items-center gap-x-3">
           {view === "coordonnees" ? null : (
             <button type="button" onClick={() => selectView("coordonnees")}

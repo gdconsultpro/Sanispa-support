@@ -63,7 +63,7 @@ export default function UploadPage() {
             setError(e instanceof Error ? e.message : "Sauvegarde impossible.");
         }
     }
-    return (<AppShell compact>
+    return (<AppShell compact declarationFlow>
       <StepHeader labels={draft.problemType === "demenagement" ? ["Le transport", "Photos et vidéos", "La validation"] : undefined} eyebrow={draft.problemType === "demenagement" ? "Étape 2" : "Étape 3"} title={draft.problemType === "demenagement" ? "Mon dossier de faisabilité : photos et vidéos" : "Photos du spa"} description="Les photos marquées d’un * sont obligatoires. Formats acceptés : JPG, PNG ou WebP, 20 Mo maximum par photo, 5 photos maximum. Ne démontez rien pour prendre une photo ; laissez les éléments inaccessibles de côté. Elles sont réduites automatiquement. Attendez la confirmation de sauvegarde avant de quitter la page."/>
       <DraftSave draft={draft} step="/upload"/>
       <BackLink href={draft.problemType === "demenagement" ? "/diagnostic" : "/questionnaire"}/>

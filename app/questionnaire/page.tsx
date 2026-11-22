@@ -55,7 +55,7 @@ export default function QuestionnairePage() {
     }
   }
   return (
-    <AppShell compact>
+    <AppShell compact declarationFlow>
       <StepHeader
         eyebrow="Étape 2"
         title={problemLabel}
