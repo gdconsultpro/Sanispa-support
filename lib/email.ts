@@ -1,4 +1,4 @@
-import { adminDossierPath } from "./admin-navigation";
+import { adminDossierPath, adminPartnersPath } from "./admin-navigation";
 import { clientDossierPath, clientSummaryPdfPath } from "./client-case-navigation";
 import { createHash } from "node:crypto";
 import { paymentsPaused } from "./commercial-mode";
@@ -174,6 +174,20 @@ export async function sendCustomerConfirmation(
     });
     throw error;
   }
+}
+export async function sendPartnerRegistrationNotification(companyName: string, key: string) {
+  const url = new URL(adminPartnersPath, process.env.NEXT_PUBLIC_APP_URL || "https://support.sani-spa.fr");
+  return sendTransactionalEmail({
+    to: process.env.ADMIN_NOTIFICATION_EMAIL || "",
+    privateRecipient: true,
+    idempotencyKey: key,
+    subject: "SANISPA Support — Nouvelle inscription partenaire",
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#0a2342;line-height:1.5">
+      <h1>Nouvelle inscription partenaire</h1>
+      <p><strong>${escapeHtml(companyName)}</strong> a soumis sa demande d’inscription. Retrouvez ses coordonnées et son SIRET dans l’administration.</p>
+      <p><a href="${escapeHtml(url.href)}">Ouvrir les inscriptions à vérifier</a></p>
+    </div>`,
+  });
 }
 export async function sendPartnerLeadNotification(
   payload: PartnerLeadNotificationPayload,

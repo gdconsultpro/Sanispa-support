@@ -19,6 +19,12 @@ test("public partner registration is atomic and idempotent, owns one company and
  assert.equal((await db.query<any>("select count(*)::int n from partner_users where user_id=$1",[user])).rows[0].n,1);
  assert.equal((await db.query<any>("select count(*)::int n from partner_access_history where user_id=$1",[user])).rows[0].n,1);
  assert.equal((await db.query<any>("select count(*)::int n from partner_departments where partner_id=$1",[first])).rows[0].n,2);
+ const alerts=(await db.query("select key,kind,payload from notification_jobs")).rows;
+ assert.deepEqual(alerts,[{key:`partner-registration:${first}`,kind:"partner_registration",payload:{partnerId:first,companyName:profile.companyName}}]);
+ const [alert]=(await db.query<{ first_delivery_attempt_at: Date }>(
+   "select first_delivery_attempt_at from claim_notifications($1)",[`partner-registration:${first}`],
+ )).rows;
+ assert.ok(alert.first_delivery_attempt_at);
  for(const table of ["diagnostics","lead_purchases","partner_subscriptions","partner_charter_acceptances"]){assert.equal((await db.query<any>(`select count(*)::int n from ${table}`)).rows[0].n,0);}
  await db.query("update partner_users set active=false where user_id=$1",[user]);
  await assert.rejects(db.query("select register_partner_self($1,'tech@example.invalid',$2)",[user,JSON.stringify(profile)]),/PARTNER_ACCESS_INACTIVE/);
@@ -55,6 +61,7 @@ test("registration API derives identity and email from the verified session; fre
   if(u.pathname.endsWith("/rpc/private_session_status"))return Response.json({active:true,is_admin:false,mfa_verified:false});
   if(u.pathname.endsWith("/rpc/consume_request_limit"))return Response.json(true);
   if(u.pathname.endsWith("/rpc/register_partner_self")){assert.equal(body.p_user,user);assert.equal(body.p_email,"tech@example.invalid");return Response.json(other);}
+  if(u.pathname.endsWith("/rpc/claim_notifications")){assert.equal(body.p_key,`partner-registration:${other}`);return Response.json([]);}
   if(u.pathname.endsWith("/rpc/partner_onboarding_status"))return Response.json({registered:false});
   if(u.pathname.endsWith("/partner_users"))return Response.json([{role:"owner",active:true,partners:{id:other,active:true,company_name:"TEST",leads_paid:true}}]);
   throw new Error(`Unexpected ${u.pathname}`);
@@ -81,10 +88,10 @@ test("complete coordinates and SIRET are required, and only administrator review
  const customer=(await db.query<any>("insert into customers(name,phone,email,address,spa_brand,spa_year,installation_type,power_supply) values('TEST','0000000000','client@example.invalid','TEST','TEST','2020','exterieur','230V') returning id")).rows[0].id;
  const diagnostic=(await db.query<any>("insert into diagnostics(customer_id,problem_type,choice,department,request_type,status) values($1,'fuite','intervention','67','TECHNICAL_REQUEST','NEW') returning id",[customer])).rows[0].id;
  const publish=()=>db.query("select publish_partner_offer($1,$2,$3,'fuite','Fuite visible au niveau du raccord du spa','{}')",[diagnostic,id,other]);
- await assert.rejects(publish(),/PARTNER_VERIFICATION_REQUIRED/);assert.equal((await db.query<any>("select count(*)::int n from notification_jobs")).rows[0].n,0);
+ await assert.rejects(publish(),/PARTNER_VERIFICATION_REQUIRED/);assert.equal((await db.query<any>("select count(*)::int n from notification_jobs where kind='partner'")).rows[0].n,0);
  await assert.rejects(db.query("select verify_partner_registration($1,$2)",[id,user]),/ADMIN_REQUIRED/);
  await db.exec("set role authenticated");await assert.rejects(db.query("select verify_partner_registration($1,$2)",[id,other]),/permission denied/);await db.exec("reset role");
  await db.exec("set role service_role");await db.query("select verify_partner_registration($1,$2)",[id,other]);await db.exec("reset role");await publish();
- const approved=(await db.query<any>("select verification_status,verified_by,verified_at from partners where id=$1",[id])).rows[0];assert.equal(approved.verification_status,"verified");assert.equal(approved.verified_by,other);assert.ok(approved.verified_at);assert.equal((await db.query<any>("select count(*)::int n from notification_jobs")).rows[0].n,1);
+ const approved=(await db.query<any>("select verification_status,verified_by,verified_at from partners where id=$1",[id])).rows[0];assert.equal(approved.verification_status,"verified");assert.equal(approved.verified_by,other);assert.ok(approved.verified_at);assert.equal((await db.query<any>("select count(*)::int n from notification_jobs where kind='partner'")).rows[0].n,1);
  }finally{await db.close();}
 });

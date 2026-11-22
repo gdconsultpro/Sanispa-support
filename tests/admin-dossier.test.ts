@@ -43,3 +43,14 @@ test("administrative e-mail retains only an internal dossier and a known section
     { dossier: id, section: "followup" }));
   assert.equal(client.searchParams.has("dossier"), false);
 });
+
+test("the partner registration alert preserves the partners tab after admin login", () => {
+  const origin = "https://app.example.invalid";
+  const token = "x".repeat(64);
+  const url = new URL(clientTokenConfirmationUrl(origin, token, "admin", undefined, { tab: "partners" }));
+  const tab = url.searchParams.get("tab");
+  assert.equal(adminLoginPath(null, null, tab), "/admin/connexion?tab=partners");
+  assert.equal(adminDossierPath(null, null, tab), "/admin?tab=partners");
+  assert.equal(adminDossierPath(null, null, "//invalid.example"), "/admin");
+  assert.equal(new URL(clientTokenConfirmationUrl(origin, token, "compte", undefined, { tab: "partners" })).searchParams.has("tab"), false);
+});

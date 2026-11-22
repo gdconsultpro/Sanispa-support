@@ -47,7 +47,7 @@ export default function Callback() {
         }
         const draft = readDraft();
         const progress = readLocalProgress();
-        const destination = next === "partenaire" ? "/partenaire/inscription" : next === "compte" ? "/espace-client" : ["carnet", "releves", "notices", "assistant", "forum"].includes(next || "") ? `/premium/${next}` : query.get("next") === "visio" ? "/visio" : query.get("next") === "admin" ? adminLoginPath(query.get("dossier"), query.get("section")) : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
+        const destination = next === "partenaire" ? "/partenaire/inscription" : next === "compte" ? "/espace-client" : ["carnet", "releves", "notices", "assistant", "forum"].includes(next || "") ? `/premium/${next}` : query.get("next") === "visio" ? "/visio" : query.get("next") === "admin" ? adminLoginPath(query.get("dossier"), query.get("section"), query.get("tab")) : query.get("next") === "recovery" ? "/nouveau-mot-de-passe" : query.get("next") === "premium" ? "/premium" : confirmedClientDestination(
           draft,
           data.session.user.email || "",
           query.get("next") === "diagnostic",

@@ -38,7 +38,7 @@ export default async function AdminPage({ searchParams }: {
     const initialDossier = adminDossierId(params?.dossier);
     const initialSection = adminDossierSection(params?.section);
     try { await administrator(await headers()); }
-    catch { redirect(adminLoginPath(initialDossier, initialSection)); }
+    catch { redirect(adminLoginPath(initialDossier, initialSection, params?.tab)); }
     const tab = params?.tab === "partners" ? "partners" : "diagnostics";
     const dispatchFilter = ["pending","internal","released","legacy"].includes(params?.diffusion || "") ? params!.diffusion! : "";
     const dueOnly = params?.actions === "due";

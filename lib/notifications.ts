@@ -6,6 +6,7 @@ import {
   sendCustomerConfirmation,
   sendDiagnosticNotification,
   sendPartnerLeadNotification,
+  sendPartnerRegistrationNotification,
   sendWaterAssistanceResumeLink,
 } from "./email";
 export async function processNotifications(prefix?: string) {
@@ -115,6 +116,19 @@ export async function processNotifications(prefix?: string) {
           continue;
         }
         result = await sendClientReportNotification({ ...job.payload, email: recipient }, job.kind === "client_review_reminder");
+      } else if (job.kind === "partner_registration") {
+        const { data: partner, error } = await supabase.from("partners").select("id").eq("id", job.payload.partnerId).maybeSingle();
+        if (error) throw error;
+        const firstAttempt = Date.parse(job.first_delivery_attempt_at || "");
+        const canRetry = Number.isFinite(firstAttempt) && Date.now() - firstAttempt < 23 * 3600000 &&
+          (process.env.EMAIL_PROVIDER || "resend").toLowerCase() === "resend";
+        if (!partner || !canRetry) {
+          const state = partner ? "delivery_unknown" : "cancelled";
+          const updated = await supabase.from("notification_jobs").update({ state, locked_until: null }).eq("id", job.id);
+          if (updated.error) throw updated.error;
+          continue;
+        }
+        result = await sendPartnerRegistrationNotification(job.payload.companyName, job.key);
       } else if (job.kind === "admin")
         result = await sendDiagnosticNotification(job.payload);
       else if (job.kind === "partner_accepted") {
@@ -216,3 +230,4 @@ export async function processNotifications(prefix?: string) {
   }
   return { sent, failed };
 }
+

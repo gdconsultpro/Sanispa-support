@@ -14,6 +14,7 @@ const schema = z.object({
   problemType: z.string().max(60).optional(),
   dossier: z.string().uuid().optional(),
   section: z.enum(["diagnostic", "followup", "documents", "history"]).optional(),
+  tab: z.literal("partners").optional(),
 }).strict();
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
     const token = generated.data.properties?.hashed_token;
     if (!token || !/^[A-Za-z0-9_-]{32,256}$/.test(token)) throw new Error("Invalid confirmation token");
-    const url = clientTokenConfirmationUrl(origin, token, payload.next, payload.problemType, { dossier: payload.dossier, section: payload.section });
+    const url = clientTokenConfirmationUrl(origin, token, payload.next, payload.problemType, { dossier: payload.dossier, section: payload.section, tab: payload.tab });
     const delivery = await sendClientAccessLink(payload.email, url, payload.next === "recovery", `access:${hash(token)}`);
     if (delivery.skipped) throw new HttpError(503, "Le lien n’a pas pu être envoyé. Réessayez dans une minute.");
     return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });

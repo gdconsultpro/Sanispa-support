@@ -42,11 +42,15 @@ export function PartnerAdmin({
   const sortedPartners = useMemo(
     () =>
       [...partners].sort(
-        (a, b) =>
-          Number(b.verification_status === "pending") - Number(a.verification_status === "pending") || Number(b.active) - Number(a.active) ||
-          a.company_name.localeCompare(b.company_name),
+        (a, b) => {
+          const byDate = onlyPending
+            ? Date.parse(b.registered_at ?? b.created_at) - Date.parse(a.registered_at ?? a.created_at)
+            : 0;
+          return byDate || Number(b.verification_status === "pending") - Number(a.verification_status === "pending") ||
+            Number(b.active) - Number(a.active) || a.company_name.localeCompare(b.company_name);
+        },
       ),
-    [partners],
+    [onlyPending, partners],
   );
 
   const pendingCount = partners.filter(partner => partner.verification_status === "pending").length;

@@ -28,7 +28,7 @@ export default function AdminLogin() {
     const response = await fetch("/api/admin/session", { method: "POST", headers: await authHeaders() });
     if (!response.ok) throw new Error((await response.json()).error);
     const query = new URLSearchParams(window.location.search);
-    window.location.replace(adminDossierPath(query.get("dossier"), query.get("section")));
+    window.location.replace(adminDossierPath(query.get("dossier"), query.get("section"), query.get("tab")));
   }, []);
   const inspect = useCallback(async () => {
     const supabase = getSupabaseBrowser();
@@ -53,7 +53,10 @@ export default function AdminLogin() {
       if (method === "email") {
         const query = new URLSearchParams(window.location.search);
         const dossier = adminDossierId(query.get("dossier"));
-        const response = await fetch("/api/client/access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, next: "admin", ...(dossier ? { dossier, section: adminDossierSection(query.get("section")) } : {}) }) });
+        const response = await fetch("/api/client/access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          email, next: "admin", ...(dossier ? { dossier, section: adminDossierSection(query.get("section")) } : {}),
+          ...(query.get("tab") === "partners" ? { tab: "partners" } : {}),
+        }) });
         if (!response.ok) throw new Error("Le lien n’a pas pu être envoyé. Vérifiez l’adresse et réessayez dans une minute.");
         setMessage("Si cette adresse correspond à un administrateur autorisé, un lien de connexion vient de lui être envoyé. Ouvrez-le. Si votre téléphone n’est pas encore associé, ajoutez SANISPA avec le code QR proposé ; sinon, saisissez le code de votre application.");
         return;

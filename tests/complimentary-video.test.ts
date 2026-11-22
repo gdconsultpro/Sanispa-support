@@ -79,6 +79,10 @@ test("visio requests enforce ownership and partner membership, preserve the 59 E
     const professional = (await db.query<any>("select request_video_assistance($1,'partner',null,$2,'Appui technique pour une réparation.','Jeudi matin','partner@example.invalid') r", [operator, partner])).rows[0].r;
     assert.equal(professional.quoted_amount, null); assert.equal(professional.collected_amount, 0);
     assert.equal((await db.query<any>("select count(*)::int n from notification_jobs where kind='visio_requested'")).rows[0].n, 2);
+    const [notice] = (await db.query<{ first_delivery_attempt_at: Date }>(
+      "select first_delivery_attempt_at from claim_notifications($1)", [`visio-request:${first.id}`],
+    )).rows;
+    assert.ok(notice.first_delivery_attempt_at);
     for (const role of ["anon", "authenticated"]) {
       assert.equal((await db.query<any>("select has_table_privilege($1,'video_assistance_sessions','SELECT') b", [role])).rows[0].b, false);
       assert.equal((await db.query<any>("select has_function_privilege($1,'request_video_assistance(uuid,text,uuid,uuid,text,text,text)','EXECUTE') b", [role])).rows[0].b, false);

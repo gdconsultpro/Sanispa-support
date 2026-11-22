@@ -15,7 +15,7 @@ export function clientConfirmationUrl(origin: string, problemType?: string, inte
 }
 
 /** Token stays in the URL fragment, outside HTTP logs and Referrer headers. */
-export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin" | "visio" | "carnet" | "releves" | "notices" | "assistant" | "forum" | "compte" | "partenaire", problemType?: string, adminDestination?: { dossier?: string | null; section?: string | null }) {
+export function clientTokenConfirmationUrl(origin: string, token: string, intent: "diagnostic" | "premium" | "recovery" | "admin" | "visio" | "carnet" | "releves" | "notices" | "assistant" | "forum" | "compte" | "partenaire", problemType?: string, adminDestination?: { dossier?: string | null; section?: string | null; tab?: string | null }) {
   const base = new URL(origin);
   if (base.protocol !== "https:" && !(base.protocol === "http:" && base.hostname === "localhost"))
     throw new Error("Invalid confirmation origin");
@@ -26,6 +26,7 @@ export function clientTokenConfirmationUrl(origin: string, token: string, intent
     url.searchParams.set("dossier", adminId);
     url.searchParams.set("section", adminDossierSection(adminDestination?.section));
   }
+  if (intent === "admin" && adminDestination?.tab === "partners") url.searchParams.set("tab", "partners");
   url.hash = new URLSearchParams({ token_hash: token, type: intent === "recovery" ? "recovery" : "email" }).toString();
   return url.href;
 }

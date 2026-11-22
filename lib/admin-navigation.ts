@@ -8,7 +8,10 @@ export function adminDossierSection(input?: string | null): AdminDossierSection 
   return input === "followup" || input === "documents" || input === "history" ? input : "diagnostic";
 }
 
-function adminDestination(path: string, input?: string | null, section?: string | null) {
+export const adminPartnersPath = "/admin?tab=partners";
+
+function adminDestination(path: string, input?: string | null, section?: string | null, tab?: string | null) {
+  if (tab === "partners") return path + "?tab=partners";
   const id = adminDossierId(input);
   if (!id) return path;
   const params = new URLSearchParams({ dossier: id });
@@ -16,10 +19,10 @@ function adminDestination(path: string, input?: string | null, section?: string 
   return path + "?" + params.toString();
 }
 
-export function adminDossierPath(id?: string | null, section?: string | null) {
-  return adminDestination("/admin", id, section);
+export function adminDossierPath(id?: string | null, section?: string | null, tab?: string | null) {
+  return adminDestination("/admin", id, section, tab);
 }
 
-export function adminLoginPath(id?: string | null, section?: string | null) {
-  return adminDestination("/admin/connexion", id, section);
+export function adminLoginPath(id?: string | null, section?: string | null, tab?: string | null) {
+  return adminDestination("/admin/connexion", id, section, tab);
 }

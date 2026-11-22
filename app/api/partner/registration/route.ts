@@ -3,6 +3,7 @@ import { requireUser, rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
 import { partnerRegistrationSchema } from "@/lib/partner-registration";
 import { needsPartnerPasswordChange } from "@/lib/partner-navigation";
+import { processNotifications } from "@/lib/notifications";
 export async function GET(request:Request){
  try{
   const {user,supabase}=await requireUser(request);
@@ -22,6 +23,11 @@ export async function POST(request:Request){
    if(/PARTNER_ACCESS_INACTIVE|PARTNER_EMAIL_AMBIGUOUS|MULTIPLE_COMPANIES/.test(code))throw new HttpError(409,"Votre entreprise dispose déjà d’un accès ou est désactivée. Contactez SANISPA pour vérifier votre rattachement.");
    if(/EXISTING_COMPANY_CONFIRMATION_REQUIRED|COMPANY_NOT_FOUND/.test(code))throw new HttpError(409,"Les informations d’inscription ont changé. Actualisez cette page avant de poursuivre.");
    throw result.error;
+  }
+  try {
+   await processNotifications(`partner-registration:${result.data}`);
+  } catch {
+   console.error("Notification d’inscription partenaire en attente de relance");
   }
   return NextResponse.json({ok:true,partnerId:result.data},{headers:{"Cache-Control":"private, no-store"}});
  }catch(e){return apiError(e);}
