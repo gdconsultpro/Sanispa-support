@@ -44,6 +44,14 @@ export const interventionTypes = ["Intervention SAV", "Mise en service", "Instal
 export const partnerClientsPath = "/partenaire/planning?view=clients";
 export const partnerNewClientPath = partnerClientsPath + "&ajouter=1";
 export const partnerMapPath = "/partenaire/planning?view=carte";
+export const partnerNewVisitPath = "/partenaire/planning?nouvelle=1";
+
+export function partnerVisitMapPath(id: string, startsAt: string | null) {
+  const query = new URLSearchParams({ visite: id });
+  if (startsAt) query.set("jour", plannerDate(new Date(startsAt)));
+  else query.set("statut", "pending");
+  return partnerMapPath + "&" + query;
+}
 
 export type PartnerMapPoint = {
   id: string;
@@ -54,6 +62,7 @@ export type PartnerMapPoint = {
   address?: string;
   pending?: boolean;
   step?: number;
+  highlighted?: boolean;
 };
 
 export type PendingPartnerDossier = MapPosition & {

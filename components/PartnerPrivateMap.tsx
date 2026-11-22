@@ -24,7 +24,10 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
       if (group) group.push(point);
       else groups.set(key, [point]);
     }
-    if (points.length) {
+    const highlighted = points.find(point => point.highlighted);
+    if (highlighted) {
+      instance.setView([highlighted.latitude, highlighted.longitude], 14);
+    } else if (points.length) {
       const bounds = latLngBounds(points.map(point => [point.latitude, point.longitude]));
       instance.fitBounds(bounds, { maxZoom: 16, padding: [36, 36] });
     } else {
@@ -40,6 +43,7 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
     for (const group of groups.values()) {
       const first = group[0];
       const steps = group.flatMap(point => point.step ?? []);
+      const highlighted = group.some(point => point.highlighted);
       const title = group.length > 1
         ? steps.length ? "Étapes " + steps.join(", ") : `${group.length} interventions à cette adresse`
         : first.step ? `Étape ${first.step} · ${first.title}` : first.title;
@@ -50,7 +54,7 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
       const pinColor = group.every(point => point.pending) ? "bg-amber-600" : "bg-sanispa-blue";
       const pin = marker([first.latitude, first.longitude], {
         icon: divIcon({
-          className: `grid place-items-center rounded-full border-[3px] border-white ${pinColor} text-sm font-bold text-white shadow-lg`,
+          className: `grid place-items-center rounded-full border-[3px] border-white ${pinColor} text-sm font-bold text-white shadow-lg ${highlighted ? "ring-4 ring-sanispa-navy" : ""}`,
           html: pinLabel,
           iconSize: [width, 36],
           iconAnchor: [width / 2, 18],
@@ -58,6 +62,7 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
         }),
         title,
         alt: title,
+        zIndexOffset: highlighted ? 1000 : 0,
       }).addTo(instance);
       if (group.length === 1 && !first.pending && onAppointment) {
         pin.on("click", () => onAppointment(first.id));

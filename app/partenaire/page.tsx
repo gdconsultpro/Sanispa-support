@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { partnerClientsPath, partnerMapPath, partnerNewClientPath } from "@/lib/partner-planner";
+import { partnerClientsPath, partnerMapPath, partnerNewClientPath, partnerNewVisitPath } from "@/lib/partner-planner";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ButtonLink } from "@/components/Button";
@@ -92,7 +92,8 @@ export default function PartnerHomePage() {
       </section> : null}
       {dashboard && !dashboard.pending ? <div className="grid gap-4">
         <div className="flex flex-wrap gap-2">
-          <ButtonLink href={partnerNewClientPath}>Ajouter un client</ButtonLink>
+          <ButtonLink href={partnerNewVisitPath}>Nouvelle intervention</ButtonLink>
+          <ButtonLink href={partnerNewClientPath} variant="secondary">Ajouter un client</ButtonLink>
           <ButtonLink href={partnerClientsPath} variant="secondary">Mes clients</ButtonLink>
           <ButtonLink href={partnerMapPath} variant="secondary">Carte des interventions</ButtonLink>
         </div>

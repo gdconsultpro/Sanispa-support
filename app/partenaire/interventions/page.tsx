@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { ButtonLink } from "@/components/Button";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
+import { PartnerPrivateInterventionList } from "@/components/PartnerPrivateInterventionList";
 import { partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
 import { problemLabel } from "@/lib/display-labels";
+import { partnerNewVisitPath } from "@/lib/partner-planner";
 import { partnerAppointmentLabel, partnerHasUpcomingAppointment, partnerJobState, partnerWorkLabels, type PartnerIntervention } from "@/lib/partner-work";
 
 const sections = [
@@ -43,11 +46,14 @@ export default function InterventionsPage() {
   const now = Date.now();
   return <AppShell compact>
     <PartnerNavigation current="Interventions" />
-    <h1 className="text-3xl font-bold">Mes interventions et mon planning</h1>
-    <p className="mt-2">Retrouvez vos rendez-vous et les dossiers à terminer.</p>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h1 className="text-3xl font-bold">Mes interventions</h1>
+      <ButtonLink href={partnerNewVisitPath}>Nouvelle intervention</ButtonLink>
+    </div>
+    <PartnerPrivateInterventionList />
     {error ? <div className="mt-4 rounded-xl bg-white p-4"><p role="alert" className="text-red-800">{error}</p><button type="button" className="mt-2 font-bold underline" onClick={() => { setError(""); setAttempt(value => value + 1); }}>Réessayer</button></div> : null}
     {!jobs && !error ? <p role="status" className="mt-4">Chargement du planning…</p> : null}
-    {jobs && !jobs.length ? <p className="mt-5 rounded-xl bg-white p-5">Vous n’avez pas encore de dossier attribué. <Link href="/partenaire/leads" className="font-bold underline">Voir les demandes proposées</Link></p> : null}
+    {jobs && !jobs.length ? <p className="mt-5 rounded-xl bg-white p-5">Aucun dossier SANISPA attribué pour le moment. <Link href="/partenaire/leads" className="font-bold underline">Voir les demandes proposées</Link></p> : null}
     {jobs?.length ? <div className="mt-6 grid gap-5">
       {sections.map(section => {
         const entries = jobs.filter(job => section.id === "planning"

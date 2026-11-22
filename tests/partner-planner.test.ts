@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fullDatabase } from "./helpers/full-database";
-import { matchesPlannerMapFilters, nearbyPendingVisits, partnerMapPath, partnerNewClientPath, partnerVisitAddress, plannerDate, plannerRange, suggestedTourStart, timelineDropTime, timelineQuarter, visitsOverlap, type PlannerMapIntervention } from "../lib/partner-planner";
+import { matchesPlannerMapFilters, nearbyPendingVisits, partnerMapPath, partnerNewClientPath, partnerNewVisitPath, partnerVisitAddress, partnerVisitMapPath, plannerDate, plannerRange, suggestedTourStart, timelineDropTime, timelineQuarter, visitsOverlap, type PlannerMapIntervention } from "../lib/partner-planner";
 import { partnerReturnPath } from "../lib/partner-navigation";
 
 test("private visits can only reference a client in the same partner company", async () => {
@@ -82,6 +82,15 @@ test("adjacent visits do not overlap and the planner is a valid return after sig
   assert.equal(partnerReturnPath("/partenaire/planning"), "/partenaire/planning");
   assert.equal(partnerReturnPath(partnerNewClientPath), partnerNewClientPath);
   assert.equal(partnerReturnPath(partnerMapPath), partnerMapPath);
+  assert.equal(partnerReturnPath(partnerNewVisitPath), partnerNewVisitPath);
+  const job = "73609339-6d8b-41d5-ac6e-c6d8503ef369";
+  const waitingPath = partnerVisitMapPath(job, null);
+  const scheduledPath = partnerVisitMapPath(job, visit.starts_at);
+  assert.equal(waitingPath, partnerMapPath + "&visite=" + job + "&statut=pending");
+  assert.equal(scheduledPath, partnerMapPath + "&visite=" + job + "&jour=" + plannerDate(new Date(visit.starts_at)));
+  assert.equal(partnerReturnPath(waitingPath), waitingPath);
+  assert.equal(partnerReturnPath(scheduledPath), scheduledPath);
+  assert.equal(partnerReturnPath(scheduledPath + "&retour=https://example.invalid"), "/partenaire/leads");
   assert.deepEqual(partnerVisitAddress("5 avenue Anatole France - 75007 - Paris"), { street: "5 avenue Anatole France", postal_code: "75007", city: "Paris" });
   assert.equal(partnerVisitAddress("Secteur 75"), null);
   const week = plannerRange("2026-11-22", "week");

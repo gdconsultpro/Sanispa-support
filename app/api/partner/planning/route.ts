@@ -223,8 +223,20 @@ export async function GET(request: Request) {
         return NextResponse.json({ stock: data.slice(0, 30), more: data.length > 30 });
       }
       const name = z.string().trim().max(140).parse(params.get("name") ?? "");
+      const namePattern = `%${name.replace(/[\\%_]/g, "\\$&")}%`;
+      if (params.get("section") === "visits") {
+        let visits = supabase.from("partner_private_visits")
+          .select("id,title,starts_at,ends_at,technician_id,client:partner_private_clients!inner(name,street,postal_code,city)")
+          .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
+        if (name) visits = visits.ilike("client.name", namePattern);
+        const [{ data, error }, team] = await Promise.all([visits.order("updated_at", { ascending: false })
+          .order("id").range(offset, offset + 30), technicians()]);
+        if (error) throw error;
+        return NextResponse.json({ visits: data.slice(0, 30), more: data.length > 30, technicians: team },
+          { headers: { "Cache-Control": "private, no-store" } });
+      }
       let query = supabase.from("partner_private_clients").select(privateClientColumns).eq("partner_id", partner.id);
-      if (name) query = query.ilike("name", `%${name.replace(/[\\%_]/g, "\\$&")}%`);
+      if (name) query = query.ilike("name", namePattern);
       const [{ data, error }, team] = await Promise.all([query.order("name").order("id").range(offset, offset + 30), technicians()]);
       if (error) throw error;
       return NextResponse.json({ clients: data.slice(0, 30), more: data.length > 30, technicians: team });

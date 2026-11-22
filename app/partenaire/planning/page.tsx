@@ -12,8 +12,8 @@ import { problemLabel } from "@/lib/display-labels";
 import { partnerAuthError, partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
 import { partnerReturnPath } from "@/lib/partner-navigation";
 import {
-  interventionTypes, partnerClientAddress, partnerDirections, partnerClientsPath, partnerMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
-  type MapCoordinate, type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention,
+  interventionTypes, partnerClientAddress, partnerDirections, partnerClientsPath, partnerMapPath, partnerVisitMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
+  type MapCoordinate, type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention, type PlannerMapStatus,
   type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
@@ -34,11 +34,12 @@ type Agenda = {
   visits: PrivatePartnerVisit[]; sanispa: SanispaPartnerVisit[]; technicians: PlannerTechnician[];
   pendingVisits?: PendingPrivatePartnerVisit[]; pendingDossiers?: PendingPartnerDossier[];
 };
-type Booking = { id: string; slot: PlannerSlot };
+type Booking = { id: string; slot?: PlannerSlot };
+type VisitLocation = { id: string; startsAt: string | null };
 type FormEditor = { type: "client"; id: string; client?: PrivatePartnerClient; booking?: Booking; returnToMap?: boolean }
-  | { type: "visit"; id: string; client: PrivatePartnerClient; visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit; slot?: PlannerSlot }
+  | { type: "visit"; id: string; client: PrivatePartnerClient; visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit; booking?: Booking }
   | { type: "stock"; id: string; item?: PrivatePartnerStock };
-type Editor = FormEditor | { type: "pickClient"; id: string; slot: PlannerSlot };
+type Editor = FormEditor | ({ type: "pickClient" } & Booking);
 const periods = { day: "Jour", week: "Semaine", month: "Mois" } as const;
 const stockLabels = { piece: "Pièce détachée", spa: "Spa" } as const;
 class PlannerRequestError extends Error {
@@ -97,6 +98,8 @@ export default function PartnerPlanningPage() {
   const [view, setView] = useState<"agenda" | "map" | "clients" | "stock">("agenda");
   const [period, setPeriod] = useState<PlannerPeriod>("day");
   const [mapPeriod, setMapPeriod] = useState<"day" | "week">("week");
+  const [mapStatus, setMapStatus] = useState<PlannerMapStatus>("scheduled");
+  const [mapVisitId, setMapVisitId] = useState<string | null>(null);
   const [day, setDay] = useState("");
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
@@ -111,7 +114,7 @@ export default function PartnerPlanningPage() {
   const [saveError, setSaveError] = useState("");
   const [gridError, setGridError] = useState("");
   const [notice, setNotice] = useState("");
-  const [bookedDay, setBookedDay] = useState<string | null>(null);
+  const [savedVisit, setSavedVisit] = useState<VisitLocation | null>(null);
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
   const mapTitle = useRef<HTMLHeadingElement>(null);
@@ -121,10 +124,22 @@ export default function PartnerPlanningPage() {
   const activePeriod = view === "map" ? mapPeriod : period;
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
+    let initialDay = plannerDate(new Date());
     if (query.get("view") === "clients") setView("clients");
-    if (query.get("view") === "carte") setView("map");
+    if (query.get("view") === "carte") {
+      setView("map");
+      const visit = query.get("visite");
+      const date = query.get("jour");
+      if (visit && /^[a-f0-9-]{36}$/i.test(visit)) setMapVisitId("private:" + visit);
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(+plannerDay(date)) && plannerDate(plannerDay(date)) === date) {
+        initialDay = date;
+        setMapPeriod("day");
+      }
+      if (query.get("statut") === "pending") setMapStatus("pending");
+    }
     openNewClient.current = query.get("view") === "clients" && query.get("ajouter") === "1";
-    setDay(plannerDate(new Date()));
+    if (query.get("nouvelle") === "1") setEditor({ type: "pickClient", id: crypto.randomUUID() });
+    setDay(initialDay);
   }, []);
   useEffect(() => {
     if (!day) return;
@@ -180,18 +195,32 @@ export default function PartnerPlanningPage() {
     setEditor(null);
     setSavedClient(null);
     setNotice("");
-    setBookedDay(null);
+    setSavedVisit(null);
     setSaveError("");
     setGridError("");
     setOffset(0);
     setView(next);
+    setMapVisitId(null);
+    if (next === "map") setMapStatus("scheduled");
     window.history.replaceState(null, "", next === "clients" ? partnerClientsPath : next === "map" ? partnerMapPath : path);
+  }
+
+  function openVisitOnMap(visit: VisitLocation) {
+    changeView("map");
+    setMapVisitId("private:" + visit.id);
+    if (visit.startsAt) {
+      setDay(plannerDate(new Date(visit.startsAt)));
+      setMapPeriod("day");
+    } else {
+      setMapStatus("pending");
+    }
+    window.history.replaceState(null, "", partnerVisitMapPath(visit.id, visit.startsAt));
   }
 
   async function saveFromGrid(payload: object, success: string, date?: Date) {
     if (saving) return false;
     setNotice("");
-    setBookedDay(null);
+    setSavedVisit(null);
     setGridError("");
     setSaving(true);
     try {
@@ -263,13 +292,13 @@ export default function PartnerPlanningPage() {
     setMapped(null);
     setSavedClient(null);
     setNotice("");
-    setBookedDay(null);
+    setSavedVisit(null);
     setSaveError("");
     setEditor(next);
   }
 
   function chooseBookingClient(booking: Booking, client: PrivatePartnerClient) {
-    edit({ type: "visit", id: booking.id, client, slot: booking.slot });
+    edit({ type: "visit", id: booking.id, client, booking });
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -310,12 +339,13 @@ export default function PartnerPlanningPage() {
         setNotice("Le stock a été enregistré.");
         setRevision(current => current + 1);
       } else {
+        const slot = editor.booking?.slot;
         let start: Date | null = null;
         let end: Date | null = null;
         if (value("without_date") !== "on") {
           start = new Date(value("date") + "T" + value("start"));
-          end = editor.slot ? new Date(+start + Number(value("duration")) * 60000) : new Date(value("date") + "T" + value("end"));
-          if (!editor.slot && end < start) end.setDate(end.getDate() + 1);
+          end = slot ? new Date(+start + Number(value("duration")) * 60000) : new Date(value("date") + "T" + value("end"));
+          if (!slot && end < start) end.setDate(end.getDate() + 1);
           if (Number.isNaN(+start) || Number.isNaN(+end) || end <= start)
             throw new Error("L’heure de fin doit être après l’heure de début.");
         }
@@ -325,19 +355,19 @@ export default function PartnerPlanningPage() {
             expected_at: editor.visit?.updated_at },
         });
         if (!result) return;
-        if (start) {
+        const saved = { id: editor.id, startsAt: start?.toISOString() ?? null };
+        if (start && slot) {
           const date = plannerDate(start);
           setDay(date);
           setPeriod("day");
           setView("agenda");
           window.history.replaceState(null, "", path);
           setEditor(null);
-          setNotice("Le rendez-vous a été enregistré.");
-          setBookedDay(date);
         } else {
-          changeView("map");
-          setNotice("L’intervention a été ajoutée à la liste « À planifier ».");
+          openVisitOnMap(saved);
         }
+        setSavedVisit(saved);
+        setNotice(start ? "Le rendez-vous a été enregistré." : "L’intervention a été ajoutée à la liste « À planifier ».");
         setRevision(current => current + 1);
       }
     } catch (error) {
@@ -352,8 +382,7 @@ export default function PartnerPlanningPage() {
     ...agenda.sanispa.map(visit => ({ ...visit, source: "sanispa" as const })),
   ].sort((left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at)) : null;
   const team = (view === "clients" ? page?.technicians : agenda?.technicians) ?? [];
-  const currentBooking = editor?.type === "client" ? editor.booking : editor?.type === "visit" && editor.slot
-    ? { id: editor.id, slot: editor.slot } : undefined;
+  const currentBooking = editor?.type === "client" || editor?.type === "visit" ? editor.booking : undefined;
   const appointments: PlannerAppointment[] = (entries ?? []).map(entry => entry.source === "private" ? {
     ...entry, title: entry.title + " · " + entry.client.name, movable: true,
   } : {
@@ -382,11 +411,10 @@ export default function PartnerPlanningPage() {
 
     {notice ? <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
       <p role="status">{notice}</p>
-      {bookedDay ? <button type="button" className={actionClass} onClick={() => {
-        setDay(bookedDay);
-        setMapPeriod("day");
-        changeView("map");
-      }}>Voir le rendez-vous sur la carte</button> : null}
+      {savedVisit ? <div className="flex flex-wrap gap-x-4">
+        {view !== "map" ? <button type="button" className={actionClass} onClick={() => openVisitOnMap(savedVisit)}>Voir le rendez-vous sur la carte</button> : null}
+        <Link className={actionClass} href="/partenaire/interventions">Retrouver dans Mes interventions</Link>
+      </div> : null}
     </div> : null}
     {gridError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{gridError}</p> : null}
     {savedClient && view === "clients" ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
@@ -480,7 +508,7 @@ export default function PartnerPlanningPage() {
     {(view === "agenda" || view === "map") && day && !loadError ? <section className={panelClass}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-bold">{view === "map" ? "Carte des interventions" : period === "day" ? "Interventions du jour" : period === "week" ? "Interventions de la semaine" : "Calendrier du mois"}</h2>
-        <button type="button" disabled={saving} className={actionClass} onClick={() => changeView("clients")}>Planifier une intervention</button>
+        <button type="button" disabled={saving} className={actionClass} onClick={() => edit({ type: "pickClient", id: crypto.randomUUID() })}>Nouvelle intervention</button>
       </div>
       {view === "agenda" ? <div className="mt-3 flex flex-wrap gap-2" aria-label="Période du planning">
         {(Object.keys(periods) as PlannerPeriod[]).map(option => <Button type="button" key={option}
@@ -513,6 +541,7 @@ export default function PartnerPlanningPage() {
           .formatRange(mapWeek, plannerDay(plannerDate(mapWeek), 6))}</p> : null}
         <PartnerTourMap items={mapItems} team={team} period={mapPeriod} scope={day} busy={saving} onBook={saveTourVisit} loadRoute={loadDrivingTour}
           applyTour={applyDrivingTour} reloadTour={() => setRevision(current => current + 1)} loadUpcoming={loadUpcomingMap} version={revision}
+          status={mapStatus} highlightId={mapVisitId} onStatus={status => { setMapStatus(status); setMapVisitId(null); }}
           onVisit={visit => edit({ type: "visit", id: visit.id, client: visit.client, visit })}
           onAddress={client => edit({ type: "client", id: client.id, client, returnToMap: true })} />
       </> : null}
@@ -546,7 +575,8 @@ export default function PartnerPlanningPage() {
             <p className="break-words text-sm">{partnerClientAddress(entry.client) || "Adresse à compléter dans la fiche client"}</p>
             {entry.description ? <p className="whitespace-pre-wrap break-words text-sm">{entry.description}</p> : null}
             <div className="flex flex-wrap gap-x-4">
-              {partnerClientAddress(entry.client) ? <button type="button" disabled={saving} className={actionClass} onClick={() => { setEditor(null); setMapped(entry.client); }}>Voir sur la carte</button> : null}
+              <button type="button" disabled={saving} className={actionClass}
+                onClick={() => openVisitOnMap({ id: entry.id, startsAt: entry.starts_at })}>Voir sur la carte</button>
               <button type="button" disabled={saving} className={actionClass} onClick={() => edit({ type: "visit", id: entry.id, client: entry.client, visit: entry })}>Modifier le rendez-vous</button>
             </div>
           </> : <>
@@ -567,7 +597,7 @@ function slotSummary(slot: PlannerSlot, team: PlannerTechnician[]) {
 }
 
 function SlotClientPicker({ slot, team, choose, add, close }: {
-  slot: PlannerSlot; team: PlannerTechnician[]; choose: (client: PrivatePartnerClient) => void; add: () => void; close: () => void;
+  slot?: PlannerSlot; team: PlannerTechnician[]; choose: (client: PrivatePartnerClient) => void; add: () => void; close: () => void;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const [search, setSearch] = useState("");
@@ -589,8 +619,8 @@ function SlotClientPicker({ slot, team, choose, add, close }: {
   }, [search, offset, attempt]);
 
   return <section className={panelClass + " mb-4"} aria-labelledby="booking-title">
-    <h2 id="booking-title" ref={heading} tabIndex={-1} className="text-xl font-bold">Nouveau rendez-vous</h2>
-    <p className="mt-1 text-sm">{slotSummary(slot, team)}</p>
+    <h2 id="booking-title" ref={heading} tabIndex={-1} className="text-xl font-bold">{slot ? "Nouveau rendez-vous" : "Nouvelle intervention"}</h2>
+    <p className="mt-1 text-sm">{slot ? slotSummary(slot, team) : "Choisissez un client ou ajoutez sa fiche pour enregistrer l’intervention."}</p>
     <div className="my-3 flex flex-wrap gap-2">
       <Button type="button" onClick={add}>Ajouter un client</Button>
       <Button type="button" variant="secondary" onClick={close}>Annuler</Button>
@@ -629,10 +659,10 @@ function PlannerEditor({ editor, day, team, save, saving, error, close, back }: 
   saving: boolean; error: string; close: () => void; back?: () => void;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
-  const [withoutDate, setWithoutDate] = useState(false);
+  const [withoutDate, setWithoutDate] = useState(editor.type === "visit" && !!editor.booking && !editor.booking.slot);
   useEffect(() => { title.current?.focus(); }, []);
   const visit = editor.type === "visit" ? editor.visit : undefined;
-  const slot = editor.type === "visit" ? editor.slot : editor.type === "client" ? editor.booking?.slot : undefined;
+  const slot = editor.type === "stock" ? undefined : editor.booking?.slot;
   const startsAt = visit?.starts_at ?? slot?.startsAt;
   const startingDay = startsAt ? plannerDate(new Date(startsAt)) : day;
   return <section className={panelClass + " mb-4"}>

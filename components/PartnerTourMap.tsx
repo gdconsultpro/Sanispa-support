@@ -17,7 +17,7 @@ const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
 const filterClass = "focus-ring mt-1 min-h-12 w-full rounded-lg border border-sanispa-line bg-white px-3 text-base";
 const linkClass = "focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline";
 
-export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, loadUpcoming, version }: {
+export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, loadUpcoming, version, status, highlightId, onStatus }: {
   items: PlannerMapIntervention[] | null;
   team: PlannerTechnician[];
   period: "day" | "week";
@@ -31,8 +31,10 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
   reloadTour: () => void;
   loadUpcoming: (signal: AbortSignal) => Promise<PlannerMapIntervention[]>;
   version: number;
+  status: PlannerMapStatus;
+  highlightId: string | null;
+  onStatus: (status: PlannerMapStatus) => void;
 }) {
-  const [status, setStatus] = useState<PlannerMapStatus>("scheduled");
   const [technician, setTechnician] = useState("all");
   const [showTour, setShowTour] = useState(false);
   const [lastMap, setLastMap] = useState<{ waiting: PlannerMapIntervention[]; team: PlannerTechnician[] } | null>(null);
@@ -78,12 +80,13 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
         item.approximateLocation ? "Position approximative (commune)" : ""].filter(Boolean).join(" · ");
       return { ...item, detail };
     });
+    if (highlightId) entries.sort((left, right) => Number(right.id === highlightId) - Number(left.id === highlightId));
     const points: PartnerMapPoint[] = entries.flatMap(item => item.latitude !== null && item.longitude !== null ? [{
       id: item.id, latitude: item.latitude, longitude: item.longitude, title: item.title,
-      detail: item.detail, address: item.address, pending: item.startsAt === null,
+      detail: item.detail, address: item.address, pending: item.startsAt === null, highlighted: item.id === highlightId,
     }] : []);
     return { entries, points };
-  }, [displayItems, period, status, technician, visibleTeam]);
+  }, [displayItems, highlightId, period, status, technician, visibleTeam]);
   const mappedIds = new Set(points.map(point => point.id));
   const waitingCount = entries.filter(item => !item.startsAt).length;
 
@@ -101,7 +104,7 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
       <div>
         <label htmlFor={filterId + "-status"} className="text-sm font-bold">Statut</label>
         <select id={filterId + "-status"} className={filterClass} value={showTour ? "scheduled" : status} disabled={showTour}
-          onChange={event => { setSelected(null); setStatus(event.target.value as PlannerMapStatus); }}>
+          onChange={event => { setSelected(null); onStatus(event.target.value as PlannerMapStatus); }}>
           <option value="scheduled">Planifiées</option>
           <option value="pending">À planifier</option>
           <option value="upcoming">À venir</option>
@@ -141,7 +144,8 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
       }} /> : null}
     {displayItems ? <section className="mt-4" aria-label="Interventions affichées">
       {!entries.length ? <p>{status === "scheduled" ? "Aucune intervention pour cette période et ces filtres." : "Aucune intervention pour ces filtres."}</p> : <ul className="divide-y divide-sanispa-line">
-        {entries.map(item => <li key={item.id} className="py-3">
+        {entries.map(item => <li key={item.id} className={item.id === highlightId ? "my-2 rounded-xl border border-sanispa-blue bg-sanispa-ice px-3 py-3" : "py-3"}>
+          {item.id === highlightId ? <p className="text-sm font-bold text-sanispa-blue">Intervention sélectionnée</p> : null}
           <h3 className="break-words text-lg font-bold">{item.title}</h3>
           <p className="text-sm font-semibold">{item.detail}</p>
           <p className="break-words text-sm">{item.address || "Adresse à compléter"}</p>
