@@ -245,7 +245,8 @@ test("moving a private or assigned visit preserves its duration and rejects stal
     await assert.rejects(db.query(move, [partner, actor, "private", privateVisit, privateVersion, foreignTechnician]), /TECHNICIAN_NOT_FOUND/);
     await assert.rejects(db.query(move, [other, outsider, "sanispa", dossier, assignedVersion, foreignTechnician]), /ASSIGNED_PARTNER_REQUIRED/);
     await db.query(move, [partner, actor, "private", privateVisit, privateVersion, technician]);
-    await db.query(move, [partner, actor, "sanispa", dossier, assignedVersion, technician]);
+    await assert.rejects(db.query(move, [partner, actor, "sanispa", dossier, assignedVersion, technician]), /TECHNICIAN_SLOT_OCCUPIED/);
+    await db.query(move.replace("2 days", "2 days 2 hours"), [partner, actor, "sanispa", dossier, assignedVersion, technician]);
     await assert.rejects(db.query(move, [partner, actor, "private", privateVisit, privateVersion, null]), /APPOINTMENT_CHANGED/);
     const privateResult = await db.query("select technician_id, (extract(epoch from ends_at-starts_at)/60)::int minutes from partner_private_visits where id=$1", [privateVisit]);
     assert.deepEqual(privateResult.rows, [{ technician_id: technician, minutes: 45 }]);
