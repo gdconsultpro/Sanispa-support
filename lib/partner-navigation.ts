@@ -1,11 +1,12 @@
-import { partnerClientIdPattern, partnerClientsPath, partnerMapPath, partnerNewClientPath, partnerNewVisitPath } from "./partner-planner";
+import { partnerClientIdPattern, partnerClientsPath, partnerEditVisitPrefix, partnerMapPath, partnerNewClientPath, partnerNewVisitPath, partnerPrivateVisitsPath } from "./partner-planner";
 
 /** Only known partner screens may be used as post-authentication destinations. */
 export function partnerReturnPath(value: string | null | undefined) {
   if (!value) return "/partenaire";
   if (value === partnerClientsPath || value === partnerNewClientPath || value === partnerMapPath || value === partnerNewVisitPath) return value;
-  const clientPrefix = partnerClientsPath + "&fiche=";
-  if (value.startsWith(clientPrefix) && partnerClientIdPattern.test(value.slice(clientPrefix.length))) return value;
+  for (const prefix of [partnerClientsPath + "&fiche=", partnerPrivateVisitsPath, partnerEditVisitPrefix]) {
+    if (value.startsWith(prefix) && partnerClientIdPattern.test(value.slice(prefix.length))) return value;
+  }
   if (/^\/partenaire\/planning\?view=carte&visite=[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}&(?:jour=\d{4}-\d{2}-\d{2}|statut=pending)$/i.test(value)) return value;
   if (value.startsWith("/partenaire/abonnement?retour=")) {
     const offer = partnerOfferReturn(new URLSearchParams(value.slice(value.indexOf("?"))).get("retour"));

@@ -6,11 +6,10 @@ export type PrivatePartnerClient = {
   street: string;
   postal_code: string;
   city: string;
-  intervention_type: string;
-  description: string;
   latitude: number | null;
   longitude: number | null;
   source_diagnostic_id: string | null;
+  deleted_at?: string | null;
 };
 
 type Times = { starts_at: string; ends_at: string };
@@ -27,14 +26,19 @@ export type PendingPrivatePartnerVisit = Omit<PrivatePartnerVisit, "starts_at" |
   starts_at: null;
   ends_at: null;
 };
-export type PartnerClientVisit = Omit<PrivatePartnerVisit, "client"> | Omit<PendingPrivatePartnerVisit, "client">;
+export type PartnerClientVisit = Pick<PrivatePartnerVisit, "id" | "title" | "starts_at" | "spa_id">;
+export type PartnerPrivateVisitFile = {
+  visit: PrivatePartnerVisit | PendingPrivatePartnerVisit;
+  technicians: PlannerTechnician[];
+  spa: PartnerClientSpa | null;
+};
 export type PartnerClientDossier = {
   id: string;
   spa_id?: string | null;
   problem_type: string;
   status: string;
   intervened_at: string | null;
-  preview_description: string | null;
+  preview_description?: string | null;
   partner_appointments: Pick<ScheduledVisit, "starts_at" | "ends_at" | "technician_id"> | null;
 };
 export type PartnerClientHistory = {
@@ -54,8 +58,6 @@ export function partnerSpaName(spa: PartnerClientSpa) {
 export function partnerSpaOption(spa: PartnerClientSpa) {
   return partnerSpaName(spa) + (spa.serial_number ? " · " + spa.serial_number : "");
 }
-export const partnerClientHistoryFilters = ["all", "pending", "scheduled", "past"] as const;
-export type PartnerClientHistoryFilter = typeof partnerClientHistoryFilters[number];
 
 export function partnerClientVisitTiming(endsAt: string | null, now: number) {
   return endsAt === null ? "pending" : Date.parse(endsAt) > now ? "scheduled" : "past";
@@ -86,10 +88,18 @@ export const partnerClientsPath = "/partenaire/planning?view=clients";
 export const partnerNewClientPath = partnerClientsPath + "&ajouter=1";
 export const partnerMapPath = "/partenaire/planning?view=carte";
 export const partnerNewVisitPath = "/partenaire/planning?nouvelle=1";
+export const partnerPrivateVisitsPath = "/partenaire/interventions/privees/";
+export const partnerEditVisitPrefix = "/partenaire/planning?modifier=";
 
 export const partnerClientIdPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export function partnerClientPath(id: string) {
   return partnerClientsPath + "&fiche=" + encodeURIComponent(id);
+}
+export function partnerPrivateVisitPath(id: string) {
+  return partnerPrivateVisitsPath + encodeURIComponent(id);
+}
+export function partnerEditVisitPath(id: string) {
+  return partnerEditVisitPrefix + encodeURIComponent(id);
 }
 
 export function partnerVisitMapPath(id: string, startsAt: string | null) {

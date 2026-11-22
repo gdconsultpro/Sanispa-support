@@ -6,7 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { Button } from "@/components/Button";
 import { PartnerDrivingTour, type ApplyDrivingTour, type LoadDrivingTour } from "@/components/PartnerDrivingTour";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
-import { matchesPlannerMapFilters, nearbyPendingVisits, partnerClientPath, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
+import { matchesPlannerMapFilters, nearbyPendingVisits, partnerClientPath, partnerClientVisitTiming, partnerDirections, partnerPrivateVisitPath, plannerDate, plannerTime, suggestedTourStart,
   type PartnerMapContacts, type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
   type PlannerMapStatus, type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
 
@@ -179,6 +179,9 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
           <p className="text-sm font-semibold">{item.detail}</p>
           <p className="break-words text-sm">{item.address || "Adresse à compléter"}</p>
           <div className="flex flex-wrap gap-x-4 text-sm">
+            {item.visit ? <Link className={linkClass} href={partnerPrivateVisitPath(item.visit.id)}>
+              {partnerClientVisitTiming(item.visit.ends_at, Date.now()) === "past" ? "Consulter l’intervention passée" : "Ouvrir la fiche d’intervention"}
+            </Link> : null}
             {item.visit ? <button type="button" disabled={busy} className={linkClass} onClick={() => item.visit && onVisit(item.visit)}>
               {item.startsAt ? "Modifier le rendez-vous" : "Fixer le rendez-vous"}
             </button> : null}

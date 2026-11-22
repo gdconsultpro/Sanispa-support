@@ -8,6 +8,6 @@ export default function PartnerInterventionPage() {
   const { id } = useParams<{ id: string }>();
   return <AppShell compact>
     <PartnerNavigation current="Interventions" /><Link href="/partenaire/interventions" className="font-bold underline">← Mes interventions</Link>
-    <h1 className="mt-5 text-3xl font-bold">Le suivi de mon intervention</h1>
+    <h1 className="mt-5 text-3xl font-bold">Dossier d’intervention SANISPA</h1>
     <InterventionWorkspace key={id} id={id} role="partner" /></AppShell>;
 }

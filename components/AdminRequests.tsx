@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { AdminActions } from "@/components/AdminActions";
 import { partnerDispatchLabels, type PartnerDispatchDecision } from "@/lib/partner-release";
 import type { AdminDossierSection } from "@/lib/admin-navigation";
@@ -41,16 +42,25 @@ function dateLabel(value: string, withTime = false) {
   }).format(date);
 }
 
-export function AdminRequests({ items, pinnedItem, initialDossier, initialSection }: {
+export function AdminRequests({ items, pinnedItem, initialDossier, initialSection, canArchive }: {
   items: AdminRequestItem[];
   pinnedItem?: AdminRequestItem;
   initialDossier?: string | null;
   initialSection?: AdminDossierSection;
+  canArchive: boolean;
 }) {
   const id = useId();
+  const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(initialDossier ?? null);
   const [activeTab, setActiveTab] = useState<TabKey>(initialSection ?? "diagnostic");
   const [notice, setNotice] = useState("");
+  const [checked, setChecked] = useState<Set<string>>(() => new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState("");
+  const bulkButton = useRef<HTMLButtonElement>(null);
+  const bulkPrompt = useRef<HTMLParagraphElement>(null);
+  const bulkPending = useRef(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const panelScrollRef = useRef<HTMLDivElement>(null);
@@ -61,6 +71,40 @@ export function AdminRequests({ items, pinnedItem, initialDossier, initialSectio
   const focusRestoreVersion = useRef(0);
   const selected = items.find(item => item.id === selectedId) ?? (pinnedItem?.id === selectedId ? pinnedItem : undefined);
   const selectedPresent = Boolean(selected);
+  const selectedForArchive = items.filter(item => !item.archived && checked.has(item.id));
+  const allChecked = selectedForArchive.length === items.length;
+  const selectionLocked = confirmBulk || bulkBusy;
+
+  useEffect(() => { if (confirmBulk) bulkPrompt.current?.focus(); }, [confirmBulk]);
+
+  async function archiveSelection() {
+    if (!canArchive || !selectedForArchive.length || bulkPending.current) return;
+    bulkPending.current = true;
+    setBulkBusy(true);
+    setBulkError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/diagnostics/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedForArchive.map(item => item.id) }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || typeof result?.archived !== "number") throw new Error(result?.error || "La suppression groupée a échoué. Réessayez.");
+      setChecked(new Set());
+      setConfirmBulk(false);
+      setNotice(result.archived === 1 ? "Une demande a été déplacée dans les archives."
+        : result.archived ? `${result.archived} demandes ont été déplacées dans les archives.` : "Les demandes sélectionnées figurent déjà dans les archives.");
+      router.refresh();
+      listTitleRef.current?.focus();
+    } catch (cause) {
+      setBulkError(cause instanceof Error && cause.name !== "TimeoutError" ? cause.message : "La suppression groupée a échoué. Réessayez.");
+    } finally {
+      setBulkBusy(false);
+      bulkPending.current = false;
+    }
+  }
 
   useEffect(() => {
     if (selectedId && !selectedPresent) {
@@ -174,16 +218,55 @@ export function AdminRequests({ items, pinnedItem, initialDossier, initialSectio
       <p className="hidden text-xs text-sanispa-steel sm:block">Ouvrez une demande pour consulter et traiter son dossier.</p>
     </div>
     {notice ? <p className="mb-3 rounded-md border border-sanispa-line bg-sanispa-ice p-3 text-sm text-sanispa-steel" role="status">{notice}</p> : null}
+    {canArchive && items.length ? <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
+      <button type="button" disabled={selectionLocked} className="focus-ring min-h-11 rounded-md border border-sanispa-line bg-white px-3 text-sm font-bold disabled:opacity-50"
+        onClick={() => setChecked(allChecked ? new Set() : new Set(items.filter(item => !item.archived).map(item => item.id)))}>
+        {allChecked ? "Tout désélectionner" : "Sélectionner toutes les demandes affichées"}
+      </button>
+      {selectedForArchive.length ? <button type="button" ref={bulkButton} hidden={confirmBulk}
+        className="focus-ring min-h-11 rounded-md border border-red-200 bg-white px-3 text-sm font-bold text-red-800"
+        onClick={() => { setBulkError(""); setConfirmBulk(true); }}>Supprimer la sélection ({selectedForArchive.length})</button> : null}
+    </div> : null}
+    {canArchive && confirmBulk ? <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3">
+      <p ref={bulkPrompt} tabIndex={-1} className="text-sm text-red-900">
+        {selectedForArchive.length === 1 ? "La demande sélectionnée sera déplacée" : `Les ${selectedForArchive.length} demandes sélectionnées seront déplacées`} dans <strong>Demandes → Archivées</strong>.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button type="button" disabled={bulkBusy} onClick={() => void archiveSelection()}
+          className="focus-ring min-h-11 rounded-md border border-red-200 bg-white px-3 text-sm font-bold text-red-800 disabled:opacity-50">
+          {bulkBusy ? "Suppression…" : "Confirmer la suppression de la sélection"}
+        </button>
+        <button type="button" disabled={bulkBusy} onClick={() => {
+          setConfirmBulk(false);
+          setBulkError("");
+          requestAnimationFrame(() => bulkButton.current?.focus());
+        }} className="focus-ring min-h-11 rounded-md border border-sanispa-line bg-white px-3 text-sm font-bold disabled:opacity-50">Annuler</button>
+      </div>
+      {bulkError ? <p role="alert" className="mt-2 text-sm text-red-800">{bulkError}</p> : null}
+    </div> : null}
     {items.length > 0 ? <div className="overflow-hidden rounded-md border border-sanispa-line bg-white shadow-soft">
-      <div aria-hidden="true" className="hidden grid-cols-[90px_minmax(0,1fr)_95px_130px_140px_60px] gap-4 border-b border-sanispa-line bg-sanispa-ice px-4 py-3 text-xs font-bold uppercase tracking-wide text-sanispa-steel lg:grid">
+      <div aria-hidden="true" className={"hidden grid-cols-[90px_minmax(0,1fr)_95px_130px_140px_60px] gap-4 border-b border-sanispa-line bg-sanispa-ice px-4 py-3 text-xs font-bold uppercase tracking-wide text-sanispa-steel lg:grid" + (canArchive ? " lg:pl-16" : "")}>
         <span>Demande</span><span>Client · Motif</span><span>Date</span><span>Statut</span><span>Échéance</span><span />
       </div>
       <ul className="divide-y divide-sanispa-line">
-        {items.map(item => <li key={item.id} id={`dossier-${item.id}`} className="min-w-0">
+        {items.map(item => <li key={item.id} id={`dossier-${item.id}`} className={`flex min-w-0 items-stretch ${checked.has(item.id) ? "bg-sanispa-ice" : ""}`}>
+          {canArchive ? <label className="flex w-12 shrink-0 cursor-pointer items-center justify-center">
+            <input type="checkbox" aria-label={`Sélectionner la demande ${item.shortId} de ${item.clientName}`}
+              className="focus-ring h-5 w-5 accent-sanispa-blue" checked={checked.has(item.id)} disabled={selectionLocked || item.archived}
+              onChange={event => {
+                const selected = event.currentTarget.checked;
+                setChecked(previous => {
+                  const next = new Set(previous);
+                  if (selected) next.add(item.id);
+                  else next.delete(item.id);
+                  return next;
+                });
+              }} />
+          </label> : null}
           <button type="button" onClick={event => openRequest(item.id, event.currentTarget)}
             aria-label={`Ouvrir la demande ${item.shortId} de ${item.clientName} : ${item.subject}`}
             aria-haspopup="dialog"
-            className="group grid w-full min-w-0 grid-cols-2 gap-x-3 gap-y-3 p-4 text-left text-sm transition hover:bg-sanispa-ice focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sanispa-blue lg:grid-cols-[90px_minmax(0,1fr)_95px_130px_140px_60px] lg:items-center lg:gap-4">
+            className="group grid min-w-0 flex-1 grid-cols-2 gap-x-3 gap-y-3 p-4 text-left text-sm transition hover:bg-sanispa-ice focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sanispa-blue lg:grid-cols-[90px_minmax(0,1fr)_95px_130px_140px_60px] lg:items-center lg:gap-4">
             <span className="whitespace-nowrap text-xs font-bold tracking-wide text-sanispa-blue">N° {item.shortId}</span>
             <span className="col-span-2 row-start-2 min-w-0 lg:col-span-1 lg:row-auto">
               <span className="block break-words text-base font-bold leading-snug text-sanispa-navy">{item.clientName}</span>

@@ -162,7 +162,7 @@ export default async function AdminPage({ searchParams }: {
           {dueOnly ? <p className="mt-3 text-xs text-sanispa-steel">Actions à traiter dont l’échéance est atteinte, sur les dossiers non archivés et non terminés.</p> : null}
         </section>
         {!error ? <AdminRequests key={[showArchived, params?.q, params?.status, dueOnly, dispatchFilter, inbox].join(":")}
-          initialDossier={initialDossier} initialSection={initialSection}
+          initialDossier={initialDossier} initialSection={initialSection} canArchive={!showArchived}
           pinnedItem={requestedDossier && !visible.some(entry => entry.diagnostic.id === requestedDossier.id) ? toRequestItem(requestedDossier) : undefined}
           items={visible.map(({ diagnostic }) => toRequestItem(diagnostic))}
         /> : null}

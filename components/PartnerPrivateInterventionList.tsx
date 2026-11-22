@@ -7,7 +7,7 @@ import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import { partnerAuthError } from "@/lib/partner-browser";
 import { plannerRequest } from "@/lib/partner-planner-browser";
-import { partnerClientAddress, partnerVisitMapPath, plannerTime, type PlannerTechnician, type PrivatePartnerClient } from "@/lib/partner-planner";
+import { partnerClientAddress, partnerPrivateVisitPath, partnerVisitMapPath, plannerTime, type PlannerTechnician, type PrivatePartnerClient } from "@/lib/partner-planner";
 
 type VisitListItem = {
   id: string; title: string; starts_at: string | null; ends_at: string | null; technician_id: string | null; updated_at: string;
@@ -65,7 +65,7 @@ export function PartnerPrivateInterventionList() {
     {error ? <div><p role="alert" className="text-sm font-bold text-red-800">{error}</p>
       <button type="button" className="focus-ring min-h-11 font-bold underline" onClick={() => setAttempt(value => value + 1)}>Réessayer</button>
     </div> : !page ? <p role="status">Chargement des interventions…</p>
-      : !page.visits.length ? <p>{search ? "Aucune intervention pour ce client." : "Vous pouvez créer votre première intervention depuis cette page."}</p>
+      : !page.visits.length ? <p>{search ? "Aucune intervention à planifier ou planifiée pour ce client." : "Aucune intervention à planifier ou planifiée."}</p>
       : <ul className="divide-y divide-sanispa-line">
         {page.visits.map(visit => {
           const specialist = page.technicians.find(member => member.id === visit.technician_id)?.name ?? "À affecter";
@@ -77,6 +77,8 @@ export function PartnerPrivateInterventionList() {
             <p className="mt-1 text-sm font-semibold">{slot} · {specialist}</p>
             <p className="break-words text-sm">{partnerClientAddress(visit.client) || "Adresse à compléter"}</p>
             <div className="flex flex-wrap items-start gap-x-4">
+              <Link className="focus-ring inline-flex min-h-11 items-center text-sm font-bold text-sanispa-blue underline"
+                href={partnerPrivateVisitPath(visit.id)}>Ouvrir la fiche d’intervention</Link>
               <Link className="focus-ring inline-flex min-h-11 items-center text-sm font-bold text-sanispa-blue underline"
                 href={partnerVisitMapPath(visit.id, visit.starts_at)}>Retrouver sur la carte</Link>
               {visit.starts_at ? <PartnerVisitUnplan onUnplan={() => change(visit, "unplanVisit")} /> : null}

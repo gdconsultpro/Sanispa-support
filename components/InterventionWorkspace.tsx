@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { PrivateFile } from "./PrivateFile";
+import { PartnerAssignedVisitInfo, type PartnerAssignedVisit } from "./PartnerAssignedVisitInfo";
 import { Button } from "./Button";
 import { localDateTime } from "@/lib/client-browser-api";
 import { partnerLoginPath } from "@/lib/partner-navigation";
@@ -10,7 +11,7 @@ import { clientCaseLoginPath, clientCaseReturnPath, clientDossierPath } from "@/
 import { partnerWorkLabels, partnerWorkState } from "@/lib/partner-work";
 type Report = { id: string; performed_at: string; submitted_at: string; findings: string; actions: string; next_steps: string; client_validated_at: string | null;
   client_outcome: "repaired" | "quote_pending" | "abandoned" | null; responsiveness: number | null; professionalism: number | null; pricing: number | null };
-type Workspace = { dossierReference?: string; dossierStatus?: string; assignedPartner?: boolean; appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[] };
+type Workspace = { dossierReference?: string; dossierStatus?: string; assignedPartner?: boolean; appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[]; job?: PartnerAssignedVisit };
 const outcomes = { repaired: "Spa réparé", quote_pending: "Devis en cours", abandoned: "Projet abandonné" } as const;
 const criteria = [{ key: "responsiveness", label: "Réactivité" }, { key: "professionalism", label: "Professionnalisme" }, { key: "pricing", label: "Tarif" }] as const;
 const inputClass = "mt-2 w-full rounded-xl border border-sanispa-line bg-white p-3 text-sanispa-navy";
@@ -144,6 +145,8 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
         {workState === "invoice" ? <p className="mt-2">Le compte rendu est transmis. Le client a besoin de la facture pour confirmer une réparation.</p> : null}
         {nextSection ? <a href={"#" + nextSection} className="mt-3 inline-block font-bold underline">{workState === "invoice" ? "Déposer la facture" : workState === "report" ? "Rédiger le compte rendu" : workState === "contact" ? "Planifier la visite" : "Voir le rendez-vous"}</a> : null}
       </section> : null}
+      {role === "partner" && data.job && (workState === "upcoming" || workState === "contact" || Boolean(!closed && data.appointment && Date.parse(data.appointment.ends_at) > Date.now())) ?
+        <PartnerAssignedVisitInfo id={id} key={id} job={data.job} /> : null}
       {role === "client" ? (
         <section className="rounded-2xl border border-sanispa-line bg-white p-5">
           <h2 className="text-xl font-bold">{waiting ? "Votre compte rendu est prêt" : closed || data.dossierStatus === "CLOSED" || data.dossierStatus === "terminé" ? "Votre dossier est terminé" : "Votre demande est enregistrée"}</h2>

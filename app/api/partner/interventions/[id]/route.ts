@@ -11,7 +11,30 @@ export async function GET(request: Request, context: Context) {
     if (!partner) throw new HttpError(401, "Connexion partenaire requise.");
     const { id } = await context.params;
     const dossier = await interventionCase(supabase, id, { partnerId: partner.id });
-    return NextResponse.json({ ...await loadIntervention(supabase, id), dossierReference: dossier.public_reference, dossierStatus: dossier.status }, { headers: { "Cache-Control": "private, no-store" } });
+    const [workspace, details, contact] = await Promise.all([
+      loadIntervention(supabase, id),
+      supabase.from("diagnostics").select("problem_type,preview_description,customers(name,address,phone,email),diagnostic_answers(question_key,answer)")
+        .eq("id", id).eq("assigned_partner_id", partner.id).is("archived_at", null)
+        .in("diagnostic_answers.question_key", ["description", "noise_description", "pump_details"]).maybeSingle(),
+      supabase.from("partner_private_clients").select("id").eq("partner_id", partner.id)
+        .eq("source_diagnostic_id", id).is("deleted_at", null).maybeSingle(),
+    ]);
+    if (details.error || contact.error) throw details.error || contact.error;
+    if (!details.data) throw new HttpError(404, "Dossier introuvable.");
+    const clientId = contact.data?.id;
+    const [spas, link] = clientId ? await Promise.all([
+      supabase.from("partner_client_spas").select("id,brand,model,serial_number,updated_at")
+        .eq("partner_id", partner.id).eq("client_id", clientId).order("brand").order("model"),
+      supabase.from("partner_client_spa_dossiers").select("spa_id")
+        .eq("partner_id", partner.id).eq("client_id", clientId).eq("diagnostic_id", id).maybeSingle(),
+    ]) : [null, null];
+    if (spas?.error || link?.error) throw spas?.error || link?.error;
+    const values = details.data;
+    const customer = Array.isArray(values.customers) ? values.customers[0] ?? null : values.customers;
+    const description = values.preview_description?.trim() || values.diagnostic_answers.map(answer => answer.answer).filter(Boolean).join("\n");
+    return NextResponse.json({ ...workspace, dossierReference: dossier.public_reference, dossierStatus: dossier.status,
+      job: { customer, problemType: values.problem_type, description, clientId: clientId ?? null, spaId: link?.data?.spa_id ?? null, spas: spas?.data ?? [] },
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) { return apiError(e); }
 }
 export async function POST(request: Request, context: Context) {

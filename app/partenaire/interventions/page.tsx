@@ -54,7 +54,8 @@ export default function InterventionsPage() {
     {error ? <div className="mt-4 rounded-xl bg-white p-4"><p role="alert" className="text-red-800">{error}</p><button type="button" className="mt-2 font-bold underline" onClick={() => { setError(""); setAttempt(value => value + 1); }}>Réessayer</button></div> : null}
     {!jobs && !error ? <p role="status" className="mt-4">Chargement du planning…</p> : null}
     {jobs && !jobs.length ? <p className="mt-5 rounded-xl bg-white p-5">Aucun dossier SANISPA attribué pour le moment. <Link href="/partenaire/leads" className="font-bold underline">Voir les demandes proposées</Link></p> : null}
-    {jobs?.length ? <div className="mt-6 grid gap-5">
+    {jobs?.length ? <section className="mt-6 grid gap-5" aria-labelledby="sanispa-jobs">
+      <h2 id="sanispa-jobs" className="text-2xl font-bold">Suivi des dossiers SANISPA</h2>
       {sections.map(section => {
         const entries = jobs.filter(job => section.id === "planning"
           ? partnerHasUpcomingAppointment(job, now)
@@ -70,11 +71,13 @@ export default function InterventionsPage() {
               {job.partner_appointments ? <p className="mt-1 text-sm">{partnerAppointmentLabel(job.partner_appointments.starts_at)}</p> : null}
               {job.customers?.address ? <p className="break-words text-sm">{job.customers.address}</p> : null}
               <p className="mt-1 text-sm font-bold">{partnerWorkLabels[partnerJobState(job, now)]}</p>
-              <Link className="focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline" href={"/partenaire/interventions/" + job.id}>Ouvrir le suivi →</Link>
+              <Link className="focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline" href={"/partenaire/interventions/" + job.id}>
+                {section.id === "planning" || section.id === "a-planifier" ? "Ouvrir la fiche d’intervention" : "Ouvrir le suivi"} →
+              </Link>
             </li>)}
           </ul>}
         </section>;
       })}
-    </div> : null}
+    </section> : null}
   </AppShell>;
 }

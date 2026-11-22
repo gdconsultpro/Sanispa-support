@@ -8,10 +8,11 @@ import { interventionError } from "@/lib/interventions";
 import { processNotifications } from "@/lib/notifications";
 import { getPartnerRoadRoute } from "@/lib/partner-road-route";
 import { maximumTourRouteStops } from "@/lib/partner-tour-routing";
-import { partnerClientAddress, partnerClientHistoryFilters, partnerClientPath, partnerVisitAddress, type PartnerMapContacts,
+import { partnerClientAddress, partnerClientDossierTiming, partnerClientPath, partnerVisitAddress, type PartnerMapContacts,
+  type PartnerClientDossier,
   type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
-const privateClientColumns = "id,name,phone,email,street,postal_code,city,intervention_type,description,latitude,longitude,source_diagnostic_id";
+const privateClientColumns = "id,name,phone,email,street,postal_code,city,latitude,longitude,source_diagnostic_id";
 const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at,spa_id";
 const spaFields = "id,brand,model,serial_number,updated_at";
 const privateVisitColumns = `${visitFields},client:partner_private_clients!inner(${privateClientColumns})`;
@@ -29,8 +30,8 @@ const privateClientInput = z.object({
   name: z.string().trim().min(1).max(140),
   phone: z.string().trim().max(35),
   email: z.string().trim().max(254).refine(email => !email || z.string().email().safeParse(email).success),
-  intervention_type: z.string().trim().min(1).max(140),
-  description: z.string().trim().max(2500),
+  intervention_type: z.string().trim().min(1).max(140).optional(),
+  description: z.string().trim().max(2500).optional(),
 }).merge(privateAddressInput);
 const privateVisitInput = z.object({
   action: z.literal("saveVisit"),
@@ -279,7 +280,6 @@ export async function GET(request: Request) {
       }
       if (section === "client" || section === "client-spas") {
         const id = z.string().uuid().parse(params.get("id"));
-        const filter = z.enum(partnerClientHistoryFilters).parse(params.get("filter") ?? "all");
         let owner = supabase.from("partner_private_clients").select(privateClientColumns).eq("partner_id", partner.id).eq("id", id);
         if (section === "client") owner = owner.is("deleted_at", null);
         const { data: client, error: clientError } = await owner.maybeSingle();
@@ -289,30 +289,40 @@ export async function GET(request: Request) {
           .eq("partner_id", partner.id).eq("client_id", id).order("brand").order("model").order("id").range(from, to));
         if (section === "client-spas") return NextResponse.json({ spas: await spas },
           { headers: { "Cache-Control": "private, no-store" } });
-        const now = new Date().toISOString();
-        let history = supabase.from("partner_private_visits").select(visitFields)
-          .eq("partner_id", partner.id).eq("client_id", id);
-        if (filter === "pending") history = history.is("starts_at", null);
-        if (filter === "scheduled") history = history.gt("ends_at", now);
-        if (filter === "past") history = history.lte("ends_at", now);
-        const [visits, team, dossier, originSpa, equipment] = await Promise.all([
-          history.order("starts_at", { ascending: filter === "scheduled", nullsFirst: true })
+        const now = new Date();
+        const [visits, team, dossier, equipment] = await Promise.all([
+          supabase.from("partner_private_visits").select("id,title,starts_at,spa_id")
+            .eq("partner_id", partner.id).eq("client_id", id).lte("ends_at", now.toISOString())
+            .order("starts_at", { ascending: false })
             .order("updated_at", { ascending: false }).order("id").range(offset, offset + 30),
           technicians(),
           client.source_diagnostic_id ? supabase.from("diagnostics")
-            .select("id,problem_type,status,intervened_at,preview_description,partner_appointments(starts_at,ends_at,technician_id)")
+            .select("id,problem_type,status,intervened_at,partner_appointments(starts_at,ends_at,technician_id)")
             .eq("id", client.source_diagnostic_id).eq("assigned_partner_id", partner.id).is("archived_at", null)
             .eq("partner_appointments.partner_id", partner.id).maybeSingle()
             : null,
-          client.source_diagnostic_id ? supabase.from("partner_client_spa_dossiers").select("spa_id")
-            .eq("partner_id", partner.id).eq("client_id", id).eq("diagnostic_id", client.source_diagnostic_id).maybeSingle()
-            : null,
           spas,
         ]);
-        if (visits.error || dossier?.error || originSpa?.error) throw visits.error || dossier?.error || originSpa?.error;
+        if (visits.error || dossier?.error) throw visits.error || dossier?.error;
+        const linkedDossier = dossier?.data as unknown as PartnerClientDossier | null;
         return NextResponse.json({ client, visits: visits.data.slice(0, 30), more: visits.data.length > 30,
-          dossier: dossier?.data ? { ...dossier.data, spa_id: originSpa?.data?.spa_id ?? null } : null, technicians: team, spas: equipment },
+          dossier: linkedDossier && partnerClientDossierTiming(linkedDossier, +now) === "past" ? linkedDossier : null, technicians: team, spas: equipment },
           { headers: { "Cache-Control": "private, no-store" } });
+      }
+      if (section === "visit") {
+        const id = z.string().uuid().parse(params.get("id"));
+        const [detail, team] = await Promise.all([
+          supabase.from("partner_private_visits").select(`${visitFields},client:partner_private_clients!inner(${privateClientColumns},deleted_at)`)
+            .eq("partner_id", partner.id).eq("client.partner_id", partner.id).eq("id", id).maybeSingle(),
+          technicians(),
+        ]);
+        if (detail.error) throw detail.error;
+        if (!detail.data) throw new HttpError(404, "Cette intervention est introuvable.");
+        const visit = detail.data as unknown as PrivatePartnerVisit | PendingPrivatePartnerVisit;
+        const spa = visit.spa_id ? await supabase.from("partner_client_spas").select(spaFields)
+          .eq("partner_id", partner.id).eq("client_id", visit.client.id).eq("id", visit.spa_id).maybeSingle() : null;
+        if (spa?.error) throw spa.error;
+        return NextResponse.json({ visit, technicians: team, spa: spa?.data ?? null }, { headers: { "Cache-Control": "private, no-store" } });
       }
       if (params.get("section") === "stock") {
         const { data, error } = await supabase.from("partner_private_stock").select(stockColumns).eq("partner_id", partner.id)
@@ -325,7 +335,8 @@ export async function GET(request: Request) {
       if (params.get("section") === "visits") {
         let visits = supabase.from("partner_private_visits")
           .select("id,title,starts_at,ends_at,technician_id,updated_at,client:partner_private_clients!inner(name,street,postal_code,city)")
-          .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
+          .eq("partner_id", partner.id).eq("client.partner_id", partner.id)
+          .or("starts_at.is.null,ends_at.gt." + new Date().toISOString());
         if (name) visits = visits.ilike("client.name", namePattern);
         const [{ data, error }, team] = await Promise.all([visits.order("updated_at", { ascending: false })
           .order("id").range(offset, offset + 30), technicians()]);
