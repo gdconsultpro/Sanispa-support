@@ -14,6 +14,7 @@ import { PartnerScheduleGrid, PlannerTechnicianSelect } from "@/components/Partn
 import { fillPlannerSlot, PartnerSlotSuggestions } from "@/components/PartnerSlotSuggestions";
 import { PartnerStockImport } from "@/components/PartnerStockImport";
 import { PartnerStockHistory } from "@/components/PartnerStockHistory";
+import { PartnerTeamAssignment } from "@/components/PartnerTeamAssignment";
 import { PartnerTourMap } from "@/components/PartnerTourMap";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
@@ -728,6 +729,7 @@ export default function PartnerPlanningPage() {
       </div>
       <PartnerWorkspaceFilters selection={selection} team={team} disabled={saving} onChange={updateSelection} />
       {view === "agenda" ? <PartnerPlanningResources resources={resources} error={resourceError} onChange={() => setResourceRevision(current => current + 1)} /> : null}
+      {view === "agenda" && resources?.canManage ? <PartnerTeamAssignment refresh={resourceRevision} /> : null}
       {view === "agenda" && period !== "month" && agenda?.pendingVisits ? <PartnerScheduleGrid key={[day, period, workStatus, technician].join(":")} day={day} period={period} appointments={appointments}
         occupied={allAppointments} technicianFilter={technician} showQueue={workStatus === "all" || workStatus === "pending"} queue={queue}
         initialAppointment={appointmentToOpen} team={team} busy={saving} error={gridError} onMove={moveFromGrid}

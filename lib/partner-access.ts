@@ -3,10 +3,11 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { HttpError } from "./http";
 import { needsPartnerPasswordChange } from "./partner-navigation";
 
+const accessRole = z.enum(["owner", "technician"]).optional();
 export const partnerAccessSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("lookup"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150) }).strict(),
-  z.object({ mode: z.literal("create"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150), password: z.string().min(12).max(128) }).strict(),
-  z.object({ mode: z.literal("link"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150), existingUserId: z.string().uuid(), reactivate: z.boolean().default(false) }).strict()
+  z.object({ mode: z.literal("create"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150), password: z.string().min(12).max(128), role: accessRole }).strict(),
+  z.object({ mode: z.literal("link"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150), existingUserId: z.string().uuid(), reactivate: z.boolean().default(false), role: accessRole }).strict()
 ]);
 export type PartnerAccessInput = z.infer<typeof partnerAccessSchema>;
 
@@ -46,7 +47,8 @@ export async function createPartnerAccess(supabase: SupabaseClient, partnerId: s
   if (!user.email_confirmed_at || (user.banned_until && Date.parse(user.banned_until) > Date.now()))
     throw new HttpError(409, "Ce compte doit être confirmé ou réactivé avant de pouvoir accéder à l’espace partenaire. Son mot de passe n’a pas été modifié.");
   const linked = await supabase.rpc("link_partner_account", { p_partner: partnerId, p_user: user.id, p_actor: actorId,
-    p_contact: input.name, p_reactivate: input.mode === "link" && input.reactivate });
+    p_contact: input.name, p_reactivate: input.mode === "link" && input.reactivate,
+    ...(input.role === "technician" ? { p_role: input.role } : {}) });
   if (linked.error) {
     const reason = linked.error.message === "ACCOUNT_LINKED_ELSEWHERE" ? "Ce compte est déjà rattaché à une autre entreprise. Aucun transfert automatique n’a été effectué."
       : linked.error.message === "ACCESS_INACTIVE" ? "Le rattachement existant est désactivé. Confirmez explicitement sa réactivation."

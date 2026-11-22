@@ -2,13 +2,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Field } from "@/components/Field";
 import type { PartnerAdminItem } from "@/lib/types";
-type Access = { user_id: string; contact_name: string | null; email: string; active: boolean; passwordChangeRequired: boolean };
+type Access = { user_id: string; contact_name: string | null; email: string; active: boolean; passwordChangeRequired: boolean; role: string };
 export function PartnerAccessAdmin({ partner }: { partner: PartnerAdminItem }) {
   const [accesses, setAccesses] = useState<Access[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [existingMode, setExistingMode] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [name, setName] = useState(partner.contact_name || "");
+  const [role, setRole] = useState<"owner" | "technician">("owner");
   const [email, setEmail] = useState(partner.email);
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
@@ -30,7 +31,7 @@ export function PartnerAccessAdmin({ partner }: { partner: PartnerAdminItem }) {
     if (pending.current) return;
     pending.current = true; setSaving(true); setMessage("");
     try {
-      const body = mode === "create" ? { mode, name, email, password } : mode === "lookup" ? { mode, name, email } : { mode, name, email, existingUserId: existing, reactivate };
+      const body = mode === "create" ? { mode, name, email, password, role } : mode === "lookup" ? { mode, name, email } : { mode, name, email, existingUserId: existing, reactivate, role };
       const response = await fetch(`/api/admin/partners/${partner.id}/access`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
       const result = await response.json();
       if (result.conflict && result.existingUserId) { setExisting(result.existingUserId); setExistingMode(true); setPassword(""); setMessage(result.message); return; }
@@ -46,11 +47,18 @@ export function PartnerAccessAdmin({ partner }: { partner: PartnerAdminItem }) {
     <h3 className="text-lg font-bold text-sanispa-navy">Accès à l’espace partenaire</h3>
     <p className="mt-2 text-sm text-sanispa-steel">Entreprise concernée : <strong>{partner.company_name}</strong>. La fiche entreprise et le compte de connexion sont distincts.</p>
     {loadError ? <p role="alert" className="mt-3 text-sm text-red-800">{loadError} <button onClick={() => void load()} className="underline">Réessayer</button></p> : !loaded ? <p role="status" className="my-3 text-sm">Chargement des accès enregistrés…</p> : accesses.length ? <ul className="my-3 grid gap-2">{accesses.map(access => <li key={access.user_id} className="rounded-md bg-sanispa-ice p-3 text-sm">
-      <strong>{access.contact_name || "Contact partenaire"}</strong> · {access.email}<br />
+      <strong>{access.contact_name || "Contact partenaire"}</strong> · {access.role === "technician" ? "Technicien" : "Responsable"} · {access.email}<br />
       {access.active ? access.passwordChangeRequired ? "Accès rattaché · mot de passe personnel à choisir" : "Accès rattaché et actif" : "Accès désactivé"}
     </li>)}</ul> : <p className="my-3 text-sm">Aucun accès enregistré pour cette entreprise.</p>}
     <form onSubmit={event => { event.preventDefault(); void save(existing ? "link" : existingMode ? "lookup" : "create"); }} className="mt-4 grid gap-4 sm:grid-cols-2" aria-busy={saving}>
       <label className="grid gap-2 text-sm font-bold sm:col-span-2">Type d’accès<select value={existingMode ? "existing" : "new"} onChange={event => {setExistingMode(event.target.value === "existing");setExisting(null);setPassword("");setMessage("");}} className="focus-ring min-h-12 rounded-md border border-sanispa-line bg-white p-3 font-normal"><option value="new">Créer un nouveau compte</option><option value="existing">Rattacher un compte existant sans changer son mot de passe</option></select></label>
+      <label className="grid gap-2 text-sm font-bold sm:col-span-2">Rôle du nouvel accès
+        <select value={role} onChange={event => setRole(event.target.value === "technician" ? "technician" : "owner")}
+          className="focus-ring min-h-12 rounded-md border border-sanispa-line bg-white p-3 font-normal">
+          <option value="owner">Responsable</option>
+          <option value="technician">Technicien</option>
+        </select>
+      </label>
       <Field label="Nom du contact" name="partner-contact" value={name} onChange={setName} required maxLength={150} />
       <Field label="Adresse e-mail du compte" name="partner-email" type="email" value={email} onChange={value => { setEmail(value); setExisting(null); setReactivate(false); }} required autoComplete="off" />
       {!existingMode ? <><Field label="Mot de passe provisoire (12 caractères minimum)" name="partner-temporary-password" type={show ? "text" : "password"} value={password} onChange={setPassword} required minLength={12} maxLength={128} autoComplete="new-password" />

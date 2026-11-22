@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { partnerDayPath } from "@/lib/partner-day";
 import { partnerAccountPath } from "@/lib/partner-navigation";
 import { partnerClientsPath, partnerMapPath, partnerStockPath } from "@/lib/partner-planner";
 import { workspacePath, type WorkspaceSelection } from "@/lib/partner-workspace";
 
 const links = [
   ["Accueil", "/partenaire"],
+  ["Ma journée", partnerDayPath],
   ["Planning", "/partenaire/planning"],
   ["Carte", partnerMapPath],
   ["Interventions", "/partenaire/interventions"],
@@ -22,7 +24,7 @@ export function PartnerNavigation({ current, selection, onWorkspaceView }: {
   onWorkspaceView?: (view: typeof localViews[keyof typeof localViews]) => void;
 }) {
   return (
-    <nav aria-label="Espace partenaire" className="mb-5 grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
+    <nav aria-label="Espace partenaire" className="mb-5 grid grid-cols-3 gap-2 sm:grid-cols-5 xl:grid-cols-10">
       {links.map(([label, href]) => (
         <Link key={href} href={label === "Planning" ? workspacePath("agenda", selection) : label === "Carte" ? workspacePath("map", selection)
           : label === "Interventions" ? workspacePath("list", selection) : href} aria-current={current === label ? "page" : undefined}

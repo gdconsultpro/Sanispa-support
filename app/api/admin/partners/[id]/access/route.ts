@@ -10,7 +10,7 @@ export async function GET(request: Request, { params }: Context) {
   try {
     const { supabase } = await administrator(request.headers);
     const id = z.string().uuid().parse((await params).id);
-    const { data, error } = await supabase.from("partner_users").select("user_id,active,contact_name,created_at").eq("partner_id", id);
+    const { data, error } = await supabase.from("partner_users").select("user_id,active,contact_name,created_at,role").eq("partner_id", id);
     if (error) throw error;
     const accesses = await Promise.all((data ?? []).map(async link => {
       const result = await supabase.auth.admin.getUserById(link.user_id);
