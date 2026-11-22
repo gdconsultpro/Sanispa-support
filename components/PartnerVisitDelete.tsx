@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/Button";
 import { partnerAuthError } from "@/lib/partner-browser";
 
-export function PartnerVisitDelete({ disabled, onDelete }: {
+export function PartnerVisitDelete({ disabled, onDelete, client = false }: {
   disabled?: boolean;
   onDelete: () => Promise<void>;
+  client?: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -34,18 +35,20 @@ export function PartnerVisitDelete({ disabled, onDelete }: {
 
   return <>
     <button hidden={confirming} type="button" ref={action} disabled={disabled} onClick={() => setConfirming(true)}
-      className="focus-ring min-h-11 text-sm font-bold text-red-700 underline">Supprimer l’intervention</button>
+      className="focus-ring min-h-11 text-sm font-bold text-red-700 underline">{client ? "Supprimer la fiche client" : "Supprimer l’intervention"}</button>
     {confirming ? <div className="my-2 rounded-xl border border-red-200 bg-red-50 p-3">
-      <p ref={confirmation} tabIndex={-1} className="text-sm font-bold text-red-900">Supprimer cette intervention ? La fiche client restera dans votre carnet.</p>
+      <p ref={confirmation} tabIndex={-1} className="text-sm font-bold text-red-900">{client
+        ? "Placer cette fiche dans la corbeille ? Vous pourrez la restaurer avec ses spas et ses photos. Ses interventions restent dans le planning."
+        : "Supprimer cette intervention ? La fiche client restera dans votre carnet."}</p>
       {error ? <p role="alert" className="mt-2 text-sm text-red-800">{error}</p> : null}
       <div className="mt-2 flex flex-wrap gap-2">
         <Button type="button" variant="secondary" className="text-red-800" disabled={busy || disabled}
-          onClick={() => void remove()}>{busy ? "Suppression…" : "Confirmer la suppression"}</Button>
+          onClick={() => void remove()}>{busy ? "Suppression…" : client ? "Placer dans la corbeille" : "Confirmer la suppression"}</Button>
         <Button type="button" variant="secondary" disabled={busy} onClick={() => {
           setConfirming(false);
           setError("");
           requestAnimationFrame(() => action.current?.focus());
-        }}>Garder l’intervention</Button>
+        }}>{client ? "Garder la fiche" : "Garder l’intervention"}</Button>
       </div>
     </div> : null}
   </>;

@@ -3,7 +3,7 @@ import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/client-auth";
 import { apiError, HttpError, readJson } from "@/lib/http";
-import { getAuthenticatedPartner } from "@/lib/partner-auth";
+import { requirePartnerPlanner } from "@/lib/partner-auth";
 import { interventionError } from "@/lib/interventions";
 import { processNotifications } from "@/lib/notifications";
 import { getPartnerRoadRoute } from "@/lib/partner-road-route";
@@ -12,7 +12,8 @@ import { partnerClientAddress, partnerClientHistoryFilters, partnerVisitAddress,
   type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
 const privateClientColumns = "id,name,phone,email,street,postal_code,city,intervention_type,description,latitude,longitude,source_diagnostic_id";
-const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at";
+const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at,spa_id";
+const spaFields = "id,brand,model,serial_number,updated_at";
 const privateVisitColumns = `${visitFields},client:partner_private_clients!inner(${privateClientColumns})`;
 const stockColumns = "id,category,label,reference,quantity,updated_at";
 const timestamp = z.string().datetime({ offset: true });
@@ -38,16 +39,19 @@ const privateVisitInput = z.object({
   starts_at: timestamp.nullable(),
   ends_at: timestamp.nullable(),
   technician_id: technicianId.optional(),
+  spa_id: z.string().uuid().nullable().optional(),
   expected_at: timestamp.optional(),
 }).strict();
 const visitWithContactInput = z.object({
   action: z.literal("createVisitWithClient"),
   client: privateClientInput.omit({ action: true, intervention_type: true, description: true }),
-  visit: privateVisitInput.omit({ action: true, client_id: true, expected_at: true }),
+  visit: privateVisitInput.omit({ action: true, client_id: true, expected_at: true, spa_id: true }),
 }).strict();
 const deleteVisitInput = z.object({
   action: z.literal("deleteVisit"), id: z.string().uuid(), expected_at: timestamp,
 }).strict();
+const deleteClientInput = z.object({ action: z.literal("deleteClient"), id: z.string().uuid() }).strict();
+const restoreClientInput = deleteClientInput.extend({ action: z.literal("restoreClient") });
 const stockInput = z.object({
   action: z.literal("saveStock"),
   id: z.string().uuid(),
@@ -90,7 +94,8 @@ const applyTourInput = z.object({
     source: z.enum(["private", "sanispa"]), id: z.string().uuid(), expected_at: timestamp, starts_at: timestamp,
   }).strict()).min(1).max(maximumTourRouteStops),
 }).strict();
-const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, visitWithContactInput, deleteVisitInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, tourRouteInput, applyTourInput]);
+const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, visitWithContactInput, deleteVisitInput, deleteClientInput,
+  restoreClientInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, tourRouteInput, applyTourInput]);
 const rangeInput = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
@@ -102,14 +107,6 @@ function validatePrivateVisitTimes({ starts_at, ends_at }: { starts_at: string |
   const duration = starts_at !== null && ends_at !== null ? Date.parse(ends_at) - Date.parse(starts_at) : 0;
   if (!(duration > 0 && duration <= 12 * 3600000))
     throw new HttpError(400, "Prévoyez une fin après le début et une durée de 12 heures maximum.");
-}
-
-async function requirePlanner(request: Request) {
-  const context = await getAuthenticatedPartner(request);
-  if (!context.partner || !context.user) throw new HttpError(401, "Connexion partenaire requise.");
-  if (context.partner.verification_status === "pending")
-    throw new HttpError(403, "Votre planning sera disponible après la validation de votre entreprise.");
-  return { ...context, partner: context.partner, user: context.user };
 }
 
 type Address = Pick<PrivatePartnerClient, "street" | "postal_code" | "city">;
@@ -220,7 +217,7 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
 
 export async function GET(request: Request) {
   try {
-    const { partner, supabase } = await requirePlanner(request);
+    const { partner, supabase } = await requirePartnerPlanner(request);
     const params = new URL(request.url).searchParams;
     const forMap = params.get("map") === "1";
     const upcoming = forMap && params.get("scope") === "upcoming";
@@ -257,20 +254,26 @@ export async function GET(request: Request) {
         return NextResponse.json({ startsAt: next ?? null }, { headers: { "Cache-Control": "private, no-store" } });
       }
       const offset = z.coerce.number().int().min(0).max(1000000).parse(params.get("offset") ?? 0);
-      if (params.get("section") === "client") {
+      const section = params.get("section");
+      if (section === "client" || section === "client-spas") {
         const id = z.string().uuid().parse(params.get("id"));
         const filter = z.enum(partnerClientHistoryFilters).parse(params.get("filter") ?? "all");
-        const { data: client, error: clientError } = await supabase.from("partner_private_clients").select(privateClientColumns)
-          .eq("partner_id", partner.id).eq("id", id).maybeSingle();
+        let owner = supabase.from("partner_private_clients").select(privateClientColumns).eq("partner_id", partner.id).eq("id", id);
+        if (section === "client") owner = owner.is("deleted_at", null);
+        const { data: client, error: clientError } = await owner.maybeSingle();
         if (clientError) throw clientError;
         if (!client) throw new HttpError(404, "Cette fiche client est introuvable.");
+        const spas = allRows((from, to) => supabase.from("partner_client_spas").select(spaFields)
+          .eq("partner_id", partner.id).eq("client_id", id).order("brand").order("model").order("id").range(from, to));
+        if (section === "client-spas") return NextResponse.json({ spas: await spas },
+          { headers: { "Cache-Control": "private, no-store" } });
         const now = new Date().toISOString();
         let history = supabase.from("partner_private_visits").select(visitFields)
           .eq("partner_id", partner.id).eq("client_id", id);
         if (filter === "pending") history = history.is("starts_at", null);
         if (filter === "scheduled") history = history.gt("ends_at", now);
         if (filter === "past") history = history.lte("ends_at", now);
-        const [visits, team, dossier] = await Promise.all([
+        const [visits, team, dossier, originSpa, equipment] = await Promise.all([
           history.order("starts_at", { ascending: filter === "scheduled", nullsFirst: true })
             .order("updated_at", { ascending: false }).order("id").range(offset, offset + 30),
           technicians(),
@@ -279,9 +282,14 @@ export async function GET(request: Request) {
             .eq("id", client.source_diagnostic_id).eq("assigned_partner_id", partner.id).is("archived_at", null)
             .eq("partner_appointments.partner_id", partner.id).maybeSingle()
             : null,
+          client.source_diagnostic_id ? supabase.from("partner_client_spa_dossiers").select("spa_id")
+            .eq("partner_id", partner.id).eq("client_id", id).eq("diagnostic_id", client.source_diagnostic_id).maybeSingle()
+            : null,
+          spas,
         ]);
-        if (visits.error || dossier?.error) throw visits.error || dossier?.error;
-        return NextResponse.json({ client, visits: visits.data.slice(0, 30), more: visits.data.length > 30, dossier: dossier?.data ?? null, technicians: team },
+        if (visits.error || dossier?.error || originSpa?.error) throw visits.error || dossier?.error || originSpa?.error;
+        return NextResponse.json({ client, visits: visits.data.slice(0, 30), more: visits.data.length > 30,
+          dossier: dossier?.data ? { ...dossier.data, spa_id: originSpa?.data?.spa_id ?? null } : null, technicians: team, spas: equipment },
           { headers: { "Cache-Control": "private, no-store" } });
       }
       if (params.get("section") === "stock") {
@@ -304,6 +312,7 @@ export async function GET(request: Request) {
           { headers: { "Cache-Control": "private, no-store" } });
       }
       let query = supabase.from("partner_private_clients").select(privateClientColumns).eq("partner_id", partner.id);
+      query = section === "deleted-clients" ? query.not("deleted_at", "is", null).order("deleted_at", { ascending: false }) : query.is("deleted_at", null);
       if (name) query = query.ilike("name", namePattern);
       const [{ data, error }, team] = await Promise.all([query.order("name").order("id").range(offset, offset + 30), technicians()]);
       if (error) throw error;
@@ -371,7 +380,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { partner, supabase, user } = await requirePlanner(request);
+    const { partner, supabase, user } = await requirePartnerPlanner(request);
     const command = actions.parse(await readJson(request, 22000));
     if (command.action === "routeTour") {
       await rateLimit(supabase, `partner-tour-route:${partner.id}`, 12);
@@ -408,6 +417,14 @@ export async function POST(request: Request) {
     }
     await rateLimit(supabase, `partner-private-planner:${partner.id}`, 30);
     const updated_at = new Date().toISOString();
+    if (command.action === "deleteClient" || command.action === "restoreClient") {
+      const { data, error } = await supabase.from("partner_private_clients")
+        .update({ deleted_at: command.action === "deleteClient" ? updated_at : null, updated_at })
+        .eq("partner_id", partner.id).eq("id", command.id).select("id").maybeSingle();
+      if (error) throw error;
+      if (!data) throw new HttpError(404, "Cette fiche client est introuvable.");
+      return NextResponse.json({ saved: true });
+    }
     if (command.action === "deleteVisit") {
       const table = supabase.from("partner_private_visits");
       const removed = await table.delete().eq("partner_id", partner.id).eq("id", command.id)
@@ -510,6 +527,12 @@ export async function POST(request: Request) {
 
     const { action: _action, expected_at, ...input } = command;
     validatePrivateVisitTimes(input);
+    if (!expected_at) {
+      const { data, error } = await supabase.from("partner_private_clients").select("id")
+        .eq("partner_id", partner.id).eq("id", input.client_id).is("deleted_at", null).maybeSingle();
+      if (error) throw error;
+      if (!data) throw new HttpError(404, "Client introuvable dans votre carnet.");
+    }
     const table = supabase.from("partner_private_visits");
     const result = expected_at
       ? await table.update({ ...input, updated_at }).eq("partner_id", partner.id).eq("id", input.id)
@@ -517,6 +540,7 @@ export async function POST(request: Request) {
       : await table.upsert({ ...input, partner_id: partner.id, updated_at }, { onConflict: "partner_id,id" });
     const { error } = result;
     if (error?.code === "23503" && error.message.includes("technician")) throw new HttpError(404, "Ce technicien est introuvable dans votre planning.");
+    if (error?.code === "23503" && error.message.includes("client_spa")) throw new HttpError(400, "Choisissez un spa de cette fiche client.");
     if (error?.code === "23503") throw new HttpError(404, "Client introuvable dans votre carnet.");
     if (error) throw error;
     if (expected_at && !result.data) throw new HttpError(409, "Ce rendez-vous a été modifié. Revenez au planning avant de réessayer.");

@@ -160,6 +160,32 @@ test("a client history covers the timing of private visits and linked dossiers",
   assert.equal(partnerClientDossierTiming({ ...followup, status: "CLOSED" }, now), "past");
 });
 
+test("a private intervention can only reference a spa of its own partner and client", async () => {
+  const db = await fullDatabase();
+  const id = (n: number) => `6436cda2-af71-4591-a52b-${String(n).padStart(12, "0")}`;
+  const partner = id(1), other = id(2), client = id(3), neighbor = id(4), spa = id(5), neighborSpa = id(6), foreignSpa = id(7), visit = id(8);
+  try {
+    await db.exec(`
+      insert into public.partners(id,company_name,email) values ('${partner}','A','a@example.invalid'),('${other}','B','b@example.invalid');
+      insert into public.partner_private_clients(partner_id,id,name,street,postal_code,city)
+      values ('${partner}','${client}','Client','','',''), ('${partner}','${neighbor}','Voisin','','',''), ('${other}','${client}','Autre','','','');
+      insert into public.partner_client_spas(partner_id,client_id,id,brand)
+      values ('${partner}','${client}','${spa}','A'), ('${partner}','${neighbor}','${neighborSpa}','B'), ('${other}','${client}','${foreignSpa}','C');
+      insert into public.partner_private_visits(partner_id,id,client_id,title) values ('${partner}','${visit}','${client}','SAV');
+    `);
+    const attach = "update public.partner_private_visits set spa_id=$1 where partner_id=$2 and id=$3";
+    await assert.rejects(db.query(attach, [neighborSpa, partner, visit]), /partner_private_visits_client_spa_fk/);
+    await assert.rejects(db.query(attach, [foreignSpa, partner, visit]), /partner_private_visits_client_spa_fk/);
+    await db.query(attach, [spa, partner, visit]);
+    await db.query("update public.partner_private_clients set deleted_at=now() where partner_id=$1 and id=$2", [partner, client]);
+    assert.equal((await db.query("select spa_id from public.partner_private_visits where id=$1", [visit])).rows.length, 1);
+    await db.query("update public.partner_private_clients set deleted_at=null where partner_id=$1 and id=$2", [partner, client]);
+    await db.query("delete from public.partner_private_visits where partner_id=$1 and id=$2", [partner, visit]);
+    assert.equal((await db.query("select id from public.partner_client_spas where partner_id=$1 and client_id=$2", [partner, client])).rows.length, 1);
+    assert.equal((await db.query("select id from public.partner_private_clients where partner_id=$1 and id=$2 and deleted_at is null", [partner, client])).rows.length, 1);
+  } finally { await db.close(); }
+});
+
 test("moving a private or assigned visit preserves its duration and rejects stale or foreign changes", async () => {
   const db = await fullDatabase();
   const id = (n: number) => `e541ef0c-b9ce-486f-be19-${String(n).padStart(12, "0")}`;

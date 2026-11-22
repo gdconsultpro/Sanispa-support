@@ -6,18 +6,19 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { PartnerClientFile } from "@/components/PartnerClientFile";
+import { PartnerSpaOptions } from "@/components/PartnerClientSpas";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { PartnerScheduleGrid, PlannerTechnicianSelect } from "@/components/PartnerScheduleGrid";
 import { PartnerTourMap } from "@/components/PartnerTourMap";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { problemLabel } from "@/lib/display-labels";
-import { partnerAuthError, partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
-import { partnerReturnPath } from "@/lib/partner-navigation";
+import { partnerAuthError } from "@/lib/partner-browser";
+import { plannerRequest, PlannerRequestError } from "@/lib/partner-planner-browser";
 import {
   interventionTypes, partnerClientAddress, partnerClientIdPattern, partnerClientPath, partnerClientVisitTiming, partnerDirections,
   partnerClientsPath, partnerMapPath, partnerVisitMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
   type MapCoordinate, type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention, type PlannerMapStatus,
-  type PartnerClientHistory, type PartnerClientHistoryFilter, type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
+  type PartnerClientHistory, type PartnerClientHistoryFilter, type PartnerClientSpa, type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
 import type { TourApplyResult, TourDrivingRoute, TourReschedule } from "@/lib/partner-tour-routing";
@@ -40,32 +41,11 @@ type Agenda = {
 type Booking = { id: string; slot?: PlannerSlot };
 type VisitLocation = { id: string; startsAt: string | null };
 type FormEditor = { type: "client"; id: string; client?: PrivatePartnerClient; booking?: Booking; returnToMap?: boolean }
-  | { type: "visit"; id: string; client: PrivatePartnerClient; visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit; booking?: Booking; withoutDate?: boolean }
+  | { type: "visit"; id: string; client: PrivatePartnerClient; visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit; booking?: Booking; withoutDate?: boolean; spaId?: string }
   | { type: "stock"; id: string; item?: PrivatePartnerStock };
 type Editor = FormEditor | ({ type: "pickClient" } & Booking);
 const periods = { day: "Jour", week: "Semaine", month: "Mois" } as const;
 const stockLabels = { piece: "Pièce détachée", spa: "Spa" } as const;
-class PlannerRequestError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: string) { super(message); }
-}
-
-async function plannerRequest(url: string, options: { signal?: AbortSignal; payload?: object } = {}) {
-  const next = partnerReturnPath(window.location.pathname + window.location.search);
-  const token = await partnerToken(next);
-  if (!token || options.signal?.aborted) return null;
-  const response = await fetch(url, {
-    method: options.payload ? "POST" : "GET",
-    headers: { Authorization: "Bearer " + token, ...(options.payload ? { "Content-Type": "application/json" } : {}) },
-    body: options.payload ? JSON.stringify(options.payload) : undefined,
-    cache: "no-store",
-    signal: options.signal ?? AbortSignal.timeout(20000),
-  });
-  if (redirectPartnerAccess(response, next)) return null;
-  const result = await response.json();
-  if (!response.ok) throw new PlannerRequestError(result.error || "Votre planning est temporairement indisponible.", response.status, result.code);
-  return result;
-}
-
 function normalizeMapItems(agenda: Agenda): PlannerMapIntervention[] {
   const own = [...agenda.visits, ...(agenda.pendingVisits ?? [])].map(visit => ({
     id: "private:" + visit.id, title: `${visit.title} · ${visit.client.name}`, startsAt: visit.starts_at, technicianId: visit.technician_id,
@@ -103,6 +83,7 @@ export default function PartnerPlanningPage() {
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<ClientPage | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [clientId, setClientId] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<PartnerClientHistoryFilter>("all");
   const [historyOffset, setHistoryOffset] = useState(0);
@@ -159,7 +140,7 @@ export default function PartnerPlanningPage() {
     })
       : view === "clients" && clientId
         ? new URLSearchParams({ section: "client", id: clientId, filter: historyFilter, offset: String(historyOffset) })
-        : new URLSearchParams({ section: view, name: search, offset: String(offset) });
+        : new URLSearchParams({ section: view === "clients" && showDeleted ? "deleted-clients" : view, name: search, offset: String(offset) });
     setLoadError("");
     if (view === "clients" && clientId) setFileLoading(true);
     else if (view === "clients") setPage(null);
@@ -187,7 +168,7 @@ export default function PartnerPlanningPage() {
     }).catch(error => { if (!controller.signal.aborted) setLoadError(partnerAuthError(error)); })
       .finally(() => { if (view === "clients" && clientId && !controller.signal.aborted) setFileLoading(false); });
     return () => controller.abort();
-  }, [view, day, activePeriod, search, offset, revision, clientId, historyFilter, historyOffset]);
+  }, [view, day, activePeriod, search, offset, revision, clientId, historyFilter, historyOffset, showDeleted]);
 
   const mappedId = mapped?.id;
   useEffect(() => {
@@ -231,6 +212,7 @@ export default function PartnerPlanningPage() {
     setGridError("");
     setOffset(0);
     setClientId(null);
+    setShowDeleted(false);
     setView(next);
     setMapVisitId(null);
     if (next === "map") {
@@ -370,6 +352,24 @@ export default function PartnerPlanningPage() {
     }
   }
 
+  async function changeClientStatus(id: string, action: "deleteClient" | "restoreClient") {
+    setSaving(true);
+    try {
+      const result = await plannerRequest(endpoint, { payload: { action, id } });
+      if (!result) throw new Error("Reconnectez-vous pour gérer cette fiche.");
+      if (action === "deleteClient") {
+        setSearch("");
+        setOffset(0);
+        showClient(null);
+        setNotice("La fiche client a été placée dans la corbeille.");
+      } else {
+        setNotice("La fiche client a été restaurée dans le carnet.");
+        setOffset(0);
+      }
+      setRevision(value => value + 1);
+    } finally { setSaving(false); }
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editor || editor.type === "pickClient" || saving) return;
@@ -421,7 +421,8 @@ export default function PartnerPlanningPage() {
         const visit = { id, title: value("intervention_type"), description: value("description"),
           starts_at: start?.toISOString() ?? null, ends_at: end?.toISOString() ?? null, technician_id: value("technician_id") || null };
         const payload = editor.type === "client" ? { action: "createVisitWithClient", client: contact(), visit }
-          : { action: "saveVisit", client_id: editor.client.id, expected_at: editor.visit?.updated_at, ...visit };
+          : { action: "saveVisit", client_id: editor.client.id, expected_at: editor.visit?.updated_at, ...visit,
+            ...(values.has("spa_id") ? { spa_id: value("spa_id") || null } : {}) };
         const result = await plannerRequest(endpoint, { payload });
         if (!result) return;
         const saved = { id, startsAt: visit.starts_at };
@@ -512,6 +513,7 @@ export default function PartnerPlanningPage() {
       add={() => edit({ type: "client", id: crypto.randomUUID(), booking: editor })}
       close={() => setEditor(null)} />
       : editor ? <PlannerEditor key={editor.type + editor.id} editor={editor} day={day} team={team}
+        clientSpas={editor.type === "visit" && clientFile?.client.id === editor.client.id ? clientFile.spas : undefined}
         save={save} error={saveError} saving={saving} close={() => setEditor(null)}
         back={currentBooking ? () => edit({ type: "pickClient", ...currentBooking }) : undefined}
         remove={removeVisit} /> : null}
@@ -532,16 +534,24 @@ export default function PartnerPlanningPage() {
       filter={historyFilter} offset={historyOffset} busy={saving} loading={fileLoading}
       onFilter={value => { setHistoryFilter(value); setHistoryOffset(0); }} onPage={setHistoryOffset}
       onEdit={() => edit({ type: "client", id: clientId, client: clientFile.client })}
-      onAdd={() => edit({ type: "visit", id: crypto.randomUUID(), client: clientFile.client, withoutDate: true })}
+      onAdd={spa => edit({ type: "visit", id: crypto.randomUUID(), client: clientFile.client, withoutDate: true, spaId: spa?.id })}
       onAddress={() => { setEditor(null); setMapped(clientFile.client); }}
       onVisit={record => edit({ type: "visit", id: record.id, client: clientFile.client,
         visit: { ...record, client: clientFile.client }, withoutDate: record.starts_at === null })}
-      onMap={record => openVisitOnMap({ id: record.id, startsAt: record.starts_at })} /> : null}
+      onMap={record => openVisitOnMap({ id: record.id, startsAt: record.starts_at })}
+      onSpasChanged={() => setRevision(value => value + 1)}
+      onDeleteClient={() => changeClientStatus(clientId, "deleteClient")}
+      onDeleteVisit={record => removeVisit({ ...record, client: clientFile.client })} /> : null}
 
     {view === "clients" && !clientId && page ? <section className={panelClass}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-bold">Mon carnet clients</h2>
-        <Button type="button" disabled={saving} onClick={() => edit({ type: "client", id: crypto.randomUUID() })}>Ajouter un client</Button>
+        <h2 className="text-xl font-bold">{showDeleted ? "Corbeille des fiches clients" : "Mon carnet clients"}</h2>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" disabled={saving} onClick={() => {
+            setShowDeleted(value => !value); setSearch(""); setOffset(0); setEditor(null); setMapped(null); setNotice(""); setSavedClient(null);
+          }}>{showDeleted ? "Retour au carnet" : "Corbeille"}</Button>
+          {!showDeleted ? <Button type="button" disabled={saving} onClick={() => edit({ type: "client", id: crypto.randomUUID() })}>Ajouter un client</Button> : null}
+        </div>
       </div>
       <form className="my-4 flex flex-wrap items-end gap-2" onSubmit={event => {
         event.preventDefault();
@@ -561,15 +571,18 @@ export default function PartnerPlanningPage() {
           {client.phone || client.email ? <p className="break-words text-sm text-sanispa-steel">{[client.phone, client.email].filter(Boolean).join(" · ")}</p> : null}
           {client.intervention_type !== interventionTypes[0] || client.description ? <p className="break-words text-sm font-bold">{client.intervention_type}</p> : null}
           {client.description ? <p className="whitespace-pre-wrap break-words text-sm">{client.description}</p> : null}
-          <div className="flex flex-wrap gap-x-4">
+          {showDeleted ? <button type="button" className={actionClass} disabled={saving} onClick={() => {
+            setGridError("");
+            void changeClientStatus(client.id, "restoreClient").catch(error => setGridError(partnerAuthError(error)));
+          }}>Restaurer la fiche<span className="sr-only"> de {client.name}</span></button> : <div className="flex flex-wrap gap-x-4">
             <button type="button" className={actionClass} disabled={saving} onClick={() => showClient(client.id)}>Ouvrir la fiche<span className="sr-only"> de {client.name}</span></button>
             <button type="button" className={actionClass} disabled={saving} onClick={() => edit({ type: "visit", id: crypto.randomUUID(), client })}>Planifier une intervention</button>
             <button type="button" className={actionClass} disabled={saving} onClick={() => edit({ type: "client", id: client.id, client })}>Modifier la fiche</button>
             {partnerClientAddress(client) ? <button type="button" className={actionClass} disabled={saving} onClick={() => { setEditor(null); setMapped(client); }}>Voir sur la carte</button> : null}
             {client.source_diagnostic_id ? <Link className={actionClass} href={"/partenaire/interventions/" + client.source_diagnostic_id}>Ouvrir le dossier SANISPA</Link> : null}
-          </div>
+          </div>}
         </li>)}
-      </ul> : <p>{search ? "Aucun client trouvé." : "Ajoutez votre premier client pour planifier une intervention."}</p>}
+      </ul> : <p>{search ? "Aucun client trouvé." : showDeleted ? "La corbeille est vide." : "Ajoutez votre premier client pour planifier une intervention."}</p>}
       {offset || page.more ? <div className="mt-3 flex gap-3">
         <Button type="button" variant="secondary" disabled={!offset} onClick={() => setOffset(value => Math.max(0, value - 30))}>Précédent</Button>
         <Button type="button" variant="secondary" disabled={!page.more} onClick={() => setOffset(value => value + 30)}>Suivant</Button>
@@ -745,8 +758,9 @@ function SlotClientPicker({ slot, team, choose, add, close }: {
   </section>;
 }
 
-function PlannerEditor({ editor, day, team, save, saving, error, close, back, remove }: {
+function PlannerEditor({ editor, day, team, clientSpas, save, saving, error, close, back, remove }: {
   editor: FormEditor; day: string; team: PlannerTechnician[]; save: (event: FormEvent<HTMLFormElement>) => void;
+  clientSpas?: PartnerClientSpa[];
   saving: boolean; error: string; close: () => void; back?: () => void;
   remove: (visit: PrivatePartnerVisit | PendingPrivatePartnerVisit) => Promise<void>;
 }) {
@@ -796,6 +810,7 @@ function PlannerEditor({ editor, day, team, save, saving, error, close, back, re
           <PlannerField label="Quantité en stock" name="quantity" type="number" inputMode="numeric" min={0} max={1000000} step={1} defaultValue={editor.item?.quantity ?? 0} required />
         </> : null}
         {forVisit ? <>
+          {editor.type === "visit" ? <VisitSpaField clientId={editor.client.id} knownSpas={clientSpas} selected={editor.spaId ?? visit?.spa_id} /> : null}
           <InterventionFields type={visit?.title ?? editor.client?.intervention_type}
             description={visit?.description ?? (editor.type === "visit" && editor.withoutDate === true ? undefined : editor.client?.description)} />
           {!slot && (!visit || visit.starts_at === null) ? <label className="flex min-h-11 items-center gap-2 text-sm font-bold sm:col-span-2">
@@ -819,6 +834,28 @@ function PlannerEditor({ editor, day, team, save, saving, error, close, back, re
     </form>
     {visit ? <div className="mt-2"><PartnerVisitDelete disabled={saving} onDelete={() => remove(visit)} /></div> : null}
   </section>;
+}
+
+function VisitSpaField({ clientId, knownSpas, selected }: { clientId: string; knownSpas?: PartnerClientSpa[]; selected?: string | null }) {
+  const [options, setOptions] = useState<PartnerClientSpa[] | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (knownSpas) return;
+    const controller = new AbortController();
+    void plannerRequest(endpoint + "?" + new URLSearchParams({ section: "client-spas", id: clientId }), { signal: controller.signal })
+      .then(result => { if (!controller.signal.aborted && result) setOptions(result.spas); })
+      .catch(cause => { if (!controller.signal.aborted) setError(partnerAuthError(cause)); });
+    return () => controller.abort();
+  }, [clientId, knownSpas]);
+
+  const spas = knownSpas ?? options;
+  if (error && !spas) return <p role="status" className="text-sm text-amber-800">Liste des spas indisponible. {error}</p>;
+  if (!spas) return <p role="status" className="text-sm">Chargement des spas du client…</p>;
+  if (!spas.length) return <p className="text-sm sm:col-span-2">Ajoutez les spas dans la fiche client pour les choisir ici.</p>;
+  return <label className="min-w-0 text-sm font-bold sm:col-span-2">Spa concerné
+    <select name="spa_id" className={inputClass + " mt-1"} defaultValue={selected ?? ""}><PartnerSpaOptions spas={spas} /></select>
+  </label>;
 }
 
 function InterventionFields({ type = interventionTypes[0], description }: { type?: string; description?: string }) {

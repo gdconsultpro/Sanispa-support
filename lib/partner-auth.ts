@@ -27,3 +27,11 @@ export async function getAuthenticatedPartner(request: Request, options: { allow
     throw new HttpError(428, "Choisissez votre mot de passe personnel avant d’accéder aux dossiers partenaires.");
   return { user, partner, supabase, passwordChangeRequired };
 }
+
+export async function requirePartnerPlanner(request: Request) {
+  const context = await getAuthenticatedPartner(request);
+  if (!context.partner || !context.user) throw new HttpError(401, "Connexion partenaire requise.");
+  if (context.partner.verification_status === "pending")
+    throw new HttpError(403, "Votre planning sera disponible après la validation de votre entreprise.");
+  return { ...context, partner: context.partner, user: context.user };
+}

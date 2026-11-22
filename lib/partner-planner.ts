@@ -18,6 +18,7 @@ type ScheduledVisit = Times & { technician_id: string | null; updated_at: string
 type MapPosition = { latitude?: number | null; longitude?: number | null; approximateLocation?: boolean };
 export type PrivatePartnerVisit = ScheduledVisit & {
   id: string;
+  spa_id?: string | null;
   title: string;
   description: string;
   client: PrivatePartnerClient;
@@ -29,6 +30,7 @@ export type PendingPrivatePartnerVisit = Omit<PrivatePartnerVisit, "starts_at" |
 export type PartnerClientVisit = Omit<PrivatePartnerVisit, "client"> | Omit<PendingPrivatePartnerVisit, "client">;
 export type PartnerClientDossier = {
   id: string;
+  spa_id?: string | null;
   problem_type: string;
   status: string;
   intervened_at: string | null;
@@ -37,11 +39,21 @@ export type PartnerClientDossier = {
 };
 export type PartnerClientHistory = {
   client: PrivatePartnerClient;
+  spas: PartnerClientSpa[];
   visits: PartnerClientVisit[];
   dossier: PartnerClientDossier | null;
   technicians: PlannerTechnician[];
   more: boolean;
 };
+export type PartnerClientSpa = { id: string; brand: string; model: string; serial_number: string; updated_at: string };
+
+export function partnerSpaName(spa: PartnerClientSpa) {
+  return [spa.brand, spa.model].filter(Boolean).join(" ");
+}
+
+export function partnerSpaOption(spa: PartnerClientSpa) {
+  return partnerSpaName(spa) + (spa.serial_number ? " · " + spa.serial_number : "");
+}
 export const partnerClientHistoryFilters = ["all", "pending", "scheduled", "past"] as const;
 export type PartnerClientHistoryFilter = typeof partnerClientHistoryFilters[number];
 
