@@ -6,9 +6,10 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { Button } from "@/components/Button";
 import { PartnerDrivingTour, type ApplyDrivingTour, type LoadDrivingTour } from "@/components/PartnerDrivingTour";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
-import { matchesPlannerMapFilters, nearbyPendingVisits, partnerClientPath, partnerClientVisitTiming, partnerDirections, partnerPrivateVisitPath, plannerDate, plannerTime, suggestedTourStart,
+import { nearbyPendingVisits, partnerClientPath, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
   type PartnerMapContacts, type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
-  type PlannerMapStatus, type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
+  type PlannerPeriod, type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
+import { matchesWorkFilters, workItemPath, workStatusLabels, type WorkFilterStatus } from "@/lib/partner-workspace";
 
 const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
   ssr: false,
@@ -18,12 +19,12 @@ const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
 const filterClass = "focus-ring mt-1 min-h-12 w-full rounded-lg border border-sanispa-line bg-white px-3 text-base";
 const linkClass = "focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline";
 
-export function PartnerTourMap({ items, contacts, contactError, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, onNextAppointment, autoNext, status, highlightId, onStatus, onUnplan }: {
+export function PartnerTourMap({ items, contacts, contactError, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour, onNextAppointment, status, technician, highlightId, onUnplan }: {
   items: PlannerMapIntervention[] | null;
   contacts: PartnerMapContacts | null;
   contactError: string;
   team: PlannerTechnician[];
-  period: "day" | "week";
+  period: PlannerPeriod;
   scope: string;
   busy: boolean;
   onVisit: (visit: PrivatePartnerVisit | PendingPrivatePartnerVisit) => void;
@@ -32,14 +33,12 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
   loadRoute: LoadDrivingTour;
   applyTour: ApplyDrivingTour;
   reloadTour: () => void;
-  onNextAppointment: (technician: string, preservePeriod?: boolean) => Promise<boolean>;
-  autoNext: boolean;
-  status: PlannerMapStatus;
+  onNextAppointment: (technician: string) => Promise<boolean>;
+  status: WorkFilterStatus;
+  technician: string;
   highlightId: string | null;
-  onStatus: (status: PlannerMapStatus) => void;
   onUnplan: (item: PlannerMapIntervention) => Promise<void>;
 }) {
-  const [technician, setTechnician] = useState("all");
   const [showTour, setShowTour] = useState(false);
   const [showContacts, setShowContacts] = useState(true);
   const [lastMap, setLastMap] = useState<{ waiting: PlannerMapIntervention[]; team: PlannerTechnician[] } | null>(null);
@@ -47,39 +46,39 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
   const [nextMessage, setNextMessage] = useState("");
   const [selected, setSelected] = useState<{ id: string; scope: string } | null>(null);
   const [confirmation, setConfirmation] = useState<{ id: string; message: string } | null>(null);
-  const filterId = useId();
   const visibleTeam = items ? team : lastMap?.team ?? team;
   const tourTechnician = visibleTeam.find(member => member.id === technician) ?? (visibleTeam.length === 1 ? visibleTeam[0] : undefined);
   const displayItems = items ?? (status === "pending" ? lastMap?.waiting ?? null : null);
   useEffect(() => {
-    if (items) setLastMap({ waiting: items.filter(item => !item.startsAt), team });
+    if (items) setLastMap({ waiting: items.filter(item => item.workStatus === "pending"), team });
   }, [items, team]);
-  async function findNextAppointment(preservePeriod = false) {
+  async function findNextAppointment() {
     setNextMessage("");
     setNextPending(true);
     try {
-      if (!await onNextAppointment(technician, preservePeriod)) setNextMessage("Aucun rendez-vous à venir pour cette sélection.");
+      if (!await onNextAppointment(technician)) setNextMessage("Aucun rendez-vous à venir pour cette sélection.");
     } catch (error) {
       setNextMessage(error instanceof Error ? error.message : "Le prochain rendez-vous est temporairement indisponible.");
     } finally {
       setNextPending(false);
     }
   }
-  const panelScope = period + ":" + scope;
+  const panelScope = [period, scope, status, technician].join(":");
   const chooseAppointment = useCallback((id: string) => {
     setConfirmation(null);
     setSelected({ id, scope: panelScope });
   }, [panelScope]);
   const anchor = selected?.scope === panelScope
-    ? displayItems?.find(item => item.id === selected.id && item.startsAt && item.endsAt) : undefined;
+    ? displayItems?.find(item => item.id === selected.id && item.workStatus === "scheduled" && item.startsAt && item.endsAt) : undefined;
   const { entries, points } = useMemo(() => {
     const names = new Map(visibleTeam.map(member => [member.id, member.name]));
-    const entries = (displayItems ?? []).filter(item => matchesPlannerMapFilters(item, status, technician)).map(item => {
-      const time = item.startsAt ? plannerTime(item.startsAt) : "À planifier · Sans date";
-      const day = item.startsAt && period === "week"
-        ? new Date(item.startsAt).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })
+    const entries = (displayItems ?? []).filter(item => matchesWorkFilters(item, status, technician)).map(item => {
+      const time = item.startsAt ? plannerTime(item.startsAt) : item.workStatus === "pending" ? "Sans date" : "";
+      const day = item.activityAt && period !== "day"
+        ? new Date(item.activityAt).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })
         : "";
       const detail = [[day, time].filter(Boolean).join(" "), (item.technicianId && names.get(item.technicianId)) || "À affecter",
+        item.workStatus && workStatusLabels[item.workStatus],
         item.dossierId ? "Dossier SANISPA" : "Mon entreprise",
         item.approximateLocation ? "Position approximative (commune)" : ""].filter(Boolean).join(" · ");
       return { ...item, detail };
@@ -87,7 +86,8 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
     if (highlightId) entries.sort((left, right) => Number(right.id === highlightId) - Number(left.id === highlightId));
     const points: PartnerMapPoint[] = entries.flatMap(item => item.latitude !== null && item.longitude !== null ? [{
       id: item.id, latitude: item.latitude, longitude: item.longitude, title: item.title,
-      detail: item.detail, address: item.address, pending: item.startsAt === null, highlighted: item.id === highlightId,
+      detail: item.detail, address: item.address, pending: item.workStatus === "pending", workStatus: item.workStatus,
+      recordHref: workItemPath(item), highlighted: item.id === highlightId,
     }] : []);
     return { entries, points };
   }, [displayItems, highlightId, period, status, technician, visibleTeam]);
@@ -95,30 +95,6 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
   const mappedIds = new Set(points.map(point => point.id));
 
   return <>
-    <div className="mb-3 grid gap-3 sm:grid-cols-2">
-      <div>
-        <label htmlFor={filterId + "-technician"} className="text-sm font-bold">Technicien</label>
-        <select id={filterId + "-technician"} className={filterClass} value={showTour ? tourTechnician?.id ?? "all" : technician} disabled={busy || nextPending}
-          onChange={event => { setNextMessage(""); setTechnician(event.target.value); }}>
-          <option value="all">{showTour ? "Choisir un technicien" : "Toute l’équipe"}</option>
-          {!showTour ? <option value="">À affecter</option> : null}
-          {visibleTeam.map(member => <option value={member.id} key={member.id}>{member.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label htmlFor={filterId + "-status"} className="text-sm font-bold">Statut</label>
-        <select id={filterId + "-status"} className={filterClass} value={showTour ? "scheduled" : status} disabled={showTour || nextPending}
-          onChange={event => {
-            const selectedStatus = event.target.value as PlannerMapStatus;
-            setNextMessage(""); setSelected(null); onStatus(selectedStatus);
-            if (selectedStatus === "scheduled" && autoNext && !items?.some(item => matchesPlannerMapFilters(item, "scheduled", technician)))
-              void findNextAppointment(true);
-          }}>
-          <option value="pending">À planifier</option>
-          <option value="scheduled">Planifiées</option>
-        </select>
-      </div>
-    </div>
     <div className="mb-3 flex flex-wrap gap-x-5">
     <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm font-bold">
       <input type="checkbox" className="h-5 w-5 accent-sanispa-blue" checked={showTour} disabled={busy || nextPending}
@@ -134,25 +110,27 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
     {showTour ? <PartnerDrivingTour items={items} technician={tourTechnician} scope={scope} loadRoute={loadRoute}
       applyTour={applyTour} reloadTour={reloadTour} saving={busy} /> : <>
     <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4">
-      <p className="text-sm">{status === "pending" ? "Interventions sans créneau, toutes dates confondues." : "Rendez-vous de la période sélectionnée."}</p>
+      <p className="text-sm">{status === "pending" ? "Interventions sans créneau, toutes dates confondues."
+        : status === "all" ? "Interventions de la période et file à planifier." : "Interventions de la période sélectionnée."}</p>
       <button type="button" className={linkClass + " text-sm"} disabled={busy || nextPending} onClick={() => void findNextAppointment()}>
         {nextPending ? "Recherche du prochain rendez-vous…" : "Aller au prochain rendez-vous"}
       </button>
     </div>
     {nextMessage ? <p role="status" className="mb-2 text-sm">{nextMessage}</p> : null}
     {displayItems ? <p className="mb-2 text-sm font-bold">
-      {entries.length} {status === "scheduled" ? "rendez-vous planifié" + (entries.length === 1 ? "" : "s")
-        : entries.length === 1 ? "intervention à planifier" : "interventions à planifier"}
+      {entries.length} {entries.length === 1 ? "intervention" : "interventions"}{status === "pending" ? " à planifier" : ""}
       {showContacts && contacts?.points.length ? <span className="font-normal text-sanispa-steel">
         {" · "}{contacts.points.length} {contacts.points.length === 1 ? "adresse client sur la carte" : "adresses clients sur la carte"}
       </span> : null}
     </p> : null}
     <PrivateMap points={mapPoints} onAppointment={chooseAppointment} overview
       label={status === "pending" ? "Carte des interventions à planifier"
-        : period === "week" ? "Carte des interventions de la semaine" : "Carte des interventions du jour"} />
+        : "Carte des interventions de la période"} />
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
-      {status === "scheduled" ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Planifiées</span>
-        : <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-600" /> À planifier, sans date</span>}
+      {entries.some(item => item.workStatus === "pending") ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-600" /> À planifier</span> : null}
+      {entries.some(item => item.workStatus === "scheduled" || item.workStatus === "due") ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Rendez-vous</span> : null}
+      {entries.some(item => item.workStatus === "review" || item.workStatus === "validated" || item.workStatus === "closed" || item.workStatus === "followup") ?
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-700" /> Historique et suivi</span> : null}
       {showContacts ? <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-violet-700" /> Clients du carnet</span> : null}
     </div>
     {showContacts && contactError ? <p role="status" className="mt-2 text-sm">{contactError}</p> : null}
@@ -179,21 +157,16 @@ export function PartnerTourMap({ items, contacts, contactError, team, period, sc
           <p className="text-sm font-semibold">{item.detail}</p>
           <p className="break-words text-sm">{item.address || "Adresse à compléter"}</p>
           <div className="flex flex-wrap gap-x-4 text-sm">
-            {item.visit ? <Link className={linkClass} href={partnerPrivateVisitPath(item.visit.id)}>
-              {partnerClientVisitTiming(item.visit.ends_at, Date.now()) === "past" ? "Consulter l’intervention passée" : "Ouvrir la fiche d’intervention"}
-            </Link> : null}
-            {item.visit ? <button type="button" disabled={busy} className={linkClass} onClick={() => item.visit && onVisit(item.visit)}>
+            <Link className={linkClass} href={workItemPath(item)}>{item.workStatus === "review" && item.dossierId ? "Ouvrir le rapport" : "Ouvrir la fiche"}</Link>
+            {item.visit && !item.reschedule?.closed ? <button type="button" disabled={busy} className={linkClass} onClick={() => item.visit && onVisit(item.visit)}>
               {item.startsAt ? "Modifier le rendez-vous" : "Fixer le rendez-vous"}
             </button> : null}
-            {item.startsAt && mappedIds.has(item.id) ? <button type="button" disabled={busy} className={linkClass}
+            {item.workStatus === "scheduled" && mappedIds.has(item.id) ? <button type="button" disabled={busy} className={linkClass}
               onClick={() => chooseAppointment(item.id)}>Interventions à proximité</button> : null}
-            {item.startsAt && (item.visit || item.dossierId && !item.reschedule?.closed && Date.parse(item.startsAt) > Date.now()) ?
+            {item.workStatus === "scheduled" && item.startsAt && Date.parse(item.startsAt) > Date.now() ?
               <PartnerVisitUnplan disabled={busy} onUnplan={() => onUnplan(item)} /> : null}
             {item.client && (item.approximateLocation || !mappedIds.has(item.id)) ? <button type="button" disabled={busy} className={linkClass}
               onClick={() => item.client && onAddress(item.client)}>Compléter l’adresse</button> : null}
-            {item.dossierId ? <Link className={linkClass} href={"/partenaire/interventions/" + item.dossierId + (item.startsAt ? "" : "#rendez-vous")}>
-              {item.startsAt ? "Ouvrir le dossier SANISPA" : "Planifier dans le dossier SANISPA"}
-            </Link> : null}
           </div>
         </li>)}
       </ul>}

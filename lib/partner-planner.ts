@@ -20,6 +20,8 @@ export type PrivatePartnerVisit = ScheduledVisit & {
   spa_id?: string | null;
   title: string;
   description: string;
+  completed_at?: string | null;
+  validated_at?: string | null;
   client: PrivatePartnerClient;
 } & MapPosition;
 export type PendingPrivatePartnerVisit = Omit<PrivatePartnerVisit, "starts_at" | "ends_at"> & {
@@ -31,6 +33,7 @@ export type PartnerPrivateVisitFile = {
   visit: PrivatePartnerVisit | PendingPrivatePartnerVisit;
   technicians: PlannerTechnician[];
   spa: PartnerClientSpa | null;
+  canValidate?: boolean;
 };
 export type PartnerClientDossier = {
   id: string;
@@ -71,7 +74,7 @@ export function partnerClientDossierTiming(dossier: PartnerClientDossier, now: n
 
 export type SanispaPartnerVisit = ScheduledVisit & MapPosition & {
   diagnostic_id: string;
-  diagnostic: { problem_type: string; status: string; customer: { name: string | null; address: string | null } | null };
+  diagnostic: Omit<PendingPartnerDossier, "id">;
 };
 
 export type PlannerTechnician = { id: string; name: string };
@@ -83,6 +86,7 @@ export type PlannerAppointment = ScheduledVisit & {
   movable: boolean;
   address?: string;
   description?: string;
+  workStatus?: PartnerWorkStatus;
 };
 export type PlannerQueueEntry = {
   id: string;
@@ -98,6 +102,7 @@ export type PlannerQueueEntry = {
 
 export const interventionTypes = ["Intervention SAV", "Mise en service", "Installation", "Entretien / révision"];
 export const partnerClientsPath = "/partenaire/planning?view=clients";
+export const partnerStockPath = "/partenaire/planning?view=stock";
 export const partnerNewClientPath = partnerClientsPath + "&ajouter=1";
 export const partnerMapPath = "/partenaire/planning?view=carte";
 export const partnerNewVisitPath = "/partenaire/planning?nouvelle=1";
@@ -133,6 +138,8 @@ export type PartnerMapPoint = {
   step?: number;
   highlighted?: boolean;
   clientPath?: string;
+  recordHref?: string;
+  workStatus?: PartnerWorkStatus;
 };
 export type PartnerMapContacts = { points: PartnerMapPoint[]; unresolved: { id: string; name: string }[] };
 
@@ -142,6 +149,11 @@ export type PendingPartnerDossier = MapPosition & {
   status: string;
   public_reference?: string | null;
   preview_description?: string | null;
+  intervened_at?: string | null;
+  created_at?: string;
+  intervention_reports?: {
+    performed_at: string; submitted_at: string; client_validated_at: string | null; client_outcome: string | null;
+  }[];
   customer: { name: string | null; address: string | null } | null;
 };
 
@@ -158,6 +170,10 @@ export type PlannerMapIntervention = {
   client?: PrivatePartnerClient;
   visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit;
   dossierId?: string;
+  workStatus?: PartnerWorkStatus;
+  activityAt?: string | null;
+  reference?: string | null;
+  description?: string | null;
   reschedule?: { source: "private" | "sanispa"; id: string; version: string; closed?: boolean };
 };
 
@@ -188,7 +204,7 @@ export function mapDistanceKm(left: MapCoordinate, right: MapCoordinate) {
 export function nearbyPendingVisits(anchor: PlannerMapIntervention, items: PlannerMapIntervention[], radius: number) {
   if (!hasMapCoordinates(anchor)) return [];
   return items.flatMap(item => {
-    if (item.startsAt || !hasMapCoordinates(item) ||
+    if (item.startsAt || (item.workStatus && item.workStatus !== "pending") || !hasMapCoordinates(item) ||
         (anchor.technicianId && item.technicianId && item.technicianId !== anchor.technicianId)) return [];
     const distance = mapDistanceKm(anchor, item);
     return distance <= radius ? [{ item, distance }] : [];
@@ -280,3 +296,5 @@ export function partnerDirections(address: string) {
 export function visitsOverlap(left: Times, right: Times) {
   return Date.parse(left.starts_at) < Date.parse(right.ends_at) && Date.parse(right.starts_at) < Date.parse(left.ends_at);
 }
+import type { PartnerWorkStatus } from "./partner-workspace";
+

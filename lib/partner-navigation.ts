@@ -1,14 +1,28 @@
-import { partnerClientIdPattern, partnerClientsPath, partnerEditVisitPrefix, partnerMapPath, partnerNewClientPath, partnerNewVisitPath, partnerPrivateVisitsPath } from "./partner-planner";
+import { partnerClientIdPattern, partnerClientsPath, partnerEditVisitPrefix, partnerMapPath, partnerNewClientPath, partnerNewVisitPath, partnerPrivateVisitsPath, partnerStockPath } from "./partner-planner";
+import { readWorkspaceSelection } from "./partner-workspace";
 export const partnerAccountPath = "/partenaire/compte";
 
 /** Only known partner screens may be used as post-authentication destinations. */
 export function partnerReturnPath(value: string | null | undefined) {
   if (!value) return "/partenaire";
-  if (value === partnerAccountPath || value === partnerClientsPath || value === partnerNewClientPath || value === partnerMapPath || value === partnerNewVisitPath) return value;
+  if (value === partnerAccountPath || value === partnerClientsPath || value === partnerNewClientPath || value === partnerMapPath || value === partnerNewVisitPath || value === partnerStockPath) return value;
   for (const prefix of [partnerClientsPath + "&fiche=", partnerPrivateVisitsPath, partnerEditVisitPrefix]) {
     if (value.startsWith(prefix) && partnerClientIdPattern.test(value.slice(prefix.length))) return value;
   }
   if (/^\/partenaire\/planning\?view=carte&visite=[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}&(?:jour=\d{4}-\d{2}-\d{2}|statut=pending)$/i.test(value)) return value;
+  if (/^\/partenaire\/(?:planning|interventions)\?[^#]+$/.test(value)) {
+    const [path, search] = value.split("?", 2);
+    const selection = readWorkspaceSelection(search);
+    const params = new URLSearchParams(search);
+    const isMap = path.endsWith("/planning") && params.get("view") === "carte";
+    const checks: Record<string, boolean> = {
+      jour: Boolean(selection.day), periode: Boolean(selection.period), statut: Boolean(selection.status),
+      technicien: selection.technician !== undefined, view: isMap,
+      intervention: isMap && /^(private|sanispa):[a-f0-9-]{36}$/i.test(params.get("intervention") ?? ""),
+    };
+    const keys = [...params.keys()];
+    if (new Set(keys).size === keys.length && keys.every(key => checks[key] === true)) return value;
+  }
   if (value.startsWith("/partenaire/abonnement?retour=")) {
     const offer = partnerOfferReturn(new URLSearchParams(value.slice(value.indexOf("?"))).get("retour"));
     if (offer) return partnerCharterPath(offer);

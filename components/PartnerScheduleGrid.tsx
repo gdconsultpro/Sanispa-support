@@ -8,6 +8,7 @@ import {
   partnerPrivateVisitPath, plannerDate, plannerDay, plannerTime, timelineDropTime, timelineQuarter, visitsOverlap,
   type PlannerAppointment, type PlannerQueueEntry, type PlannerSlot, type PlannerTechnician,
 } from "@/lib/partner-planner";
+import { workStatusLabels } from "@/lib/partner-workspace";
 
 const hour = 3600000;
 const inputClass = "focus-ring min-h-12 w-full min-w-0 rounded-lg border border-sanispa-line bg-white px-3 py-2 text-base";
@@ -26,9 +27,12 @@ export function PlannerTechnicianSelect({ team, selected }: { team: PlannerTechn
 const searchable = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 const defaultDuration = 60;
 
-export function PartnerScheduleGrid({ day, appointments, queue, team, busy, initialAppointment, onAdd, onMove, onCreate, onSchedule, onUnplan }: {
+export function PartnerScheduleGrid({ day, appointments, occupied, technicianFilter, showQueue, queue, team, busy, initialAppointment, onAdd, onMove, onCreate, onSchedule, onUnplan }: {
   day: string;
   appointments: PlannerAppointment[];
+  occupied: PlannerAppointment[];
+  technicianFilter: string;
+  showQueue: boolean;
   queue: PlannerQueueEntry[];
   team: PlannerTechnician[];
   busy: boolean;
@@ -51,8 +55,8 @@ export function PartnerScheduleGrid({ day, appointments, queue, team, busy, init
   const end = +plannerDay(day, 1);
   const elapsed = end - start;
   const length = elapsed / hour;
-  const rows = [{ id: "", name: "À affecter" }, ...team];
-  const firstVisit = appointments[0]?.starts_at;
+  const rows = [{ id: "", name: "À affecter" }, ...team].filter(row => technicianFilter === "all" || row.id === technicianFilter);
+  const firstVisit = appointments[0]?.starts_at ?? occupied[0]?.starts_at;
   const firstVisible = firstVisit ? Math.max(start, Date.parse(firstVisit) - hour) : +new Date(day + "T08:00");
   const columnWidth = 96;
   const terms = searchable(query).trim().split(/\s+/).filter(Boolean);
@@ -117,10 +121,13 @@ export function PartnerScheduleGrid({ day, appointments, queue, team, busy, init
         Ajouter un technicien
       </Button>
     </div>
-    <p className="mb-3 text-sm text-sanispa-steel">Glissez une intervention sur un créneau ou sélectionnez-la pour choisir l’heure. Ouvrez un rendez-vous pour le modifier ou le déplanifier.</p>
+    <p className="mb-3 text-sm text-sanispa-steel">{showQueue
+      ? "Glissez une intervention sur un créneau ou sélectionnez-la pour choisir l’heure."
+      : "Ouvrez un rendez-vous pour consulter sa fiche et les actions disponibles."}</p>
     {selected || booking || newTechnician ? <section className="mb-3 rounded-xl bg-sanispa-ice p-4">
-      <h4 ref={heading} tabIndex={-1} className="font-bold">{selected ? "Rendez-vous planifié" : booking ? "Planifier l’intervention" : "Ajouter un technicien au planning"}</h4>
+      <h4 ref={heading} tabIndex={-1} className="font-bold">{selected ? "Rendez-vous" : booking ? "Planifier l’intervention" : "Ajouter un technicien au planning"}</h4>
       {selected ? <>
+        {selected.workStatus ? <p className="mt-1 text-sm font-bold text-sanispa-blue">{workStatusLabels[selected.workStatus]}</p> : null}
         <p className="mt-1 break-words font-semibold">{selected.title}</p>
         <p className="text-sm">{plannerTime(selected.starts_at)}–{plannerTime(selected.ends_at)} · {team.find(member => member.id === selected.technician_id)?.name ?? "À affecter"}</p>
         {selected.address ? <p className="break-words text-sm">{selected.address}</p> : null}
@@ -149,7 +156,10 @@ export function PartnerScheduleGrid({ day, appointments, queue, team, busy, init
         </fieldset>
       </form> : null}
       {selected ? <div className="mt-2 flex flex-wrap items-center gap-x-4">
-        <Link className="focus-ring inline-flex min-h-11 items-center text-sm font-bold underline" href={selected.source === "private" ? partnerPrivateVisitPath(selected.id) : "/partenaire/interventions/" + selected.id}>Ouvrir la fiche</Link>
+        <Link className="focus-ring inline-flex min-h-11 items-center text-sm font-bold underline"
+          href={selected.source === "private" ? partnerPrivateVisitPath(selected.id) : "/partenaire/interventions/" + selected.id + (selected.workStatus === "review" || selected.workStatus === "validated" ? "#rapport" : "")}>
+          {selected.source === "sanispa" && selected.workStatus === "review" ? "Ouvrir le rapport" : "Ouvrir la fiche"}
+        </Link>
         {selected.movable && Date.parse(selected.starts_at) > Date.now() ? <PartnerVisitUnplan key={selected.source + selected.id} disabled={busy} onUnplan={async () => {
           await onUnplan(selected);
           setSelected(null);
@@ -157,8 +167,8 @@ export function PartnerScheduleGrid({ day, appointments, queue, team, busy, init
         <button type="button" className="focus-ring min-h-11 text-sm font-bold underline" disabled={busy} onClick={() => setSelected(null)}>Fermer</button>
       </div> : null}
     </section> : null}
-    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(14rem,19rem)_minmax(0,1fr)]">
-    <section aria-labelledby="queue-heading" className="min-w-0 rounded-xl border border-sanispa-line bg-sanispa-ice p-3">
+    <div className={`grid min-w-0 gap-3 ${showQueue ? "lg:grid-cols-[minmax(14rem,19rem)_minmax(0,1fr)]" : ""}`}>
+    {showQueue ? <section aria-labelledby="queue-heading" className="min-w-0 rounded-xl border border-sanispa-line bg-sanispa-ice p-3">
       <h4 id="queue-heading" className="font-bold">À planifier <span className="text-sanispa-blue">({queue.length})</span></h4>
       <label className="mt-2 block text-sm font-bold">Rechercher une intervention
         <input type="search" value={query} maxLength={140} onChange={event => setQuery(event.target.value)} className={inputClass + " mt-1"}
@@ -190,7 +200,7 @@ export function PartnerScheduleGrid({ day, appointments, queue, team, busy, init
         </li>)}
       </ul>
       {!visibleQueue.length ? <p role="status" className="mt-2 text-sm">{queue.length ? "Aucun résultat." : "Aucune intervention à planifier."}</p> : null}
-    </section>
+    </section> : null}
     <div ref={scroll} tabIndex={0} role="region" aria-label="Grille horaire des interventions" className="focus-ring isolate max-w-full overflow-x-auto rounded-xl border border-sanispa-line">
       <div className="w-max" role="table" aria-label="Rendez-vous de la journée par technicien">
         <div role="row" className="flex border-b border-sanispa-line bg-sanispa-ice text-sm">
@@ -202,6 +212,7 @@ export function PartnerScheduleGrid({ day, appointments, queue, team, busy, init
           ))}
         </div>
         {rows.map(row => {
+          const occupiedRow = occupied.filter(appointment => (appointment.technician_id ?? "") === row.id);
           const endByLane: number[] = [];
           const slots = appointments.filter(appointment => (appointment.technician_id ?? "") === row.id)
             .map(appointment => {
@@ -213,7 +224,7 @@ export function PartnerScheduleGrid({ day, appointments, queue, team, busy, init
               return { appointment, begins, ends, lane };
             });
           function free(time: number) {
-            return slots.every(slot => time < slot.begins || time >= slot.ends);
+            return occupiedRow.every(slot => time < Date.parse(slot.starts_at) || time >= Date.parse(slot.ends_at));
           }
           return <div role="row" key={row.id} className="flex border-b border-sanispa-line last:border-0">
             <div role="rowheader" className="sticky left-0 z-10 flex w-28 shrink-0 items-start break-words border-r border-sanispa-line bg-white px-2 py-3 text-sm font-bold sm:w-44">
@@ -261,13 +272,14 @@ export function PartnerScheduleGrid({ day, appointments, queue, team, busy, init
                 })}
               </div>
               {slots.map(({ appointment, begins, ends, lane }) => {
-                const overlap = appointments.some(other => other !== appointment && other.technician_id === appointment.technician_id && visitsOverlap(appointment, other));
+                const overlap = occupiedRow.some(other => (other.id !== appointment.id || other.source !== appointment.source) && visitsOverlap(appointment, other));
                 const time = `${plannerTime(appointment.starts_at)}–${plannerTime(appointment.ends_at)}`;
+                const status = appointment.workStatus ? workStatusLabels[appointment.workStatus] : "";
                 const draggable = appointment.movable && !busy && begins === Date.parse(appointment.starts_at);
                 return <button type="button" key={appointment.source + appointment.id}
                   draggable={draggable} disabled={busy}
-                  title={`${appointment.title} · ${time}${overlap ? " · Chevauchement" : ""}`}
-                  aria-label={`Ouvrir le rendez-vous ${appointment.title}, ${time}${overlap ? ", chevauchement" : ""}`}
+                  title={`${appointment.title} · ${time}${status ? " · " + status : ""}${overlap ? " · Chevauchement" : ""}`}
+                  aria-label={`Ouvrir le rendez-vous ${appointment.title}, ${time}${status ? ", " + status : ""}${overlap ? ", chevauchement" : ""}`}
                   className={`focus-ring absolute z-[1] flex h-12 min-w-0 flex-col justify-center overflow-hidden rounded-lg border px-1.5 text-left text-xs font-bold disabled:opacity-75 ${draggable ? "cursor-grab" : ""} ${overlap ? "border-amber-500" : "border-transparent"} ${appointment.source === "sanispa" ? "bg-emerald-100 text-emerald-950" : "bg-sanispa-blue text-white"}`}
                   style={{ top: 4 + 54 * lane, left: (begins - start) / hour * columnWidth, width: Math.max(2, (ends - begins) / hour * columnWidth - 2) }}
                   onClick={() => { setNewTechnician(null); setBooking(null); setSelected(appointment); }}
@@ -279,7 +291,7 @@ export function PartnerScheduleGrid({ day, appointments, queue, team, busy, init
                     event.dataTransfer.effectAllowed = "move";
                   }}
                   onDragEnd={finishDrag}>
-                  <span className="block w-full truncate">{time}</span>
+                  <span className="block w-full truncate">{time}{status ? " · " + status : ""}</span>
                   <span className="block w-full truncate">{appointment.title}</span>
                 </button>;
               })}

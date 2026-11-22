@@ -4,16 +4,17 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { ButtonLink } from "@/components/Button";
+import { Button, ButtonLink } from "@/components/Button";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { PartnerVisitDelete } from "@/components/PartnerVisitDelete";
 import { PartnerVisitUnplan } from "@/components/PartnerVisitUnplan";
 import { partnerAuthError } from "@/lib/partner-browser";
 import { plannerRequest } from "@/lib/partner-planner-browser";
 import {
-  partnerClientAddress, partnerClientPath, partnerClientVisitTiming, partnerEditVisitPath, partnerSpaOption, partnerVisitMapPath,
+  partnerClientAddress, partnerClientPath, partnerEditVisitPath, partnerSpaOption, plannerDate,
   type PartnerPrivateVisitFile,
 } from "@/lib/partner-planner";
+import { privateWorkStatus, workStatusLabels, workspacePath } from "@/lib/partner-workspace";
 
 const endpoint = "/api/partner/planning";
 const listPath = "/partenaire/interventions";
@@ -29,6 +30,8 @@ export default function PrivateInterventionPage() {
   const [notice, setNotice] = useState("");
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"completeVisit" | "validateVisit" | null>(null);
+  const [transitionError, setTransitionError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -42,11 +45,12 @@ export default function PrivateInterventionPage() {
 
   const current = file?.visit.id === id ? file : null;
   const visit = current?.visit;
-  const timing = visit ? partnerClientVisitTiming(visit.ends_at, Date.now()) : null;
-  const backToContact = timing === "past" && visit && !visit.client.deleted_at;
+  const status = visit ? privateWorkStatus(visit, Date.now()) : null;
+  const backToContact = visit?.completed_at && !visit.client.deleted_at;
   const technician = current?.technicians.find(member => member.id === visit?.technician_id)?.name;
-  const title = timing === "past" ? "Intervention passée" : "Fiche d’intervention";
-  async function change(action: "unplanVisit" | "deleteVisit") {
+  const nextAction = status === "review" && current?.canValidate ? "validateVisit"
+    : visit?.starts_at && Date.parse(visit.starts_at) <= Date.now() && !visit.completed_at ? "completeVisit" : null;
+  async function change(action: "unplanVisit" | "deleteVisit" | "completeVisit" | "validateVisit") {
     if (!visit || busy) return;
     setBusy(true);
     try {
@@ -54,7 +58,8 @@ export default function PrivateInterventionPage() {
       if (!result) throw new Error("Reconnectez-vous pour modifier l’intervention.");
       if (action === "deleteVisit") router.replace(listPath);
       else {
-        setNotice("Le créneau a été retiré. L’intervention est de nouveau à planifier.");
+        setNotice(action === "completeVisit" ? "Intervention terminée. Elle est à valider."
+          : action === "validateVisit" ? "Intervention validée." : "Le créneau a été retiré. L’intervention est de nouveau à planifier.");
         setRevision(value => value + 1);
       }
     } finally { setBusy(false); }
@@ -65,7 +70,7 @@ export default function PrivateInterventionPage() {
     <Link className={link} href={backToContact ? partnerClientPath(visit.client.id) : listPath}>
       ← {backToContact ? "Fiche contact client" : "Mes interventions"}
     </Link>
-    <h1 className="mt-2 text-3xl font-bold">{title}</h1>
+    <h1 className="mt-2 text-3xl font-bold">Fiche d’intervention</h1>
     {error ? <div className="mt-3"><p role="alert" className="text-red-800">{error}</p>
       <button type="button" className={link} onClick={() => setRevision(value => value + 1)}>Réessayer</button></div> : null}
     {!current && !error ? <p role="status" className="mt-3">Chargement de l’intervention…</p> : null}
@@ -73,18 +78,35 @@ export default function PrivateInterventionPage() {
     {visit && current ? <div className="mt-4 grid min-w-0 gap-4">
       <section className={panel} aria-labelledby="visit-details">
         <h2 className="break-words text-xl font-bold" id="visit-details">{visit.title}</h2>
-        {timing === "pending" ? <p className="mt-1 font-bold text-amber-800">À planifier</p> : null}
-        {timing === "scheduled" ? <p className="mt-1 font-bold text-sanispa-blue">Planifiée</p> : null}
+        {status ? <p className="mt-1 font-bold text-sanispa-blue">{workStatusLabels[status]}</p> : null}
         {visit.starts_at && visit.ends_at ? <p className="mt-1">{dateTime.formatRange(new Date(visit.starts_at), new Date(visit.ends_at))}</p> : null}
         {technician ? <p className="text-sm">{technician}</p> : null}
         {current.spa ? <p className="mt-2 break-words text-sm font-bold">Spa concerné · {partnerSpaOption(current.spa)}</p> : null}
         <h3 className="mt-4 font-bold">Description de la panne ou de l’intervention</h3>
         <p className="mt-1 whitespace-pre-wrap break-words">{visit.description || "Aucun descriptif renseigné."}</p>
-        {timing !== "past" ? <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-2">
-          <ButtonLink href={partnerEditVisitPath(id)}>{timing === "pending" ? "Planifier ou modifier" : "Modifier l’intervention"}</ButtonLink>
-          <Link className={link} href={partnerVisitMapPath(id, visit.starts_at)}>Retrouver sur la carte</Link>
-          {timing === "scheduled" ? <PartnerVisitUnplan disabled={busy} onUnplan={() => change("unplanVisit")} /> : null}
-          <PartnerVisitDelete disabled={busy} onDelete={() => change("deleteVisit")} />
+        <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-2">
+          {!visit.completed_at ? <ButtonLink href={partnerEditVisitPath(id)}>{status === "pending" ? "Planifier ou modifier" : "Modifier l’intervention"}</ButtonLink> : null}
+          <Link className={link} href={workspacePath("map", {
+            ...(visit.starts_at ? { day: plannerDate(new Date(visit.starts_at)), period: "day" } : {}), status: status ?? "all",
+          }, "private:" + id)}>Retrouver sur la carte</Link>
+          {status === "scheduled" && visit.starts_at && Date.parse(visit.starts_at) > Date.now() ?
+            <PartnerVisitUnplan disabled={busy} onUnplan={() => change("unplanVisit")} /> : null}
+          {!visit.completed_at ? <PartnerVisitDelete disabled={busy} onDelete={() => change("deleteVisit")} /> : null}
+          {nextAction && !confirmAction ? <Button type="button" variant="secondary" disabled={busy} onClick={() => {
+            setTransitionError("");
+            setConfirmAction(nextAction);
+          }}>{nextAction === "completeVisit" ? "Marquer comme terminée" : "Valider l’intervention"}</Button> : null}
+        </div>
+        {confirmAction ? <div className="mt-3 rounded-lg bg-sanispa-ice p-3">
+          <p className="text-sm font-bold">{confirmAction === "completeVisit" ? "Confirmer que l’intervention est terminée ?" : "Confirmer la validation de cette intervention ?"}</p>
+          {transitionError ? <p role="alert" className="mt-1 text-sm text-red-800">{transitionError}</p> : null}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button type="button" disabled={busy} onClick={async () => {
+              try { await change(confirmAction); setConfirmAction(null); }
+              catch (error) { setTransitionError(partnerAuthError(error)); }
+            }}>{confirmAction === "completeVisit" ? "Confirmer la fin" : "Confirmer la validation"}</Button>
+            <Button type="button" variant="secondary" disabled={busy} onClick={() => setConfirmAction(null)}>Annuler</Button>
+          </div>
         </div> : null}
       </section>
       <section className={panel} aria-labelledby="visit-contact">

@@ -13,7 +13,9 @@ import { partnerClientAddress, partnerClientDossierTiming, partnerClientPath, pa
   type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
 const privateClientColumns = "id,name,phone,email,street,postal_code,city,latitude,longitude,source_diagnostic_id";
-const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at,spa_id";
+const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at,spa_id,completed_at,validated_at";
+const dossierFields = "problem_type,status,public_reference,preview_description,intervened_at,created_at,customer:customers(name,address)";
+const reportStateFields = "intervention_reports(performed_at,submitted_at,client_validated_at,client_outcome)";
 const spaFields = "id,brand,model,serial_number,updated_at";
 const privateVisitColumns = `${visitFields},client:partner_private_clients!inner(${privateClientColumns})`;
 const stockColumns = "id,category,label,reference,quantity,updated_at";
@@ -55,6 +57,8 @@ const deleteVisitInput = z.object({
   action: z.literal("deleteVisit"), id: z.string().uuid(), expected_at: timestamp,
 }).strict();
 const unplanVisitInput = deleteVisitInput.extend({ action: z.literal("unplanVisit") });
+const completeVisitInput = deleteVisitInput.extend({ action: z.literal("completeVisit") });
+const validateVisitInput = deleteVisitInput.extend({ action: z.literal("validateVisit") });
 const deleteClientInput = z.object({ action: z.literal("deleteClient"), id: z.string().uuid() }).strict();
 const restoreClientInput = deleteClientInput.extend({ action: z.literal("restoreClient") });
 const stockInput = z.object({
@@ -100,7 +104,7 @@ const applyTourInput = z.object({
     source: z.enum(["private", "sanispa"]), id: z.string().uuid(), expected_at: timestamp, starts_at: timestamp,
   }).strict()).min(1).max(maximumTourRouteStops),
 }).strict();
-const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, visitWithContactInput, deleteVisitInput, unplanVisitInput, deleteClientInput,
+const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, visitWithContactInput, deleteVisitInput, unplanVisitInput, completeVisitInput, validateVisitInput, deleteClientInput,
   restoreClientInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, schedulePendingInput, tourRouteInput, applyTourInput]);
 const rangeInput = z.object({
   from: z.string().datetime(),
@@ -294,7 +298,7 @@ export async function GET(request: Request) {
         const now = new Date();
         const [visits, team, dossier, equipment] = await Promise.all([
           supabase.from("partner_private_visits").select("id,title,starts_at,spa_id")
-            .eq("partner_id", partner.id).eq("client_id", id).lte("ends_at", now.toISOString())
+            .eq("partner_id", partner.id).eq("client_id", id).or(`ends_at.lte.${now.toISOString()},completed_at.not.is.null`)
             .order("starts_at", { ascending: false })
             .order("updated_at", { ascending: false }).order("id").range(offset, offset + 30),
           technicians(),
@@ -324,7 +328,7 @@ export async function GET(request: Request) {
         const spa = visit.spa_id ? await supabase.from("partner_client_spas").select(spaFields)
           .eq("partner_id", partner.id).eq("client_id", visit.client.id).eq("id", visit.spa_id).maybeSingle() : null;
         if (spa?.error) throw spa.error;
-        return NextResponse.json({ visit, technicians: team, spa: spa?.data ?? null }, { headers: { "Cache-Control": "private, no-store" } });
+        return NextResponse.json({ visit, technicians: team, spa: spa?.data ?? null, canValidate: partner.role === "owner" }, { headers: { "Cache-Control": "private, no-store" } });
       }
       if (params.get("section") === "stock") {
         const { data, error } = await supabase.from("partner_private_stock").select(stockColumns).eq("partner_id", partner.id)
@@ -358,27 +362,33 @@ export async function GET(request: Request) {
     if (range) {
       const duration = Date.parse(range.to) - Date.parse(range.from);
       if (!(duration > 0 && duration <= 32 * 24 * 3600000)) throw new HttpError(400, "Choisissez une période valide.");
-      if (forMap && duration > 8 * 24 * 3600000) throw new HttpError(400, "Choisissez un jour ou une semaine pour la carte.");
     }
     const now = new Date().toISOString();
     const privateQuery = () => supabase.from("partner_private_visits").select(privateVisitColumns)
       .eq("partner_id", partner.id).eq("client.partner_id", partner.id);
     const sanispaQuery = () => supabase.from("partner_appointments")
-      .select("diagnostic_id,starts_at,ends_at,technician_id,updated_at,diagnostic:diagnostics!inner(problem_type,status,customer:customers(name,address))")
+      .select(`diagnostic_id,starts_at,ends_at,technician_id,updated_at,diagnostic:diagnostics!inner(${dossierFields},${reportStateFields})`)
       .eq("partner_id", partner.id).eq("diagnostic.assigned_partner_id", partner.id).is("diagnostic.archived_at", null);
-    const [privateVisits, sanispaVisits, team, waitingPrivate, waitingSanispa] = await Promise.all([
+    const [privateVisits, sanispaVisits, team, waitingPrivate, waitingSanispa, historicalSanispa] = await Promise.all([
       allRows((from, to) => (range ? privateQuery().lt("starts_at", range.to).gt("ends_at", range.from) : privateQuery().gte("starts_at", now))
         .order("starts_at").order("id").range(from, to)),
       allRows((from, to) => (range ? sanispaQuery().lt("starts_at", range.to).gt("ends_at", range.from)
         : sanispaQuery().gte("starts_at", now).not("diagnostic.status", "in", "(CLOSED,terminé)"))
         .order("starts_at").order("diagnostic_id").range(from, to)),
       technicians(),
-      withPending ? allRows((from, to) => privateQuery().is("starts_at", null).is("client.deleted_at", null)
+      withPending ? allRows((from, to) => privateQuery().is("starts_at", null)
         .order("updated_at", { ascending: false }).order("id").range(from, to)) : null,
       withPending ? allRows((from, to) => supabase.from("diagnostics")
-        .select("id,problem_type,status,public_reference,preview_description,customer:customers(name,address),partner_appointments(),intervention_reports()")
+        .select(`id,${dossierFields},partner_appointments(),intervention_reports()`)
         .eq("assigned_partner_id", partner.id).is("archived_at", null).not("status", "in", "(CLOSED,terminé)")
+        .is("intervened_at", null)
         .eq("partner_appointments.partner_id", partner.id).is("partner_appointments", null).is("intervention_reports", null)
+        .order("created_at", { ascending: false }).order("id").range(from, to)) : null,
+      range && withPending ? allRows((from, to) => supabase.from("diagnostics")
+        .select(`id,${dossierFields},${reportStateFields},partner_appointments()`)
+        .eq("assigned_partner_id", partner.id).is("archived_at", null)
+        .eq("partner_appointments.partner_id", partner.id).is("partner_appointments", null)
+        .or(`and(intervened_at.gte.${range.from},intervened_at.lt.${range.to}),and(intervened_at.is.null,status.in.(CLOSED,terminé),created_at.gte.${range.from},created_at.lt.${range.to})`)
         .order("created_at", { ascending: false }).order("id").range(from, to)) : null,
     ]);
     if (forMap) {
@@ -386,11 +396,12 @@ export async function GET(request: Request) {
       const sanispa = sanispaVisits as unknown as SanispaPartnerVisit[];
       const pendingVisits = (waitingPrivate ?? []) as unknown as PendingPrivatePartnerVisit[];
       const pendingDossiers = (waitingSanispa ?? []) as unknown as PendingPartnerDossier[];
+      const historyDossiers = (historicalSanispa ?? []) as unknown as PendingPartnerDossier[];
       const dossierAddress = (dossier: PendingPartnerDossier | SanispaPartnerVisit["diagnostic"]) => partnerVisitAddress(dossier.customer?.address);
       const pendingDossierAddresses = pendingDossiers.map(dossierAddress);
       const location = await mapLocations(
         [...visits, ...pendingVisits].map(visit => visit.client),
-        [...sanispa.map(visit => dossierAddress(visit.diagnostic)), ...pendingDossierAddresses],
+        [...sanispa.map(visit => dossierAddress(visit.diagnostic)), ...pendingDossierAddresses, ...historyDossiers.map(dossierAddress)],
         [...pendingVisits.map(visit => visit.client), ...pendingDossierAddresses],
       );
       function locateVisit<T extends (PrivatePartnerVisit | PendingPrivatePartnerVisit)>(visit: T) {
@@ -404,11 +415,12 @@ export async function GET(request: Request) {
         sanispa: sanispa.map(visit => ({ ...visit, ...location(dossierAddress(visit.diagnostic)) })),
         pendingVisits: pendingVisits.map(locateVisit),
         pendingDossiers: pendingDossiers.map((dossier, index) => ({ ...dossier, ...location(pendingDossierAddresses[index]) })),
+        historyDossiers: historyDossiers.map(dossier => ({ ...dossier, ...location(dossierAddress(dossier)) })),
         technicians: team,
-      });
+      }, { headers: { "Cache-Control": "private, no-store" } });
     }
     return NextResponse.json({ visits: privateVisits, sanispa: sanispaVisits, technicians: team,
-      ...(withPending ? { pendingVisits: waitingPrivate, pendingDossiers: waitingSanispa } : {}),
+      ...(withPending ? { pendingVisits: waitingPrivate, pendingDossiers: waitingSanispa, historyDossiers: historicalSanispa } : {}),
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return apiError(error);
@@ -454,6 +466,17 @@ export async function POST(request: Request) {
     }
     await rateLimit(supabase, `partner-private-planner:${partner.id}`, 30);
     const updated_at = new Date().toISOString();
+    if (command.action === "completeVisit" || command.action === "validateVisit") {
+      const { error } = await supabase.rpc("advance_partner_private_visit", {
+        p_partner: partner.id, p_actor: user.id, p_visit: command.id,
+        p_expected: command.expected_at, p_validate: command.action === "validateVisit",
+      });
+      if (error?.message === "PARTNER_WORK_ROLE_REQUIRED") throw new HttpError(403, "La validation est réservée au responsable de l’entreprise.");
+      if (error?.message === "PARTNER_VISIT_NOT_FOUND") throw new HttpError(404, "Cette intervention est introuvable.");
+      if (error?.message === "PARTNER_VISIT_STATE_CHANGED") throw new HttpError(409, "L’intervention a évolué. Rouvrez la fiche pour retrouver son statut.");
+      if (error) throw error;
+      return NextResponse.json({ saved: true });
+    }
     if (command.action === "deleteClient" || command.action === "restoreClient") {
       const { data, error } = await supabase.from("partner_private_clients")
         .update({ deleted_at: command.action === "deleteClient" ? updated_at : null, updated_at })
@@ -477,7 +500,7 @@ export async function POST(request: Request) {
     if (command.action === "unplanVisit") {
       const table = supabase.from("partner_private_visits");
       const result = await table.update({ starts_at: null, ends_at: null, updated_at })
-        .eq("partner_id", partner.id).eq("id", command.id).eq("updated_at", command.expected_at).not("starts_at", "is", null)
+        .eq("partner_id", partner.id).eq("id", command.id).eq("updated_at", command.expected_at).not("starts_at", "is", null).is("completed_at", null)
         .select("id").maybeSingle();
       if (result.error) throw result.error;
       if (!result.data) {
@@ -513,6 +536,7 @@ export async function POST(request: Request) {
         p_expected: command.expected_at, p_start: command.starts_at, p_technician: command.technician_id,
       });
       if (error?.message.includes("TECHNICIAN_NOT_FOUND")) throw new HttpError(404, "Ce technicien est introuvable dans votre planning.");
+      if (error?.message === "PARTNER_VISIT_FINISHED") throw new HttpError(409, "Cette intervention est terminée. Le créneau reste dans l’historique.");
       if (/APPOINTMENT_CHANGED|partner_private_visits_schedule_pair/.test(error?.message ?? ""))
         throw new HttpError(409, "Ce rendez-vous a été modifié. Le planning a été actualisé.");
       if (error) throw interventionError(error);
@@ -593,6 +617,7 @@ export async function POST(request: Request) {
       });
     const { error } = result;
     if (error?.message.includes("CLIENT_NOT_FOUND")) throw new HttpError(404, "Client introuvable dans votre carnet.");
+    if (error?.message === "PARTNER_VISIT_FINISHED") throw new HttpError(409, "Cette intervention est terminée. Le créneau reste dans l’historique.");
     if (error?.message.includes("CLIENT_ADDRESS_REQUIRED")) throw new HttpError(400, "Renseignez la rue, le code postal et la ville du client.");
     if (error?.message.includes("CLIENT_ADDRESS_CHANGED"))
       throw new HttpError(409, "L’adresse du client a changé. Rouvrez l’intervention pour utiliser son adresse actuelle.");

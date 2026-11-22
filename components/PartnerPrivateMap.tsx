@@ -64,7 +64,9 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
         ? steps.length > 3 ? `${steps[0]} +${steps.length - 1}` : steps.join("·")
         : group.length > 1 ? "+" + group.length : contactsOnly ? "C" : String(points.indexOf(first) + 1);
       const width = Math.max(36, pinLabel.length * 8 + 10);
-      const pinColor = contactsOnly ? "bg-violet-700" : group.every(point => point.pending || point.clientPath) ? "bg-amber-600" : "bg-sanispa-blue";
+      const pinColor = contactsOnly ? "bg-violet-700" : group.every(point => point.pending || point.clientPath) ? "bg-amber-600"
+        : group.every(point => point.clientPath || point.workStatus && !["pending", "scheduled", "due"].includes(point.workStatus)) ? "bg-emerald-700"
+        : "bg-sanispa-blue";
       const pin = marker([first.latitude, first.longitude], {
         icon: divIcon({
           className: `grid place-items-center rounded-full border-[3px] border-white ${pinColor} text-sm font-bold text-white shadow-lg ${highlighted ? "ring-4 ring-sanispa-navy" : ""}`,
@@ -77,9 +79,8 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
         alt: title,
         zIndexOffset: highlighted ? 1000 : 0,
       }).addTo(instance);
-      if (group.length === 1 && !first.pending && !first.clientPath && onAppointment) {
+      if (group.length === 1 && (!first.workStatus || first.workStatus === "scheduled") && !first.pending && !first.clientPath && onAppointment) {
         pin.on("click", () => onAppointment(first.id));
-        continue;
       }
       pin.bindPopup(() => {
         const options = pin.getPopup()?.options;
@@ -120,14 +121,14 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
             address.textContent = "Itinéraire";
             actions.append(address);
           }
-          if (point.clientPath) {
+          if (point.clientPath || point.recordHref) {
             const link = document.createElement("a");
-            link.href = point.clientPath;
+            link.href = point.clientPath ?? point.recordHref!;
             link.className = "focus-ring inline-flex min-h-11 items-center text-sm font-bold underline";
-            link.textContent = "Ouvrir la fiche contact";
+            link.textContent = point.clientPath ? "Ouvrir la fiche contact" : "Ouvrir l’intervention";
             actions.append(link);
           }
-          if (!point.pending && !point.clientPath && onAppointment) {
+          if ((!point.workStatus || point.workStatus === "scheduled") && !point.pending && !point.clientPath && onAppointment) {
             const choose = document.createElement("button");
             choose.type = "button";
             choose.className = "focus-ring min-h-11 text-left text-sm font-bold text-sanispa-blue underline";
