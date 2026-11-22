@@ -19,7 +19,7 @@ export function LagoonHero({ children, firstName, signedIn = false, description 
         </>
       ) : null}
       <div className="relative max-w-md">
-        {firstName?.trim() ? <p className="mb-2 break-words text-sm font-medium text-[#f3e8d6]">Bonjour {firstName.trim()}</p> : null}
+        {firstName?.trim() ? <p className="mb-2 break-words text-sm font-medium text-white/90">Bonjour {firstName.trim()}</p> : null}
         <Heading id="lagoon-title" className="sanispa-display-title lagoon-hero__heading text-4xl leading-tight sm:text-5xl lg:text-6xl">
           Un souci avec votre spa ?
         </Heading>

@@ -50,7 +50,13 @@ export async function GET(request: Request, context: Context) {
       if (error) throw error;
       return NextResponse.json({ photos: session ? await loadFieldPhotos(supabase, report.partner_id, session.id) : [] }, { headers });
     }
-    const { reports, ...workspace } = await loadIntervention(supabase, id);
+    const [{ reports, ...workspace }, additionalInformation] = await Promise.all([
+      loadIntervention(supabase, id),
+      supabase.from("diagnostic_answers").select("answer")
+        .eq("diagnostic_id", id).eq("question_key", "additional_information")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    if (additionalInformation.error) throw additionalInformation.error;
     const signed = new Set<string>();
     if (reports.length) {
       const { data, error } = await supabase.from("partner_field_sessions").select("report_id")
@@ -59,6 +65,7 @@ export async function GET(request: Request, context: Context) {
       data.forEach(session => signed.add(session.report_id));
     }
     return NextResponse.json({ ...workspace, reports: reports.map((report: { id: string }) => ({ ...report, signedPdf: signed.has(report.id) })),
+      additionalInformation: additionalInformation.data?.answer || null,
       dossierReference: dossier.public_reference, dossierStatus: dossier.status, assignedPartner: Boolean(dossier.assigned_partner_id) }, { headers });
   } catch (e) { return apiError(e); }
 }

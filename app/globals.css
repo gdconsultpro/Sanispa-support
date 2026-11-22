@@ -7,15 +7,14 @@
   color-scheme: light;
   --sanispa-navy: 20 32 49;
   --sanispa-blue: 37 55 79;
-  --sanispa-ice: 244 240 231;
-  --sanispa-line: 221 215 203;
+  --sanispa-ice: 237 242 248;
+  --sanispa-line: 214 223 234;
   --sanispa-steel: 81 87 99;
-  --sanispa-background: #faf8f4;
-  --sanispa-accent-surface: #f3eee5;
+  --sanispa-background: #f6f8fb;
+  --sanispa-accent-surface: #e9eff6;
   --sanispa-display-font: Georgia, "Times New Roman", serif;
   --sanispa-display-weight: 400;
   --sanispa-display-spacing: -0.035em;
-  --sanispa-champagne: #917755;
 }
 
 [data-sanispa-space="partner"] {
@@ -109,7 +108,7 @@ button {
   text-wrap: balance;
 }
 .lagoon-actions > a:first-child {
-  background: #f3e8d6;
+  background: rgb(var(--sanispa-ice));
   color: #142031;
   border-radius: .5rem;
 }
@@ -174,7 +173,7 @@ button {
   color: rgb(var(--sanispa-navy));
 }
 .declaration-step[aria-current="step"] {
-  border-color: var(--sanispa-champagne);
+  border-color: rgb(var(--sanispa-blue));
   background: rgb(var(--sanispa-ice));
   color: rgb(var(--sanispa-navy));
 }
@@ -198,7 +197,7 @@ button {
 }
 .problem-option:has(:checked) {
   background: rgb(var(--sanispa-ice));
-  box-shadow: inset 3px 0 var(--sanispa-champagne);
+  box-shadow: inset 3px 0 rgb(var(--sanispa-blue));
 }
 .problem-option__photo {
   width: 3.5rem;

@@ -13,7 +13,8 @@ import { fieldReportFilename, type FieldPhoto } from "@/lib/partner-field";
 type Report = { id: string; performed_at: string; submitted_at: string; findings: string; actions: string; next_steps: string; client_validated_at: string | null;
   client_outcome: "repaired" | "quote_pending" | "abandoned" | null; responsiveness: number | null; professionalism: number | null; pricing: number | null;
   signedPdf?: boolean };
-type Workspace = { dossierReference?: string; dossierStatus?: string; assignedPartner?: boolean; appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[]; job?: PartnerAssignedVisit };
+type Workspace = { dossierReference?: string; dossierStatus?: string; assignedPartner?: boolean; additionalInformation?: string | null;
+  appointment: { starts_at: string; ends_at: string } | null; reports: Report[]; invoices: { id: string; file_name: string }[]; job?: PartnerAssignedVisit };
 const outcomes = { repaired: "Spa réparé", quote_pending: "Devis en cours", abandoned: "Projet abandonné" } as const;
 const criteria = [{ key: "responsiveness", label: "Réactivité" }, { key: "professionalism", label: "Professionnalisme" }, { key: "pricing", label: "Tarif" }] as const;
 const inputClass = "mt-2 w-full rounded-xl border border-sanispa-line bg-white p-3 text-sanispa-navy";
@@ -135,6 +136,12 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
           <h2 className="text-xl font-bold">{waiting ? "Votre compte rendu est prêt" : closed || data.dossierStatus === "CLOSED" || data.dossierStatus === "terminé" ? "Votre dossier est terminé" : "Votre demande est enregistrée"}</h2>
           <p className="mt-2">{waiting ? "Lisez le compte rendu, puis indiquez où en est votre spa." : "Retrouvez ci-dessous les informations communiquées pour votre demande."}</p>
           {waiting ? <a href="#validation" className="mt-3 inline-block font-bold underline">Valider le rapport</a> : null}
+          {data.additionalInformation?.trim() ? (
+            <div className="mt-4 rounded-xl bg-sanispa-ice p-4">
+              <h3 className="text-sm font-bold">Informations supplémentaires</h3>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{data.additionalInformation}</p>
+            </div>
+          ) : null}
           <div className="mt-3 text-sm">
             <p>Résumé de votre déclaration (PDF)</p>
             <PrivateFile url={`/api/client/documents/${id}/pdf`} name={`Résumé SANISPA ${data.dossierReference || ""}.pdf`} />

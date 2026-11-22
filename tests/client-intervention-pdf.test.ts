@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { PDFDocument } from "pdf-lib";
 import { GET } from "../app/api/client/interventions/[id]/route";
 
-test("a signed report PDF follows its dossier owner after a partner change", async context => {
+test("signed reports and additional information are available to the dossier owner", async context => {
   const env = { ...process.env };
   const db = "https://client-report.fixture.invalid";
   Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: db, SUPABASE_SERVICE_ROLE_KEY: "fixture" });
@@ -16,6 +16,8 @@ test("a signed report PDF follows its dossier owner after a partner change", asy
   let requestUser = owner;
   let signed = true;
   let pdfLookups = 0;
+  let noteLookups = 0;
+  let note: string | null = "Le débit est faible.\nLa pompe s’arrête après quatre minutes.";
   context.mock.method(globalThis, "fetch", async (input: URL | string | Request) => {
     const url = new URL(String(input));
     assert.equal(url.origin, db);
@@ -34,11 +36,20 @@ test("a signed report PDF follows its dossier owner after a partner change", asy
     }
     if (table === "intervention_reports") {
       assert.equal(param("diagnostic_id"), "eq." + dossier);
+      if (!param("id")) return Response.json([]);
       return Response.json([{
         id: report, partner_id: oldPartner, performed_at: time, submitted_at: time,
         findings: "Constat de test", actions: "Travaux de test", next_steps: "Aucune suite à prévoir.",
       }]);
     }
+    if (table === "diagnostic_answers") {
+      noteLookups++;
+      assert.equal(param("diagnostic_id"), "eq." + dossier);
+      assert.equal(param("question_key"), "eq.additional_information");
+      assert.equal(param("select"), "answer");
+      return Response.json(note ? [{ answer: note }] : []);
+    }
+    if (table === "partner_appointments" || table === "client_documents") return Response.json([]);
     if (table === "partners") {
       pdfLookups++;
       assert.equal(param("id"), "eq." + oldPartner);
@@ -60,9 +71,10 @@ test("a signed report PDF follows its dossier owner after a partner change", asy
     }
     throw new Error("Unexpected query " + url.pathname);
   });
-  const getPdf = () => GET(new Request(`https://fixture.invalid/api/client/interventions/${dossier}?rapport=${report}`, {
+  const get = (query = "") => GET(new Request(`https://fixture.invalid/api/client/interventions/${dossier}${query}`, {
     headers: { Authorization: `Bearer ${token(requestUser)}` },
   }), { params: Promise.resolve({ id: dossier }) });
+  const getPdf = () => get(`?rapport=${report}`);
   try {
     const response = await getPdf();
     assert.equal(response.status, 200);
@@ -75,6 +87,15 @@ test("a signed report PDF follows its dossier owner after a partner change", asy
     requestUser = other;
     assert.equal((await getPdf()).status, 404);
     assert.equal(pdfLookups, 2);
+    assert.equal(noteLookups, 0);
+    assert.equal((await get()).status, 404);
+    assert.equal(noteLookups, 0);
+    requestUser = owner;
+    const workspace = await get();
+    assert.equal(workspace.status, 200);
+    assert.equal((await workspace.json()).additionalInformation, note);
+    note = null;
+    assert.equal((await (await get()).json()).additionalInformation, null);
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in env)) delete process.env[key];
     Object.assign(process.env, env);
