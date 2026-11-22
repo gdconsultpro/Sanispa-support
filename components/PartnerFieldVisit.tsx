@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Camera, ClipboardCheck, Download, MapPin, Phone, Play } from "lucide-react";
+import { Camera, ClipboardCheck, Download, Mail, MapPin, Phone, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, ButtonLink } from "@/components/Button";
 import { CustomerSignaturePad } from "@/components/CustomerSignaturePad";
@@ -57,6 +57,9 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   const [signatureStrokes, setSignatureStrokes] = useState<SignatureStrokes>([]);
   const [signer, setSigner] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [sendingReport, setSendingReport] = useState<string | null>(null);
+  const [mailError, setMailError] = useState<{ id: string; message: string } | null>(null);
+  const sending = useRef(false);
   const [pendingPhotos, setPendingPhotos] = useState<{ id: string; file: File; kind: FieldPhotoKind }[]>([]);
   const working = useRef(false);
   const draftKey = useRef("");
@@ -152,6 +155,26 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
       if (pdf) downloadBlob(pdf, `compte-rendu-${reportId.slice(0, 8)}.pdf`);
     } catch (cause) { setError(partnerAuthError(cause)); }
     finally { setDownloading(null); }
+  }
+
+  async function emailReport(reportId: string, expectedEmail: string) {
+    if (sending.current) return;
+    sending.current = true;
+    setSendingReport(reportId);
+    setMailError(null);
+    try {
+      const result = await plannerRequest(base, {
+        payload: { action: "sendPdf", reportId, expectedEmail }, signal: AbortSignal.timeout(45000),
+      });
+      if (result?.sentAt) setData(current => current && {
+        ...current, reports: current.reports.map(report => report.id === reportId ? { ...report, pdfSentAt: result.sentAt } : report),
+      });
+    } catch (cause) {
+      setMailError({ id: reportId, message: partnerAuthError(cause) });
+    } finally {
+      sending.current = false;
+      setSendingReport(null);
+    }
   }
 
   function createFollowup(reportId: string) {
@@ -375,6 +398,22 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
             </Button>
             <Button type="button" variant="secondary" disabled={busy} onClick={() => createFollowup(report.id)}>Prévoir une nouvelle intervention</Button>
           </div>
+          {report.customerSigner && (source === "sanispa" || data.workStatus === "validated") ? <div className="mt-3">
+            {data.reportRecipient ? <>
+              {report.pdfSentAt ? <p role="status" className="break-all text-sm font-semibold text-emerald-800">
+                PDF envoyé à {data.reportRecipient} le {dateLabel.format(new Date(report.pdfSentAt))}
+              </p> : <>
+                <p className="mb-2 break-all text-sm">Destinataire de l’e-mail · {data.reportRecipient}</p>
+                <Button type="button" disabled={sendingReport !== null} onClick={() => void emailReport(report.id, data.reportRecipient!)}>
+                  <Mail size={18} aria-hidden="true" /> {sendingReport === report.id ? "Envoi en cours…" : "Envoyer le PDF au client"}
+                </Button>
+              </>}
+            </> : <p className="text-sm">Renseignez une adresse e-mail valide pour envoyer le PDF.
+              {source === "private" && data.customer.clientId ? <> <Link href={partnerClientPath(data.customer.clientId)}
+                className="font-bold underline">Ouvrir la fiche client</Link></> : null}
+            </p>}
+            {mailError?.id === report.id ? <p role="alert" className="mt-2 text-sm text-red-800">{mailError.message}</p> : null}
+          </div> : null}
         </article>)}
         {!draftOpen && !data.reports.length ? <p className="mt-2 text-sm">{data.workStatus === "review" || data.workStatus === "validated"
           ? "Cette intervention a été enregistrée sans compte rendu terrain." : "Démarrez l’intervention pour rédiger son compte rendu."}</p> : null}

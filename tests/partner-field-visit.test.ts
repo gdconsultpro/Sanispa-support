@@ -123,6 +123,18 @@ test("structured SAV and installation reports require their evidence and keep ex
     await assert.rejects(sign(savSession, savReport, savDetails, { ...signature, name: "Autre client" }), /FIELD_ALREADY_FINISHED/);
     const [saved] = (await db.query("select report_details,customer_signature from partner_field_sessions where id=$1", [savSession])).rows;
     assert.deepEqual(saved, { report_details: savDetails, customer_signature: signature });
+    const claim = (recipient: string, retry = true) => db.query<{ delivery: { state: string; sentAt?: string } }>(
+      "select claim_partner_field_pdf_delivery($1,$2,$3) delivery", [savReport, recipient, retry]);
+    const recipient = "client@example.invalid";
+    assert.equal((await claim(recipient)).rows[0].delivery.state, "claimed");
+    assert.equal((await claim(recipient)).rows[0].delivery.state, "busy");
+    await db.query("update partner_field_pdf_deliveries set sent_at='2026-11-22T13:00Z',locked_until=null where report_id=$1 and recipient=$2", [savReport, recipient]);
+    assert.deepEqual((await claim(recipient)).rows[0].delivery, { state: "sent", sentAt: "2026-11-22T13:00:00+00:00" });
+    const corrected = "corrected@example.invalid";
+    assert.equal((await claim(corrected)).rows[0].delivery.state, "claimed");
+    await db.query("update partner_field_pdf_deliveries set locked_until=null where report_id=$1 and recipient=$2", [savReport, corrected]);
+    assert.equal((await claim(corrected, false)).rows[0].delivery.state, "unknown");
+    assert.equal((await claim(corrected)).rows[0].delivery.state, "claimed");
     await assert.rejects(photo(savSession, "extra"), /FIELD_ALREADY_FINISHED/);
 
     const installationSession = await start(installation);

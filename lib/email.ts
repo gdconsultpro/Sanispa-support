@@ -62,6 +62,7 @@ type TransactionalEmail = {
   html: string;
   replyTo?: string;
   privateRecipient?: boolean;
+  attachment?: { bytes: Buffer; filename: string };
 };
 export async function sendVideoNotification(input: { email: string; requesterEmail: string; audience: string; details: string; availability: string; status: string; startsAt: string | null; admin: boolean; key: string }) {
   const origin = process.env.NEXT_PUBLIC_APP_URL || "https://support.sani-spa.fr";
@@ -282,6 +283,7 @@ async function sendTransactionalEmail({
   replyTo,
   idempotencyKey,
   privateRecipient,
+  attachment,
 }: TransactionalEmail) {
   const provider = (process.env.EMAIL_PROVIDER || "resend").toLowerCase();
   const apiKey =
@@ -319,6 +321,8 @@ async function sendTransactionalEmail({
         reply_to: replyTo ? parseEmailAddress(replyTo) : undefined,
         subject,
         content: [{ type: "text/html", value: html }],
+        attachments: attachment ? [{ filename: attachment.filename, content: attachment.bytes.toString("base64"),
+          type: "application/pdf", disposition: "attachment" }] : undefined,
       }),
     });
     if (!response.ok) {
@@ -336,6 +340,7 @@ async function sendTransactionalEmail({
     form.append("subject", subject);
     form.append("html", html);
     if (replyTo) form.append("h:Reply-To", replyTo);
+    if (attachment) form.append("attachment", new Blob([new Uint8Array(attachment.bytes)], { type: "application/pdf" }), attachment.filename);
     const response = await fetch(
       `https://api.mailgun.net/v3/${domain}/messages`,
       {
@@ -374,6 +379,7 @@ async function sendTransactionalEmail({
       reply_to: replyTo,
       subject,
       html,
+      attachments: attachment ? [{ filename: attachment.filename, content: attachment.bytes.toString("base64") }] : undefined,
     }),
   });
   const resendResponse = await response.text();
@@ -615,4 +621,17 @@ export async function sendPremiumCareReminder(payload: { email: string; title: s
   const url = `${process.env.NEXT_PUBLIC_APP_URL}/premium/carnet`;
   return sendTransactionalEmail({ to: payload.email, subject: "SANISPA — Votre rappel d’entretien du spa", idempotencyKey: payload.notificationKey,
     html: `<h2>Un entretien à prévoir</h2><p>${escapeHtml(payload.title)}</p><p>Ce rappel suit la date que vous avez choisie. Consultez la notice du spa et les indications de vos produits avant toute opération.</p><p><a href="${escapeHtml(url)}">Ouvrir mon carnet et mettre à jour le rappel</a></p>` });
+}
+
+export async function sendFieldReportPdfEmail({ email, company, pdf, filename, key }: {
+  email: string; company: string; pdf: Buffer; filename: string; key: string;
+}) {
+  return sendTransactionalEmail({
+    to: email,
+    subject: "SANISPA Support — Votre compte rendu d’intervention signé",
+    html: `<p>Bonjour,</p><p>Vous trouverez en pièce jointe le compte rendu signé de l’intervention réalisée par ${escapeHtml(company)}.</p><p>Bonne journée,<br>SANISPA Support</p>`,
+    privateRecipient: true,
+    idempotencyKey: key,
+    attachment: { bytes: pdf, filename },
+  });
 }

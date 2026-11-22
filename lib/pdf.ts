@@ -31,11 +31,16 @@ export function summaryPdfMode(choice?: string | null) {
 export async function buildSummaryPdf(input: string[], options: {
   mode?: "matchmaking" | "company";
   field?: { company: string; photos: { bytes: Uint8Array; caption?: string }[];
-    signature?: CustomerSignature & { signedAt: string } };
+    signature?: CustomerSignature & { signedAt: string }; issuedAt?: string };
 } = {}) {
   const matchmaking = options.mode === "matchmaking";
   const field = options.field;
   const pdf = await PDFDocument.create();
+  if (field?.issuedAt) {
+    const issuedAt = new Date(field.issuedAt);
+    pdf.setCreationDate(issuedAt);
+    pdf.setModificationDate(issuedAt);
+  }
   pdf.setTitle(field ? "Compte rendu d’intervention" : "Résumé de demande d’assistance SANISPA");
   pdf.setAuthor(field?.company ?? (matchmaking ? "Application SANISPA" : sanispaCompany.name));
   pdf.setSubject(field ? "Intervention technique sur spa" : "Déclaration client - pré-diagnostic de spa");

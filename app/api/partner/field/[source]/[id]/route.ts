@@ -7,6 +7,7 @@ import { apiError, HttpError, readBytes, readJson } from "@/lib/http";
 import { interventionError, reportSchema } from "@/lib/interventions";
 import { processNotifications } from "@/lib/notifications";
 import { requirePartnerPlanner } from "@/lib/partner-auth";
+import { deliverFieldReport, fieldReportFilename } from "@/lib/partner-field-delivery";
 import type { FieldReport, FieldVisit } from "@/lib/partner-field";
 import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoKinds, fieldPhotoLabels, fieldReportRows, fieldTemplate, requiredFieldPhotos,
   type FieldReportDetails } from "@/lib/partner-field-forms";
@@ -19,6 +20,7 @@ import { buildSummaryPdf } from "@/lib/pdf";
 type Context = { params: Promise<{ source: string; id: string }> };
 const uuid = z.string().uuid();
 const timestamp = z.string().datetime({ offset: true });
+const emailAddress = z.string().trim().max(254).email();
 const headers = { "Cache-Control": "private, no-store" };
 const signaturePoint = z.tuple([z.number().int().min(0).max(signatureWidth), z.number().int().min(0).max(signatureHeight)]);
 const customerSignature = z.object({
@@ -32,6 +34,7 @@ const fieldCommands = z.discriminatedUnion("action", [
     findings: z.string().trim().max(5000), actions: z.string().trim().max(5000), nextSteps: z.string().trim().max(3000) }),
   z.object({ action: z.literal("validate"), version: timestamp }).strict(),
   z.object({ action: z.literal("followup"), reportId: uuid }).strict(),
+  z.object({ action: z.literal("sendPdf"), reportId: uuid, expectedEmail: emailAddress }).strict(),
   z.object({ action: z.literal("spa"), spaId: uuid.nullable(), version: timestamp }).strict(),
 ]);
 const spaFields = "id,brand,model,serial_number,updated_at";
@@ -43,14 +46,14 @@ async function fieldCase(request: Request, context: Context) {
   const { source, id } = z.object({ source: z.enum(["private", "sanispa"]), id: uuid }).parse(await context.params);
   if (source === "private") {
     const { data: visit, error } = await supabase.from("partner_private_visits")
-      .select("id,client_id,title,description,spa_id,starts_at,ends_at,field_started_at,completed_at,validated_at,updated_at,previous_report,client:partner_private_clients!inner(name,phone,street,postal_code,city,deleted_at)")
+      .select("id,client_id,title,description,spa_id,starts_at,ends_at,field_started_at,completed_at,validated_at,updated_at,previous_report,client:partner_private_clients!inner(name,email,phone,street,postal_code,city,deleted_at)")
       .eq("partner_id", partner.id).eq("id", id).maybeSingle();
     if (error) throw error;
     if (!visit) throw new HttpError(404, "Cette intervention est introuvable.");
     return { source, id, partner, user, supabase, visit, template: fieldTemplate(source, visit.title) } as const;
   }
   const { data: dossier, error } = await supabase.from("diagnostics")
-    .select("id,public_reference,problem_type,preview_description,status,intervened_at,created_at,customers(name,phone,address,spa_brand,spa_model),diagnostic_answers(question_key,answer)")
+    .select("id,user_id,public_reference,problem_type,preview_description,status,intervened_at,created_at,customers(name,email,phone,address,spa_brand,spa_model),diagnostic_answers(question_key,answer)")
     .eq("assigned_partner_id", partner.id).eq("id", id).is("archived_at", null)
     .in("diagnostic_answers.question_key", ["description", "noise_description", "pump_details"]).maybeSingle();
   if (error) throw error;
@@ -88,125 +91,169 @@ async function ownSession(field: Awaited<ReturnType<typeof fieldCase>>, id: stri
   return data;
 }
 
+type FieldCase = Awaited<ReturnType<typeof fieldCase>>;
+
+function reportMayBeEmailed(source: FieldCase["source"], result: FieldVisit, report: FieldReport) {
+  return Boolean(report.customerSigner && (source === "sanispa" || result.workStatus === "validated"));
+}
+
+async function fieldReportRecipient(field: FieldCase) {
+  if (field.source === "private") {
+    const contact = Array.isArray(field.visit.client) ? field.visit.client[0] : field.visit.client;
+    return contact?.deleted_at ? null : emailAddress.safeParse(contact?.email).data ?? null;
+  }
+  if (field.dossier.user_id) {
+    const { data, error } = await field.supabase.auth.admin.getUserById(field.dossier.user_id);
+    if (error && error.status !== 404) throw error;
+    const user = data?.user;
+    if (!user?.email_confirmed_at || (user.banned_until && Date.parse(user.banned_until) > Date.now())) return null;
+    return emailAddress.safeParse(user.email).data ?? null;
+  }
+  const contact = Array.isArray(field.dossier.customers) ? field.dossier.customers[0] : field.dossier.customers;
+  return emailAddress.safeParse(contact?.email).data ?? null;
+}
+
+async function loadFieldVisit(field: FieldCase, includePhotos: boolean): Promise<FieldVisit> {
+  const { supabase, partner, id } = field;
+  const sessionResult = supabase.from("partner_field_sessions").select(sessions).eq("partner_id", partner.id)
+    .eq(field.source === "private" ? "private_visit_id" : "diagnostic_id", id)
+    .order("started_at", { ascending: false }).limit(1).maybeSingle();
+  const now = Date.now();
+  let result: FieldVisit;
+  if (field.source === "private") {
+    const visit = field.visit;
+    const [last, equipment] = await Promise.all([sessionResult, supabase.from("partner_client_spas").select(spaFields)
+      .eq("partner_id", partner.id).eq("client_id", visit.client_id).order("brand").order("model")]);
+    if (last.error || equipment.error) throw last.error || equipment.error;
+    const session = last.data;
+    const client = Array.isArray(visit.client) ? visit.client[0] : visit.client;
+    const workStatus = privateWorkStatus(visit, now);
+    const reports: FieldReport[] = session?.report_id ? [{
+      id: session.report_id, performed_at: session.performed_at, submitted_at: session.submitted_at,
+      findings: session.findings, actions: session.actions, next_steps: session.next_steps, details: session.report_details,
+      customerSigner: session.customer_signer,
+    }] : [];
+    result = {
+      title: visit.title, description: visit.description, workStatus, version: visit.updated_at,
+      customer: { name: client.name, phone: client.phone, address: partnerClientAddress(client), clientId: client.deleted_at ? null : visit.client_id },
+      appointment: visit.starts_at && visit.ends_at ? { starts_at: visit.starts_at, ends_at: visit.ends_at } : null,
+      session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
+      photos: session && includePhotos ? await loadFieldPhotos(supabase, partner.id, session.id, true) : [], reports, previousReport: visit.previous_report,
+      spaId: visit.spa_id, spas: equipment.data,
+      canStart: !session && !visit.completed_at && Boolean(visit.starts_at && Date.parse(visit.starts_at) <= now),
+      canValidate: workStatus === "review" && (partner.role === "owner" || Boolean(session?.submitted_at && session.started_by === field.user.id)),
+      canEditSpa: !visit.completed_at,
+    };
+  } else {
+    const { dossier } = field;
+    const [last, appointmentResult, reportResult, contact, reportDetails] = await Promise.all([
+      sessionResult,
+      supabase.from("partner_appointments").select("diagnostic_id,starts_at,ends_at,technician_id,updated_at")
+        .eq("diagnostic_id", id).eq("partner_id", partner.id).maybeSingle(),
+      supabase.from("intervention_reports").select("id,performed_at,submitted_at,findings,actions,next_steps,client_validated_at,client_outcome")
+        .eq("diagnostic_id", id).eq("partner_id", partner.id).order("submitted_at", { ascending: false }),
+      supabase.from("partner_private_clients").select("id").eq("partner_id", partner.id)
+        .eq("source_diagnostic_id", id).is("deleted_at", null).maybeSingle(),
+      supabase.from("partner_field_sessions").select("report_id,report_details,customer_signer:customer_signature->>name").eq("partner_id", partner.id)
+        .eq("diagnostic_id", id).not("report_details", "is", null),
+    ]);
+    if (last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error)
+      throw last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error;
+    const appointment = appointmentResult.data ?? undefined;
+    const details = new Map(reportDetails.data.map(item => [item.report_id, item]));
+    const reports = reportResult.data.map(report => ({
+      ...report, details: details.get(report.id)?.report_details, customerSigner: details.get(report.id)?.customer_signer,
+    }));
+    const session = last.data && (last.data.submitted_at === null || !appointment || last.data.appointment_start === appointment.starts_at) ? last.data : null;
+    const clientId = contact.data?.id;
+    const [equipment, link] = clientId ? await Promise.all([
+      supabase.from("partner_client_spas").select(spaFields).eq("partner_id", partner.id).eq("client_id", clientId).order("brand").order("model"),
+      supabase.from("partner_client_spa_dossiers").select("spa_id").eq("partner_id", partner.id).eq("client_id", clientId).eq("diagnostic_id", id).maybeSingle(),
+    ]) : [null, null];
+    if (equipment?.error || link?.error) throw equipment?.error || link?.error;
+    const customer = Array.isArray(dossier.customers) ? dossier.customers[0] : dossier.customers;
+    const reportState = { ...dossier, customer, intervention_reports: reports, partner_field_sessions: session ? [session] : [] };
+    const { workStatus } = sanispaWorkStatus(reportState, appointment ? { ...appointment, diagnostic: reportState } : undefined, now);
+    result = {
+      title: problemLabel(dossier.problem_type), reference: dossier.public_reference,
+      description: dossier.preview_description?.trim() || dossier.diagnostic_answers.map(answer => answer.answer).filter(Boolean).join("\n"),
+      customer: { name: customer?.name || "Client", phone: customer?.phone, address: customer?.address, clientId },
+      appointment: appointment ?? null, session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
+      photos: session && includePhotos ? await loadFieldPhotos(supabase, partner.id, session.id, true) : [],
+      workStatus, reports, spaId: link?.data?.spa_id ?? null, spas: equipment?.data ?? [],
+      declaredSpa: [customer?.spa_brand, customer?.spa_model].filter(Boolean).join(" "),
+      canStart: !session && Boolean(appointment && Date.parse(appointment.starts_at) <= now) && (workStatus === "scheduled" || workStatus === "due"),
+      canValidate: false, canEditSpa: Boolean(clientId) && (["pending", "scheduled", "due", "in_progress"].includes(workStatus)),
+    };
+  }
+  return result;
+}
+
+async function buildFieldVisitPdf(field: FieldCase, result: FieldVisit, report: FieldReport) {
+  const { supabase, partner, id } = field;
+  const session = await supabase.from("partner_field_sessions").select("id,customer_signature,submitted_at")
+    .eq("partner_id", partner.id).eq("report_id", report.id)
+    .eq(field.source === "private" ? "private_visit_id" : "diagnostic_id", id).maybeSingle();
+  if (session.error) throw session.error;
+  const photos: { bytes: Uint8Array; caption?: string }[] = [];
+  if (session.data) {
+    const sessionId = session.data.id;
+    const saved = await supabase.from("partner_field_photos").select("id,kind").eq("session_id", sessionId)
+      .neq("kind", "receipt").order("created_at").order("id");
+    if (saved.error) throw saved.error;
+    photos.push(...await Promise.all(saved.data.map(async photo => {
+      const asset = await supabase.storage.from(fieldPhotoBucket).download(fieldPhotoPath(partner.id, sessionId, photo.id));
+      if (asset.error) throw new HttpError(503, "Une photo est temporairement indisponible. Réessayez de télécharger le PDF.");
+      return { bytes: new Uint8Array(await asset.data.arrayBuffer()), caption: fieldPhotoLabels[z.enum(fieldPhotoKinds).parse(photo.kind)] };
+    })));
+  }
+  const spa = result.spas.find(item => item.id === result.spaId);
+  return buildSummaryPdf([
+    "Intervention", ...(result.reference ? ["Numéro de dossier : " + result.reference] : []),
+    "Client : " + result.customer.name,
+    ...(result.customer.address ? ["Adresse : " + result.customer.address] : []),
+    "Date : " + pdfDate.format(new Date(report.performed_at)),
+    "Motif : " + result.title,
+    ...(report.details ? [
+      fieldForms[report.details.template].title,
+      ...fieldReportRows(report.details).map(row => row.label + " : " + row.value),
+    ] : [
+      "Spa : " + ((spa ? partnerSpaOption(spa) : result.declaredSpa) || "Non renseigné"),
+      "Constat sur place", report.findings,
+      "Travaux et contrôles effectués", report.actions,
+    ]),
+    "Suite à donner", report.next_steps,
+  ], { field: {
+    company: partner.company_name, photos, issuedAt: report.submitted_at,
+    signature: session.data?.customer_signature
+      ? { ...customerSignature.parse(session.data.customer_signature), signedAt: pdfDate.format(new Date(session.data.submitted_at)) } : undefined,
+  } });
+}
+
 export async function GET(request: Request, context: Context) {
   try {
     const field = await fieldCase(request, context);
-    const { supabase, partner, id } = field;
     const reportParam = new URL(request.url).searchParams.get("rapport");
     const pdfReport = reportParam === null ? null : uuid.parse(reportParam);
-    const sessionResult = supabase.from("partner_field_sessions").select(sessions).eq("partner_id", partner.id)
-      .eq(field.source === "private" ? "private_visit_id" : "diagnostic_id", id)
-      .order("started_at", { ascending: false }).limit(1).maybeSingle();
-    const now = Date.now();
-    let result: FieldVisit;
-    if (field.source === "private") {
-      const visit = field.visit;
-      const [last, equipment] = await Promise.all([sessionResult, supabase.from("partner_client_spas").select(spaFields)
-        .eq("partner_id", partner.id).eq("client_id", visit.client_id).order("brand").order("model")]);
-      if (last.error || equipment.error) throw last.error || equipment.error;
-      const session = last.data;
-      const client = Array.isArray(visit.client) ? visit.client[0] : visit.client;
-      const workStatus = privateWorkStatus(visit, now);
-      const reports: FieldReport[] = session?.report_id ? [{
-        id: session.report_id, performed_at: session.performed_at, submitted_at: session.submitted_at,
-        findings: session.findings, actions: session.actions, next_steps: session.next_steps, details: session.report_details,
-        customerSigner: session.customer_signer,
-      }] : [];
-      result = {
-        title: visit.title, description: visit.description, workStatus, version: visit.updated_at,
-        customer: { name: client.name, phone: client.phone, address: partnerClientAddress(client), clientId: client.deleted_at ? null : visit.client_id },
-        appointment: visit.starts_at && visit.ends_at ? { starts_at: visit.starts_at, ends_at: visit.ends_at } : null,
-        session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
-        photos: session && !pdfReport ? await loadFieldPhotos(supabase, partner.id, session.id, true) : [], reports, previousReport: visit.previous_report,
-        spaId: visit.spa_id, spas: equipment.data,
-        canStart: !session && !visit.completed_at && Boolean(visit.starts_at && Date.parse(visit.starts_at) <= now),
-        canValidate: workStatus === "review" && (partner.role === "owner" || Boolean(session?.submitted_at && session.started_by === field.user.id)),
-        canEditSpa: !visit.completed_at,
-      };
-    } else {
-      const { dossier } = field;
-      const [last, appointmentResult, reportResult, contact, reportDetails] = await Promise.all([
-        sessionResult,
-        supabase.from("partner_appointments").select("diagnostic_id,starts_at,ends_at,technician_id,updated_at")
-          .eq("diagnostic_id", id).eq("partner_id", partner.id).maybeSingle(),
-        supabase.from("intervention_reports").select("id,performed_at,submitted_at,findings,actions,next_steps,client_validated_at,client_outcome")
-          .eq("diagnostic_id", id).eq("partner_id", partner.id).order("submitted_at", { ascending: false }),
-        supabase.from("partner_private_clients").select("id").eq("partner_id", partner.id)
-          .eq("source_diagnostic_id", id).is("deleted_at", null).maybeSingle(),
-        supabase.from("partner_field_sessions").select("report_id,report_details,customer_signer:customer_signature->>name").eq("partner_id", partner.id)
-          .eq("diagnostic_id", id).not("report_details", "is", null),
-      ]);
-      if (last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error)
-        throw last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error;
-      const appointment = appointmentResult.data ?? undefined;
-      const details = new Map(reportDetails.data.map(item => [item.report_id, item]));
-      const reports = reportResult.data.map(report => ({
-        ...report, details: details.get(report.id)?.report_details, customerSigner: details.get(report.id)?.customer_signer,
-      }));
-      const session = last.data && (last.data.submitted_at === null || !appointment || last.data.appointment_start === appointment.starts_at) ? last.data : null;
-      const clientId = contact.data?.id;
-      const [equipment, link] = clientId ? await Promise.all([
-        supabase.from("partner_client_spas").select(spaFields).eq("partner_id", partner.id).eq("client_id", clientId).order("brand").order("model"),
-        supabase.from("partner_client_spa_dossiers").select("spa_id").eq("partner_id", partner.id).eq("client_id", clientId).eq("diagnostic_id", id).maybeSingle(),
-      ]) : [null, null];
-      if (equipment?.error || link?.error) throw equipment?.error || link?.error;
-      const customer = Array.isArray(dossier.customers) ? dossier.customers[0] : dossier.customers;
-      const reportState = { ...dossier, customer, intervention_reports: reports, partner_field_sessions: session ? [session] : [] };
-      const { workStatus } = sanispaWorkStatus(reportState, appointment ? { ...appointment, diagnostic: reportState } : undefined, now);
-      result = {
-        title: problemLabel(dossier.problem_type), reference: dossier.public_reference,
-        description: dossier.preview_description?.trim() || dossier.diagnostic_answers.map(answer => answer.answer).filter(Boolean).join("\n"),
-        customer: { name: customer?.name || "Client", phone: customer?.phone, address: customer?.address, clientId },
-        appointment: appointment ?? null, session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
-        photos: session && !pdfReport ? await loadFieldPhotos(supabase, partner.id, session.id, true) : [],
-        workStatus, reports, spaId: link?.data?.spa_id ?? null, spas: equipment?.data ?? [],
-        declaredSpa: [customer?.spa_brand, customer?.spa_model].filter(Boolean).join(" "),
-        canStart: !session && Boolean(appointment && Date.parse(appointment.starts_at) <= now) && (workStatus === "scheduled" || workStatus === "due"),
-        canValidate: false, canEditSpa: Boolean(clientId) && (["pending", "scheduled", "due", "in_progress"].includes(workStatus)),
-      };
-    }
+    const result = await loadFieldVisit(field, !pdfReport);
     if (pdfReport) {
       const report = result.reports.find(item => item.id === pdfReport);
       if (!report) throw fieldError({ message: "FIELD_REPORT_NOT_FOUND" });
-      const session = await supabase.from("partner_field_sessions").select("id,customer_signature,submitted_at")
-        .eq("partner_id", partner.id).eq("report_id", report.id)
-        .eq(field.source === "private" ? "private_visit_id" : "diagnostic_id", id).maybeSingle();
-      if (session.error) throw session.error;
-      const photos: { bytes: Uint8Array; caption?: string }[] = [];
-      if (session.data) {
-        const sessionId = session.data.id;
-        const saved = await supabase.from("partner_field_photos").select("id,kind").eq("session_id", sessionId)
-          .neq("kind", "receipt").order("created_at").order("id");
-        if (saved.error) throw saved.error;
-        photos.push(...await Promise.all(saved.data.map(async photo => {
-          const asset = await supabase.storage.from(fieldPhotoBucket).download(fieldPhotoPath(partner.id, sessionId, photo.id));
-          if (asset.error) throw new HttpError(503, "Une photo est temporairement indisponible. Réessayez de télécharger le PDF.");
-          return { bytes: new Uint8Array(await asset.data.arrayBuffer()), caption: fieldPhotoLabels[z.enum(fieldPhotoKinds).parse(photo.kind)] };
-        })));
-      }
-      const spa = result.spas.find(item => item.id === result.spaId);
-      const bytes = await buildSummaryPdf([
-        "Intervention", ...(result.reference ? ["Numéro de dossier : " + result.reference] : []),
-        "Client : " + result.customer.name,
-        ...(result.customer.address ? ["Adresse : " + result.customer.address] : []),
-        "Date : " + pdfDate.format(new Date(report.performed_at)),
-        "Motif : " + result.title,
-        ...(report.details ? [
-          fieldForms[report.details.template].title,
-          ...fieldReportRows(report.details).map(row => row.label + " : " + row.value),
-        ] : [
-          "Spa : " + ((spa ? partnerSpaOption(spa) : result.declaredSpa) || "Non renseigné"),
-          "Constat sur place", report.findings,
-          "Travaux et contrôles effectués", report.actions,
-        ]),
-        "Suite à donner", report.next_steps,
-      ], { field: {
-        company: partner.company_name, photos,
-        signature: session.data?.customer_signature
-          ? { ...customerSignature.parse(session.data.customer_signature), signedAt: pdfDate.format(new Date(session.data.submitted_at)) } : undefined,
-      } });
+      const bytes = await buildFieldVisitPdf(field, result, report);
       return new NextResponse(bytes, { headers: { ...headers, "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="compte-rendu-${report.id.slice(0, 8)}.pdf"` } });
+        "Content-Disposition": `attachment; filename="${fieldReportFilename(report.id)}"` } });
+    }
+    const eligible = result.reports.filter(report => reportMayBeEmailed(field.source, result, report));
+    if (eligible.length) {
+      const recipient = await fieldReportRecipient(field);
+      result.reportRecipient = recipient;
+      if (recipient) {
+        const sent = await field.supabase.from("partner_field_pdf_deliveries").select("report_id,sent_at")
+          .in("report_id", eligible.map(report => report.id)).eq("recipient", recipient).not("sent_at", "is", null);
+        if (sent.error) throw sent.error;
+        const byReport = new Map(sent.data.map(record => [record.report_id, record.sent_at]));
+        for (const report of eligible) report.pdfSentAt = byReport.get(report.id) ?? null;
+      }
     }
     return NextResponse.json({ ...result, reportTemplate: field.template, userId: field.user.id }, { headers });
   } catch (error) { return apiError(error); }
@@ -251,6 +298,16 @@ export async function POST(request: Request, context: Context) {
         try { await processNotifications(`report:${command.id}`); }
         catch { console.error("Notification du compte rendu à relancer."); }
       }
+    } else if (command.action === "sendPdf") {
+      const result = await loadFieldVisit(field, false);
+      const report = result.reports.find(item => item.id === command.reportId);
+      if (!report) throw fieldError({ message: "FIELD_REPORT_NOT_FOUND" });
+      if (!reportMayBeEmailed(source, result, report)) throw new HttpError(409, "Le compte rendu doit être signé et validé avant l’envoi.");
+      const email = await fieldReportRecipient(field);
+      if (!email || email !== command.expectedEmail) throw new HttpError(409, "Vérifiez l’adresse e-mail du client puis actualisez la fiche.");
+      const pdf = await buildFieldVisitPdf(field, result, report);
+      const delivery = await deliverFieldReport(supabase, { reportId: report.id, email, company: partner.company_name, pdf });
+      return NextResponse.json(delivery, { headers });
     } else if (command.action === "followup") {
       const { data: visitId, error } = await supabase.rpc("create_partner_field_followup", {
         ...actor, p_source: source, p_id: id, p_report: command.reportId,
