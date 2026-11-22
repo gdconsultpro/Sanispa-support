@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { partnerAccountPath, partnerLoginPath, withPartnerTimeout } from "@/lib/partner-navigation";
 import { useClientSession } from "./SessionPrivacy";
 
-type Access = { status: "guest" | "checking" | "other" } | { status: "partner"; passwordChangeRequired: boolean };
+type Access = { status: "guest" | "checking" | "other" } | { status: "partner"; passwordChangeRequired: boolean; role?: string };
 const ProfessionalAccount = createContext<Access>({ status: "guest" });
 export const useProfessionalAccount = () => useContext(ProfessionalAccount);
 
@@ -26,7 +26,7 @@ export function ProfessionalAccountProvider({ children }: { children: ReactNode 
         }), 10000);
         if (response.ok) {
           const { partner, passwordChangeRequired } = await response.json();
-          if (partner?.id && typeof passwordChangeRequired === "boolean") access = { status: "partner", passwordChangeRequired };
+          if (partner?.id && typeof passwordChangeRequired === "boolean") access = { status: "partner", passwordChangeRequired, role: partner.role };
         }
       } catch { /* L’espace partenaire peut toujours vérifier la session lors de son ouverture. */ }
       if (!controller.signal.aborted) setResolved({ token: accessToken, access });

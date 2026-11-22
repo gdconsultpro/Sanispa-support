@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { partnerDayPath, partnerDayRange } from "../lib/partner-day";
-import { partnerReturnPath } from "../lib/partner-navigation";
+import { partnerLoginDestination, partnerReturnPath } from "../lib/partner-navigation";
 import { fullDatabase } from "./helpers/full-database";
 
 test("the technician's day follows Paris midnight across both daylight saving transitions", () => {
@@ -13,6 +13,9 @@ test("the technician's day follows Paris midnight across both daylight saving tr
     day: "2027-10-31", from: "2027-10-30T22:00:00.000Z", to: "2027-10-31T23:00:00.000Z",
   });
   assert.equal(partnerReturnPath(partnerDayPath), partnerDayPath);
+  assert.equal(partnerLoginDestination(null, "technician"), partnerDayPath);
+  assert.equal(partnerLoginDestination(null, "owner"), "/partenaire/compte");
+  assert.equal(partnerLoginDestination("/partenaire/compte", "technician"), "/partenaire/compte");
 });
 
 test("only the partner owner can link a registered technician to a line of the same company", async () => {
@@ -31,7 +34,7 @@ test("only the partner owner can link a registered technician to a line of the s
     await db.query(adminLink, [partner, second, admin, "Bob", "technician"]);
     await db.query(adminLink, [other, foreign, admin, "Autre", "technician"]);
     await db.query(adminLink, [partner, owner, admin, "Responsable", "technician"]);
-    assert.equal((await db.query("select role from partner_users where user_id=$1", [owner])).rows[0].role, "owner");
+    assert.equal((await db.query<{ role: string }>("select role from partner_users where user_id=$1", [owner])).rows[0].role, "owner");
     await assert.rejects(db.query(adminLink, [other, second, admin, "Bob", "technician"]), /ACCOUNT_LINKED_ELSEWHERE/);
     await assert.rejects(db.query(adminLink, [partner, admin, owner, "Test", "technician"]), /ADMIN_REQUIRED/);
     const link = (actor: string, user: string, line: string | null, expected: string | null = null) =>

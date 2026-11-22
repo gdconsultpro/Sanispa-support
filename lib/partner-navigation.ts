@@ -3,6 +3,10 @@ import { readWorkspaceSelection } from "./partner-workspace";
 import { partnerDayPath } from "./partner-day";
 export const partnerAccountPath = "/partenaire/compte";
 
+export function partnerLoginDestination(next: string | null, role?: string) {
+  return partnerReturnPath(next || (role === "technician" ? partnerDayPath : partnerAccountPath));
+}
+
 /** Only known partner screens may be used as post-authentication destinations. */
 export function partnerReturnPath(value: string | null | undefined) {
   if (!value) return "/partenaire";

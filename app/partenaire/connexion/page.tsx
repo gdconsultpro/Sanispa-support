@@ -9,7 +9,7 @@ import { StepHeader } from "@/components/StepHeader";
 import { useProfessionalAccount } from "@/components/ProfessionalAccountLink";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { loadPartnerSession, partnerAuthError } from "@/lib/partner-browser";
-import { partnerAccountPath, partnerPasswordPath, partnerReturnPath, withPartnerTimeout } from "@/lib/partner-navigation";
+import { partnerLoginDestination, partnerPasswordPath, withPartnerTimeout } from "@/lib/partner-navigation";
 export default function PartnerLoginPage() {
   const router = useRouter();
   const access = useProfessionalAccount();
@@ -18,16 +18,19 @@ export default function PartnerLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const pending = useRef(false);
+  const navigating = useRef(false);
   const [resuming, setResuming] = useState(false);
   useEffect(() => {
-    if (access.status !== "partner" || pending.current) return;
-    const next = partnerReturnPath(new URLSearchParams(window.location.search).get("next") || partnerAccountPath);
+    if (access.status !== "partner" || pending.current || navigating.current) return;
+    const next = partnerLoginDestination(new URLSearchParams(window.location.search).get("next"), access.role);
+    navigating.current = true;
     setResuming(true);
     router.replace(access.passwordChangeRequired ? partnerPasswordPath(next) : next);
   }, [access, router]);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending.current) return;
+    if (pending.current || navigating.current) return;
+    const requested = new URLSearchParams(window.location.search).get("next");
     pending.current = true; setLoading(true); setError("");
     try {
       const { data, error: signInError } = await withPartnerTimeout(getSupabaseBrowser().auth.signInWithPassword({ email: email.trim(), password }));
@@ -35,7 +38,9 @@ export default function PartnerLoginPage() {
       if (!data.session?.access_token) throw new Error("La connexion n’a pas ouvert de session. Réessayez.");
       const session = await loadPartnerSession(data.session.access_token);
       if (!session) return;
-      const next = partnerReturnPath(new URLSearchParams(window.location.search).get("next") || partnerAccountPath);
+      const next = partnerLoginDestination(requested, session.partner.role);
+      navigating.current = true;
+      setResuming(true);
       router.replace(session.passwordChangeRequired ? partnerPasswordPath(next) : next);
     } catch (cause) { setError(partnerAuthError(cause)); }
     finally { pending.current = false; setLoading(false); }

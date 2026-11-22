@@ -29,7 +29,7 @@ export async function loadPartnerSession(token: string) {
   }
   if (!body?.partner?.id || typeof body.passwordChangeRequired !== "boolean")
     throw new Error("La réponse du serveur ne confirme pas votre accès partenaire. Réessayez.");
-  return body as { partner: { id: string; company_name: string; verification_status?: "existing" | "pending" | "verified" }; passwordChangeRequired: boolean };
+  return body as { partner: { id: string; company_name: string; role?: string; verification_status?: "existing" | "pending" | "verified" }; passwordChangeRequired: boolean };
 }
 export function partnerAuthError(error: unknown) {
   const code = (error as { code?: string })?.code;
