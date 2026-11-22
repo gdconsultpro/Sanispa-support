@@ -358,9 +358,11 @@ export default function PartnerPlanningPage() {
       const result = await plannerRequest(endpoint, { payload: { action, id } });
       if (!result) throw new Error("Reconnectez-vous pour gérer cette fiche.");
       if (action === "deleteClient") {
-        setSearch("");
         setOffset(0);
-        showClient(null);
+        if (clientId === id) showClient(null);
+        if (mapped?.id === id) setMapped(null);
+        if (savedClient?.id === id) setSavedClient(null);
+        if ((editor?.type === "client" || editor?.type === "visit") && editor.client?.id === id) setEditor(null);
         setNotice("La fiche client a été placée dans la corbeille.");
       } else {
         setNotice("La fiche client a été restaurée dans le carnet.");
@@ -580,6 +582,7 @@ export default function PartnerPlanningPage() {
             <button type="button" className={actionClass} disabled={saving} onClick={() => edit({ type: "client", id: client.id, client })}>Modifier la fiche</button>
             {partnerClientAddress(client) ? <button type="button" className={actionClass} disabled={saving} onClick={() => { setEditor(null); setMapped(client); }}>Voir sur la carte</button> : null}
             {client.source_diagnostic_id ? <Link className={actionClass} href={"/partenaire/interventions/" + client.source_diagnostic_id}>Ouvrir le dossier SANISPA</Link> : null}
+            <PartnerVisitDelete client disabled={saving} onDelete={() => changeClientStatus(client.id, "deleteClient")} />
           </div>}
         </li>)}
       </ul> : <p>{search ? "Aucun client trouvé." : showDeleted ? "La corbeille est vide." : "Ajoutez votre premier client pour planifier une intervention."}</p>}
