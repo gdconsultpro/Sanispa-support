@@ -18,6 +18,7 @@ type MapPosition = { latitude?: number | null; longitude?: number | null; approx
 export type PrivatePartnerVisit = ScheduledVisit & {
   id: string;
   spa_id?: string | null;
+  maintenance_due_on?: string | null;
   title: string;
   description: string;
   completed_at?: string | null;
@@ -91,6 +92,7 @@ export type PlannerAppointment = ScheduledVisit & {
 };
 export type PlannerQueueEntry = {
   durationMinutes?: number;
+  maintenanceDueOn?: string | null;
   id: string;
   source: PlannerAppointment["source"];
   expectedAt: string | null;

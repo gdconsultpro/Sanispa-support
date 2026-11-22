@@ -11,6 +11,7 @@ import {
   type PlannerAppointment, type PlannerQueueEntry, type PlannerSlot, type PlannerTechnician,
 } from "@/lib/partner-planner";
 import { workItemPath, workStatusLabels } from "@/lib/partner-workspace";
+import { maintenanceDate } from "@/lib/partner-maintenance";
 
 const hour = 3600000;
 const inputClass = "focus-ring min-h-12 w-full min-w-0 rounded-lg border border-sanispa-line bg-white px-3 py-2 text-base";
@@ -175,6 +176,9 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
           </ButtonLink>
         </div>
       </> : booking ? <p className="mt-1 break-words text-sm">{booking.item.customer} · {booking.item.title}</p> : null}
+      {booking?.item.maintenanceDueOn ? <p className="mt-1 break-words text-sm">
+        {booking.item.description} · Échéance du {maintenanceDate(booking.item.maintenanceDueOn)}
+      </p> : null}
       {!selected || selected.movable ? <form ref={bookingForm} onSubmit={submit} key={booking ? booking.item.id + booking.slot.startsAt + booking.slot.technicianId : selected?.id ?? newTechnician}>
         <fieldset disabled={busy} className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {selected || booking ? <>
@@ -238,6 +242,10 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
             className="focus-ring w-full break-words rounded-lg border border-sanispa-line bg-white p-2.5 text-left text-sm aria-pressed:border-sanispa-blue aria-pressed:bg-blue-50 lg:cursor-grab">
             <span className="block font-bold">{item.customer}</span>
             <span className="block">{item.title} · {item.durationMinutes ?? defaultDuration} min</span>
+            {item.maintenanceDueOn ? <>
+              <span className="block text-xs font-semibold text-sanispa-blue">Échéance du {maintenanceDate(item.maintenanceDueOn)}</span>
+              <span className="block text-xs">{item.description}</span>
+            </> : null}
             <span className="block text-xs text-sanispa-steel">{[item.reference ?? (item.source === "sanispa" ? "SANISPA" : ""), item.address].filter(Boolean).join(" · ")}</span>
           </button>
           <Link draggable={false} className="focus-ring inline-flex min-h-11 items-center px-2.5 text-sm font-bold text-sanispa-blue underline"

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/Button";
+import { PartnerSpaMaintenance } from "@/components/PartnerSpaMaintenance";
 import { compressPhoto } from "@/lib/compress-photo";
 import { partnerAuthError } from "@/lib/partner-browser";
 import { partnerSpaName, partnerSpaOption, type PartnerClientSpa } from "@/lib/partner-planner";
@@ -25,6 +26,7 @@ export function PartnerClientSpas({ clientId, spas, busy, onChange, onVisit }: {
 }) {
   const [editor, setEditor] = useState<{ id: string; current?: PartnerClientSpa } | null>(null);
   const [gallery, setGallery] = useState<string | null>(null);
+  const [maintenance, setMaintenance] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -86,8 +88,11 @@ export function PartnerClientSpas({ clientId, spas, busy, onChange, onVisit }: {
             onClick={() => setGallery(gallery === spa.id ? null : spa.id)}>{gallery === spa.id ? "Masquer les photos" : "Voir ou ajouter des photos"}</button>
           <button type="button" className={action} disabled={busy || saving || editor !== null} onClick={() => edit(spa)}>Modifier le spa</button>
           <button type="button" className={action} disabled={busy || saving || editor !== null} onClick={() => onVisit(spa)}>Intervention sur ce spa</button>
+          <button type="button" className={action} aria-expanded={maintenance === spa.id} disabled={busy || saving}
+            onClick={() => setMaintenance(maintenance === spa.id ? null : spa.id)}>Entretien récurrent</button>
         </div>
         {gallery === spa.id ? <SpaPhotos clientId={clientId} spa={spa} /> : null}
+        {maintenance === spa.id ? <PartnerSpaMaintenance endpoint={partnerEquipmentEndpoint} clientId={clientId} spaId={spa.id} /> : null}
       </li>)}
     </ul> : !editor ? <p className="mt-2 text-sm">Aucun spa enregistré pour ce client.</p> : null}
   </section>;

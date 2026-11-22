@@ -552,6 +552,7 @@ export default function PartnerPlanningPage() {
       id: visit.id, source: "private" as const, expectedAt: visit.updated_at, technicianId: visit.technician_id,
       title: visit.title, customer: visit.client.name, address: partnerClientAddress(visit.client), description: visit.description,
       durationMinutes: schedulingDuration(visit.title, durations),
+      maintenanceDueOn: visit.maintenance_due_on,
     })),
     ...(agenda?.pendingDossiers ?? []).map(dossier => ({
       id: dossier.id, source: "sanispa" as const, expectedAt: null, technicianId: null,

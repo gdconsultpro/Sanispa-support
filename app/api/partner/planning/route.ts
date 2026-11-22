@@ -13,7 +13,7 @@ import { partnerClientAddress, partnerClientDossierTiming, partnerVisitAddress,
   type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
 const privateClientColumns = "id,name,phone,email,street,postal_code,city,latitude,longitude,source_diagnostic_id";
-const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at,spa_id,completed_at,validated_at,field_started_at";
+const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at,spa_id,completed_at,validated_at,field_started_at,maintenance_due_on";
 const dossierFields = "problem_type,status,public_reference,preview_description,intervened_at,created_at,customer:customers(name,address)";
 const reportStateFields = "intervention_reports(performed_at,submitted_at,client_validated_at,client_outcome),partner_field_sessions(appointment_start,submitted_at)";
 const spaFields = "id,brand,model,serial_number,updated_at";
@@ -362,6 +362,10 @@ export async function GET(request: Request) {
     if (range) {
       const duration = Date.parse(range.to) - Date.parse(range.from);
       if (!(duration > 0 && duration <= 32 * 24 * 3600000)) throw new HttpError(400, "Choisissez une période valide.");
+    }
+    if (withPending && !upcoming) {
+      const queued = await supabase.rpc("queue_partner_spa_maintenance", { p_partner: partner.id });
+      if (queued.error) console.error("Les échéances d’entretien seront reprises à la prochaine actualisation.");
     }
     const now = new Date().toISOString();
     const privateQuery = () => supabase.from("partner_private_visits").select(privateVisitColumns)

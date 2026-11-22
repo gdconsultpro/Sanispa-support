@@ -5,6 +5,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 export async function GET(request: Request) { if (!process.env.CRON_SECRET || request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`)
     return NextResponse.json({ error: "Accès refusé" }, { status: 401 }); try {
     const supabase = getSupabaseAdmin();
+    const maintenance = await supabase.rpc("queue_partner_spa_maintenance");
+    if (maintenance.error) console.error("Impossible de préparer les entretiens récurrents du jour.");
     const queued = await supabase.rpc("queue_client_review_reminders");
     if (queued.error) throw queued.error;
     const care = await supabase.rpc("queue_premium_care_reminders");
