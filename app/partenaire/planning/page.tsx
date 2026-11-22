@@ -695,7 +695,7 @@ export default function PartnerPlanningPage() {
       {view === "agenda" && period !== "month" && agenda?.pendingVisits ? <PartnerScheduleGrid key={[day, period, workStatus, technician].join(":")} day={day} period={period} appointments={appointments}
         occupied={allAppointments} technicianFilter={technician} showQueue={workStatus === "all" || workStatus === "pending"} queue={queue}
         initialAppointment={appointmentToOpen} team={team} busy={saving} error={gridError} onMove={moveFromGrid}
-        onSchedule={scheduleFromGrid} onUnplan={unplanAppointment}
+        onSchedule={scheduleFromGrid} onUnplan={unplanAppointment} onWeekChange={day => updateSelection({ day })}
         onCreate={slot => edit({ type: "pickClient", id: crypto.randomUUID(), slot })}
         onAdd={(id, name) => saveFromGrid({ action: "addTechnician", id, name }, "Technicien ajouté au planning.")} /> : null}
       {view === "map" ? <>

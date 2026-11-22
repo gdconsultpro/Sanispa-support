@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { Button } from "@/components/Button";
@@ -27,10 +28,11 @@ export function PlannerTechnicianSelect({ team, selected }: { team: PlannerTechn
 const searchable = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 const defaultDuration = 60;
 const weekDayLabel = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+const weekArrowClass = "focus-ring grid h-11 w-11 place-items-center rounded-lg border border-sanispa-line bg-white text-sanispa-blue hover:border-sanispa-blue disabled:opacity-50";
 const dragType = "application/x-sanispa-intervention";
 type ActiveDrag = { appointment: PlannerAppointment; offset: number } | { item: PlannerQueueEntry };
 
-export function PartnerScheduleGrid({ day, period, appointments, occupied, technicianFilter, showQueue, queue, team, busy, error, initialAppointment, onAdd, onMove, onCreate, onSchedule, onUnplan }: {
+export function PartnerScheduleGrid({ day, period, appointments, occupied, technicianFilter, showQueue, queue, team, busy, error, initialAppointment, onAdd, onMove, onCreate, onSchedule, onUnplan, onWeekChange }: {
   day: string;
   period: "day" | "week";
   appointments: PlannerAppointment[];
@@ -47,6 +49,7 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
   onCreate: (slot: PlannerSlot) => void;
   onSchedule: (item: PlannerQueueEntry, start: Date, technician: string | null, duration: number) => Promise<boolean>;
   onUnplan: (appointment: PlannerAppointment) => Promise<void>;
+  onWeekChange: (day: string) => void;
 }) {
   const [selected, setSelected] = useState(initialAppointment ?? null);
   const [booking, setBooking] = useState<{ item: PlannerQueueEntry; slot: PlannerSlot } | null>(null);
@@ -232,11 +235,21 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
       {!visibleQueue.length ? <p role="status" className="mt-2 text-sm">{queue.length ? "Aucun résultat." : "Aucune intervention à planifier."}</p> : null}
     </section> : null}
     <div className="min-w-0">
-    {days.length ? <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Accès aux jours de la grille">
-      {days.map(date => <button key={+date} type="button" aria-pressed={plannerDate(date) === focusedDay} onClick={() => focusDate(date)}
-        className="focus-ring min-h-10 rounded-lg border border-sanispa-line px-2.5 text-sm font-semibold capitalize aria-pressed:bg-sanispa-blue aria-pressed:text-white">
-        {weekDayLabel.format(date)}
-      </button>)}
+    {days.length ? <div className="mb-2 grid w-fit max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2" role="group" aria-label="Navigation hebdomadaire de la grille">
+      <button type="button" aria-label="Semaine précédente" title="Semaine précédente" disabled={busy} className={weekArrowClass}
+        onClick={() => onWeekChange(plannerDate(plannerDay(focusedDay, -7)))}>
+        <ChevronLeft size={20} aria-hidden="true" />
+      </button>
+      <div className="flex min-w-0 flex-wrap gap-1.5" role="group" aria-label="Accès aux jours de la grille">
+        {days.map(date => <button key={+date} type="button" aria-pressed={plannerDate(date) === focusedDay} onClick={() => focusDate(date)}
+          className="focus-ring min-h-11 rounded-lg border border-sanispa-line px-2.5 text-sm font-semibold capitalize aria-pressed:bg-sanispa-blue aria-pressed:text-white">
+          {weekDayLabel.format(date)}
+        </button>)}
+      </div>
+      <button type="button" aria-label="Semaine suivante" title="Semaine suivante" disabled={busy} className={weekArrowClass}
+        onClick={() => onWeekChange(plannerDate(plannerDay(focusedDay, 7)))}>
+        <ChevronRight size={20} aria-hidden="true" />
+      </button>
     </div> : null}
     <div ref={scroll} tabIndex={0} role="region" aria-label="Grille horaire des interventions" className="focus-ring isolate max-w-full overflow-x-auto rounded-xl border border-sanispa-line">
       <div className="w-max" role="table" aria-label={period === "week" ? "Rendez-vous de la semaine par technicien" : "Rendez-vous de la journée par technicien"}>
