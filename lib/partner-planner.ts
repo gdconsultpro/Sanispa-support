@@ -26,6 +26,35 @@ export type PendingPrivatePartnerVisit = Omit<PrivatePartnerVisit, "starts_at" |
   starts_at: null;
   ends_at: null;
 };
+export type PartnerClientVisit = Omit<PrivatePartnerVisit, "client"> | Omit<PendingPrivatePartnerVisit, "client">;
+export type PartnerClientDossier = {
+  id: string;
+  problem_type: string;
+  status: string;
+  intervened_at: string | null;
+  preview_description: string | null;
+  partner_appointments: Pick<ScheduledVisit, "starts_at" | "ends_at" | "technician_id"> | null;
+};
+export type PartnerClientHistory = {
+  client: PrivatePartnerClient;
+  visits: PartnerClientVisit[];
+  dossier: PartnerClientDossier | null;
+  technicians: PlannerTechnician[];
+  more: boolean;
+};
+export const partnerClientHistoryFilters = ["all", "pending", "scheduled", "past"] as const;
+export type PartnerClientHistoryFilter = typeof partnerClientHistoryFilters[number];
+
+export function partnerClientVisitTiming(endsAt: string | null, now: number) {
+  return endsAt === null ? "pending" : Date.parse(endsAt) > now ? "scheduled" : "past";
+}
+
+export function partnerClientDossierTiming(dossier: PartnerClientDossier, now: number) {
+  if (dossier.status === "CLOSED" || dossier.status === "terminé") return "past";
+  const timing = partnerClientVisitTiming(dossier.partner_appointments?.ends_at ?? null, now);
+  return timing === "pending" && dossier.intervened_at ? "past" : timing;
+}
+
 export type SanispaPartnerVisit = ScheduledVisit & MapPosition & {
   diagnostic_id: string;
   diagnostic: { problem_type: string; status: string; customer: { name: string | null; address: string | null } | null };
@@ -45,6 +74,11 @@ export const partnerClientsPath = "/partenaire/planning?view=clients";
 export const partnerNewClientPath = partnerClientsPath + "&ajouter=1";
 export const partnerMapPath = "/partenaire/planning?view=carte";
 export const partnerNewVisitPath = "/partenaire/planning?nouvelle=1";
+
+export const partnerClientIdPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+export function partnerClientPath(id: string) {
+  return partnerClientsPath + "&fiche=" + encodeURIComponent(id);
+}
 
 export function partnerVisitMapPath(id: string, startsAt: string | null) {
   const query = new URLSearchParams({ visite: id });

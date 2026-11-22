@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
+import { PartnerClientFile } from "@/components/PartnerClientFile";
 import { PartnerNavigation } from "@/components/PartnerNavigation";
 import { PartnerScheduleGrid, PlannerTechnicianSelect } from "@/components/PartnerScheduleGrid";
 import { PartnerTourMap } from "@/components/PartnerTourMap";
@@ -13,9 +14,10 @@ import { problemLabel } from "@/lib/display-labels";
 import { partnerAuthError, partnerToken, redirectPartnerAccess } from "@/lib/partner-browser";
 import { partnerReturnPath } from "@/lib/partner-navigation";
 import {
-  interventionTypes, partnerClientAddress, partnerDirections, partnerClientsPath, partnerMapPath, partnerVisitMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
+  interventionTypes, partnerClientAddress, partnerClientIdPattern, partnerClientPath, partnerClientVisitTiming, partnerDirections,
+  partnerClientsPath, partnerMapPath, partnerVisitMapPath, plannerDate, plannerDay, plannerRange, plannerTime, visitsOverlap,
   type MapCoordinate, type PartnerMapPoint, type PendingPartnerDossier, type PendingPrivatePartnerVisit, type PlannerAppointment, type PlannerMapIntervention, type PlannerMapStatus,
-  type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
+  type PartnerClientHistory, type PartnerClientHistoryFilter, type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
 import type { TourApplyResult, TourDrivingRoute, TourReschedule } from "@/lib/partner-tour-routing";
@@ -38,7 +40,7 @@ type Agenda = {
 type Booking = { id: string; slot?: PlannerSlot };
 type VisitLocation = { id: string; startsAt: string | null };
 type FormEditor = { type: "client"; id: string; client?: PrivatePartnerClient; booking?: Booking; returnToMap?: boolean }
-  | { type: "visit"; id: string; client: PrivatePartnerClient; visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit; booking?: Booking }
+  | { type: "visit"; id: string; client: PrivatePartnerClient; visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit; booking?: Booking; withoutDate?: boolean }
   | { type: "stock"; id: string; item?: PrivatePartnerStock };
 type Editor = FormEditor | ({ type: "pickClient" } & Booking);
 const periods = { day: "Jour", week: "Semaine", month: "Mois" } as const;
@@ -101,6 +103,11 @@ export default function PartnerPlanningPage() {
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<ClientPage | null>(null);
+  const [clientId, setClientId] = useState<string | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<PartnerClientHistoryFilter>("all");
+  const [historyOffset, setHistoryOffset] = useState(0);
+  const [file, setFile] = useState<PartnerClientHistory | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
   const [inventory, setInventory] = useState<StockPage | null>(null);
   const [agenda, setAgenda] = useState<Agenda | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -122,7 +129,11 @@ export default function PartnerPlanningPage() {
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
     let initialDay = plannerDate(new Date());
-    if (query.get("view") === "clients") setView("clients");
+    if (query.get("view") === "clients") {
+      setView("clients");
+      const id = query.get("fiche");
+      if (id && partnerClientIdPattern.test(id)) setClientId(id.toLowerCase());
+    }
     if (query.get("view") === "carte") {
       setView("map");
       const visit = query.get("visite");
@@ -146,14 +157,21 @@ export default function PartnerPlanningPage() {
     const query = view === "agenda" || view === "map" ? new URLSearchParams({
       from: from.toISOString(), to: to.toISOString(), ...(view === "map" ? { map: "1" } : {}),
     })
-      : new URLSearchParams({ section: view, name: search, offset: String(offset) });
+      : view === "clients" && clientId
+        ? new URLSearchParams({ section: "client", id: clientId, filter: historyFilter, offset: String(historyOffset) })
+        : new URLSearchParams({ section: view, name: search, offset: String(offset) });
     setLoadError("");
-    if (view === "clients") setPage(null);
+    if (view === "clients" && clientId) setFileLoading(true);
+    else if (view === "clients") setPage(null);
     else if (view === "stock") setInventory(null);
     else if (loadedAgenda.current !== query.toString()) setAgenda(null);
     void plannerRequest(endpoint + "?" + query, { signal: controller.signal }).then(result => {
       if (!result || controller.signal.aborted) return;
       if (view === "clients") {
+        if (clientId) {
+          setFile(result);
+          return;
+        }
         setPage(result);
         if (openNewClient.current) {
           openNewClient.current = false;
@@ -166,9 +184,10 @@ export default function PartnerPlanningPage() {
         loadedAgenda.current = query.toString();
         setAgenda(result);
       }
-    }).catch(error => { if (!controller.signal.aborted) setLoadError(partnerAuthError(error)); });
+    }).catch(error => { if (!controller.signal.aborted) setLoadError(partnerAuthError(error)); })
+      .finally(() => { if (view === "clients" && clientId && !controller.signal.aborted) setFileLoading(false); });
     return () => controller.abort();
-  }, [view, day, activePeriod, search, offset, revision]);
+  }, [view, day, activePeriod, search, offset, revision, clientId, historyFilter, historyOffset]);
 
   const mappedId = mapped?.id;
   useEffect(() => {
@@ -188,6 +207,20 @@ export default function PartnerPlanningPage() {
     return () => { controller.abort(); setLocating(false); };
   }, [mapped]);
 
+  function showClient(id: string | null) {
+    setClientId(id);
+    setFile(null);
+    setHistoryFilter("all");
+    setHistoryOffset(0);
+    setMapped(null);
+    setEditor(null);
+    setNotice("");
+    setSavedVisit(null);
+    setSavedClient(null);
+    setLoadError("");
+    window.history.replaceState(null, "", id ? partnerClientPath(id) : partnerClientsPath);
+  }
+
   function changeView(next: typeof view) {
     setMapped(null);
     setEditor(null);
@@ -197,6 +230,7 @@ export default function PartnerPlanningPage() {
     setSaveError("");
     setGridError("");
     setOffset(0);
+    setClientId(null);
     setView(next);
     setMapVisitId(null);
     if (next === "map") {
@@ -356,7 +390,7 @@ export default function PartnerPlanningPage() {
         if (!result) return;
         if (editor.client) setNotice("La fiche client a été enregistrée.");
         else setSavedClient(result.client);
-        if (!editor.returnToMap) {
+        if (!editor.returnToMap && !clientId) {
           setSearch("");
           setOffset(0);
           setView("clients");
@@ -391,7 +425,11 @@ export default function PartnerPlanningPage() {
         const result = await plannerRequest(endpoint, { payload });
         if (!result) return;
         const saved = { id, startsAt: visit.starts_at };
-        if (start && slot) {
+        if (view === "clients" && clientId) {
+          setEditor(null);
+          if (historyFilter !== "all") setHistoryFilter(partnerClientVisitTiming(visit.ends_at, Date.now()));
+          setHistoryOffset(0);
+        } else if (start && slot) {
           const date = plannerDate(start);
           setDay(date);
           setAgendaDatePicked(true);
@@ -418,7 +456,8 @@ export default function PartnerPlanningPage() {
     ...agenda.visits.map(visit => ({ ...visit, source: "private" as const })),
     ...agenda.sanispa.map(visit => ({ ...visit, source: "sanispa" as const })),
   ].sort((left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at)) : null;
-  const team = (view === "clients" ? page?.technicians : agenda?.technicians) ?? [];
+  const clientFile = file?.client.id === clientId ? file : null;
+  const team = (view === "clients" ? clientId ? clientFile?.technicians : page?.technicians : agenda?.technicians) ?? [];
   const currentBooking = editor?.type === "client" || editor?.type === "visit" ? editor.booking : undefined;
   const appointments: PlannerAppointment[] = (entries ?? []).map(entry => entry.source === "private" ? {
     ...entry, title: entry.title + " · " + entry.client.name, movable: true,
@@ -438,7 +477,7 @@ export default function PartnerPlanningPage() {
 
   return <AppShell compact>
     <PartnerNavigation current="Planning" />
-    <h1 className="text-3xl font-bold">Mon planning</h1>
+    <h1 className="text-3xl font-bold">{view === "clients" ? "Mes clients" : "Mon planning"}</h1>
     <div className="mb-4 mt-4 flex flex-wrap gap-2" aria-label="Rubriques du planning">
       <Button type="button" variant={view === "agenda" ? "primary" : "secondary"} aria-pressed={view === "agenda"} disabled={saving} onClick={() => changeView("agenda")}>Agenda</Button>
       <Button type="button" variant={view === "map" ? "primary" : "secondary"} aria-pressed={view === "map"} disabled={saving} onClick={() => changeView("map")}>Carte</Button>
@@ -446,6 +485,7 @@ export default function PartnerPlanningPage() {
       <Button type="button" variant={view === "stock" ? "primary" : "secondary"} aria-pressed={view === "stock"} disabled={saving} onClick={() => changeView("stock")}>Mon stock</Button>
     </div>
 
+    {view === "clients" && clientId ? <button type="button" disabled={saving} className={actionClass + " mb-3"} onClick={() => showClient(null)}>← Retour à mes clients</button> : null}
     {notice ? <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
       <p role="status">{notice}</p>
       {savedVisit ? <div className="flex flex-wrap gap-x-4">
@@ -456,13 +496,16 @@ export default function PartnerPlanningPage() {
     {gridError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{gridError}</p> : null}
     {savedClient && view === "clients" ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
       <p role="status" className="break-words font-bold text-emerald-900">Fiche créée pour {savedClient.name}.</p>
-      <button type="button" className={actionClass} onClick={() => edit({ type: "visit", id: crypto.randomUUID(), client: savedClient })}>Planifier une première visite</button>
+      <div className="flex flex-wrap gap-x-4">
+        <button type="button" className={actionClass} onClick={() => showClient(savedClient.id)}>Ouvrir la fiche</button>
+        <button type="button" className={actionClass} onClick={() => edit({ type: "visit", id: crypto.randomUUID(), client: savedClient })}>Planifier une première visite</button>
+      </div>
     </div> : null}
     {loadError ? <div className={panelClass}>
       <p role="alert" className="text-red-700">{loadError}</p>
       <button type="button" className={actionClass} onClick={() => setRevision(value => value + 1)}>Réessayer</button>
     </div> : null}
-    {!loadError && (view === "clients" ? !page : view === "stock" ? !inventory : !agenda) ? <p role="status">Chargement…</p> : null}
+    {!loadError && (view === "clients" ? clientId ? !clientFile : !page : view === "stock" ? !inventory : !agenda) ? <p role="status">Chargement…</p> : null}
 
     {editor?.type === "pickClient" ? <SlotClientPicker key={editor.id} slot={editor.slot} team={team}
       choose={client => chooseBookingClient(editor, client)}
@@ -485,7 +528,17 @@ export default function PartnerPlanningPage() {
       {partnerClientAddress(mapped) ? <a href={partnerDirections(partnerClientAddress(mapped))} target="_blank" rel="noreferrer" className={actionClass}>Ouvrir l’itinéraire</a> : null}
     </section> : null}
 
-    {view === "clients" && page ? <section className={panelClass}>
+    {view === "clients" && clientId && clientFile && !loadError ? <PartnerClientFile history={clientFile}
+      filter={historyFilter} offset={historyOffset} busy={saving} loading={fileLoading}
+      onFilter={value => { setHistoryFilter(value); setHistoryOffset(0); }} onPage={setHistoryOffset}
+      onEdit={() => edit({ type: "client", id: clientId, client: clientFile.client })}
+      onAdd={() => edit({ type: "visit", id: crypto.randomUUID(), client: clientFile.client, withoutDate: true })}
+      onAddress={() => { setEditor(null); setMapped(clientFile.client); }}
+      onVisit={record => edit({ type: "visit", id: record.id, client: clientFile.client,
+        visit: { ...record, client: clientFile.client }, withoutDate: record.starts_at === null })}
+      onMap={record => openVisitOnMap({ id: record.id, startsAt: record.starts_at })} /> : null}
+
+    {view === "clients" && !clientId && page ? <section className={panelClass}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-bold">Mon carnet clients</h2>
         <Button type="button" disabled={saving} onClick={() => edit({ type: "client", id: crypto.randomUUID() })}>Ajouter un client</Button>
@@ -509,6 +562,7 @@ export default function PartnerPlanningPage() {
           {client.intervention_type !== interventionTypes[0] || client.description ? <p className="break-words text-sm font-bold">{client.intervention_type}</p> : null}
           {client.description ? <p className="whitespace-pre-wrap break-words text-sm">{client.description}</p> : null}
           <div className="flex flex-wrap gap-x-4">
+            <button type="button" className={actionClass} disabled={saving} onClick={() => showClient(client.id)}>Ouvrir la fiche<span className="sr-only"> de {client.name}</span></button>
             <button type="button" className={actionClass} disabled={saving} onClick={() => edit({ type: "visit", id: crypto.randomUUID(), client })}>Planifier une intervention</button>
             <button type="button" className={actionClass} disabled={saving} onClick={() => edit({ type: "client", id: client.id, client })}>Modifier la fiche</button>
             {partnerClientAddress(client) ? <button type="button" className={actionClass} disabled={saving} onClick={() => { setEditor(null); setMapped(client); }}>Voir sur la carte</button> : null}
@@ -698,7 +752,8 @@ function PlannerEditor({ editor, day, team, save, saving, error, close, back, re
 }) {
   const title = useRef<HTMLHeadingElement>(null);
   const slot = editor.type === "stock" ? undefined : editor.booking?.slot;
-  const [withoutDate, setWithoutDate] = useState(editor.type !== "stock" && !!editor.booking && !slot);
+  const [withoutDate, setWithoutDate] = useState(editor.type === "visit" && editor.withoutDate !== undefined
+    ? editor.withoutDate : editor.type !== "stock" && !!editor.booking && !slot);
   useEffect(() => { title.current?.focus(); }, []);
   const visit = editor.type === "visit" ? editor.visit : undefined;
   const newContact = editor.type === "client" && Boolean(editor.booking);
@@ -741,8 +796,9 @@ function PlannerEditor({ editor, day, team, save, saving, error, close, back, re
           <PlannerField label="Quantité en stock" name="quantity" type="number" inputMode="numeric" min={0} max={1000000} step={1} defaultValue={editor.item?.quantity ?? 0} required />
         </> : null}
         {forVisit ? <>
-          <InterventionFields type={visit?.title ?? editor.client?.intervention_type} description={visit?.description ?? editor.client?.description} />
-          {!slot && !visit ? <label className="flex min-h-11 items-center gap-2 text-sm font-bold sm:col-span-2">
+          <InterventionFields type={visit?.title ?? editor.client?.intervention_type}
+            description={visit?.description ?? (editor.type === "visit" && editor.withoutDate === true ? undefined : editor.client?.description)} />
+          {!slot && (!visit || visit.starts_at === null) ? <label className="flex min-h-11 items-center gap-2 text-sm font-bold sm:col-span-2">
             <input type="checkbox" name="without_date" checked={withoutDate} onChange={event => setWithoutDate(event.target.checked)} />
             Ajouter à « À planifier » sans fixer de date
           </label> : null}

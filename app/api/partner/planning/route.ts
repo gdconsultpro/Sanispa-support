@@ -8,11 +8,12 @@ import { interventionError } from "@/lib/interventions";
 import { processNotifications } from "@/lib/notifications";
 import { getPartnerRoadRoute } from "@/lib/partner-road-route";
 import { maximumTourRouteStops } from "@/lib/partner-tour-routing";
-import { partnerClientAddress, partnerVisitAddress, type PendingPartnerDossier, type PendingPrivatePartnerVisit,
+import { partnerClientAddress, partnerClientHistoryFilters, partnerVisitAddress, type PendingPartnerDossier, type PendingPrivatePartnerVisit,
   type PrivatePartnerClient, type PrivatePartnerVisit, type SanispaPartnerVisit } from "@/lib/partner-planner";
 
 const privateClientColumns = "id,name,phone,email,street,postal_code,city,intervention_type,description,latitude,longitude,source_diagnostic_id";
-const privateVisitColumns = `id,title,description,starts_at,ends_at,technician_id,updated_at,client:partner_private_clients!inner(${privateClientColumns})`;
+const visitFields = "id,title,description,starts_at,ends_at,technician_id,updated_at";
+const privateVisitColumns = `${visitFields},client:partner_private_clients!inner(${privateClientColumns})`;
 const stockColumns = "id,category,label,reference,quantity,updated_at";
 const timestamp = z.string().datetime({ offset: true });
 const technicianId = z.string().uuid().nullable();
@@ -256,6 +257,33 @@ export async function GET(request: Request) {
         return NextResponse.json({ startsAt: next ?? null }, { headers: { "Cache-Control": "private, no-store" } });
       }
       const offset = z.coerce.number().int().min(0).max(1000000).parse(params.get("offset") ?? 0);
+      if (params.get("section") === "client") {
+        const id = z.string().uuid().parse(params.get("id"));
+        const filter = z.enum(partnerClientHistoryFilters).parse(params.get("filter") ?? "all");
+        const { data: client, error: clientError } = await supabase.from("partner_private_clients").select(privateClientColumns)
+          .eq("partner_id", partner.id).eq("id", id).maybeSingle();
+        if (clientError) throw clientError;
+        if (!client) throw new HttpError(404, "Cette fiche client est introuvable.");
+        const now = new Date().toISOString();
+        let history = supabase.from("partner_private_visits").select(visitFields)
+          .eq("partner_id", partner.id).eq("client_id", id);
+        if (filter === "pending") history = history.is("starts_at", null);
+        if (filter === "scheduled") history = history.gt("ends_at", now);
+        if (filter === "past") history = history.lte("ends_at", now);
+        const [visits, team, dossier] = await Promise.all([
+          history.order("starts_at", { ascending: filter === "scheduled", nullsFirst: true })
+            .order("updated_at", { ascending: false }).order("id").range(offset, offset + 30),
+          technicians(),
+          client.source_diagnostic_id ? supabase.from("diagnostics")
+            .select("id,problem_type,status,intervened_at,preview_description,partner_appointments(starts_at,ends_at,technician_id)")
+            .eq("id", client.source_diagnostic_id).eq("assigned_partner_id", partner.id).is("archived_at", null)
+            .eq("partner_appointments.partner_id", partner.id).maybeSingle()
+            : null,
+        ]);
+        if (visits.error || dossier?.error) throw visits.error || dossier?.error;
+        return NextResponse.json({ client, visits: visits.data.slice(0, 30), more: visits.data.length > 30, dossier: dossier?.data ?? null, technicians: team },
+          { headers: { "Cache-Control": "private, no-store" } });
+      }
       if (params.get("section") === "stock") {
         const { data, error } = await supabase.from("partner_private_stock").select(stockColumns).eq("partner_id", partner.id)
           .order("label").order("id").range(offset, offset + 30);

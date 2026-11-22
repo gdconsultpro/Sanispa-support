@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fullDatabase } from "./helpers/full-database";
-import { matchesPlannerMapFilters, nearbyPendingVisits, partnerMapPath, partnerNewClientPath, partnerNewVisitPath, partnerVisitAddress, partnerVisitMapPath, plannerDate, plannerRange, suggestedTourStart, timelineDropTime, timelineQuarter, visitsOverlap, type PlannerMapIntervention } from "../lib/partner-planner";
+import { matchesPlannerMapFilters, nearbyPendingVisits, partnerClientDossierTiming, partnerClientPath, partnerClientVisitTiming, partnerMapPath, partnerNewClientPath, partnerNewVisitPath, partnerVisitAddress, partnerVisitMapPath, plannerDate, plannerRange, suggestedTourStart, timelineDropTime, timelineQuarter, visitsOverlap, type PlannerMapIntervention } from "../lib/partner-planner";
 import { partnerReturnPath } from "../lib/partner-navigation";
 
 test("private visits can only reference a client in the same partner company", async () => {
@@ -126,6 +126,9 @@ test("adjacent visits do not overlap and the planner is a valid return after sig
   assert.equal(partnerReturnPath(waitingPath), waitingPath);
   assert.equal(partnerReturnPath(scheduledPath), scheduledPath);
   assert.equal(partnerReturnPath(scheduledPath + "&retour=https://example.invalid"), "/partenaire/leads");
+  const clientPath = partnerClientPath(job);
+  assert.equal(partnerReturnPath(clientPath), clientPath);
+  assert.equal(partnerReturnPath(clientPath + "&retour=https://example.invalid"), "/partenaire/leads");
   assert.deepEqual(partnerVisitAddress("5 avenue Anatole France - 75007 - Paris"), { street: "5 avenue Anatole France", postal_code: "75007", city: "Paris" });
   assert.equal(partnerVisitAddress("Secteur 75"), null);
   const week = plannerRange("2026-11-22", "week");
@@ -138,6 +141,23 @@ test("adjacent visits do not overlap and the planner is a valid return after sig
   assert.equal(timelineQuarter(10 * hour, 0.26), 10.25 * hour);
   assert.equal(timelineQuarter(10 * hour, 0.74), 10.5 * hour);
   assert.equal(timelineQuarter(10 * hour, 1), 10.75 * hour);
+});
+
+test("a client history covers the timing of private visits and linked dossiers", () => {
+  const now = Date.parse("2026-11-22T12:00:00Z");
+  const past = "2026-11-22T11:30:00Z";
+  const upcoming = "2026-11-22T13:00:00Z";
+  assert.equal(partnerClientVisitTiming(null, now), "pending");
+  assert.equal(partnerClientVisitTiming(upcoming, now), "scheduled");
+  assert.equal(partnerClientVisitTiming(past, now), "past");
+  assert.equal(partnerClientVisitTiming("2026-11-22T12:00:00Z", now), "past");
+  const dossier = { id: "dossier", problem_type: "fuite", status: "EN_COURS", intervened_at: null, preview_description: null, partner_appointments: null };
+  assert.equal(partnerClientDossierTiming(dossier, now), "pending");
+  assert.equal(partnerClientDossierTiming({ ...dossier, intervened_at: past }, now), "past");
+  const followup = { ...dossier, intervened_at: past,
+    partner_appointments: { starts_at: "2026-11-22T12:30:00Z", ends_at: upcoming, technician_id: null } };
+  assert.equal(partnerClientDossierTiming(followup, now), "scheduled");
+  assert.equal(partnerClientDossierTiming({ ...followup, status: "CLOSED" }, now), "past");
 });
 
 test("moving a private or assigned visit preserves its duration and rejects stale or foreign changes", async () => {
