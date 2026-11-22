@@ -21,9 +21,9 @@ export function AppShell({
   return (
     <main className="app-background min-h-screen">
       {paymentsPaused() ? <div className="sanispa-service-banner px-4 py-2 text-center text-xs font-medium">Services gratuits pour les particuliers et les partenaires · Sans carte bancaire</div> : null}
-      <header className="border-b border-sanispa-line bg-white">
+      <header className="app-header">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
-          <Link href="/" className="inline-flex items-center focus-ring">
+          <Link href="/" className="app-header__brand inline-flex items-center focus-ring">
             <Image
               src="/sanispa-logo.png"
               width={120}

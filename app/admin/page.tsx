@@ -107,16 +107,17 @@ export default async function AdminPage({ searchParams }: {
         else if (dueOnly) query.set("actions", "due");
         return query.size ? `/admin?${query}` : "/admin";
     }
-    const navClass = (active: boolean) => `focus-ring inline-flex min-h-11 shrink-0 items-center rounded-md border px-3 py-2 text-sm font-bold ${active ? "border-transparent bg-sanispa-ice text-sanispa-navy" : "border-transparent text-sanispa-steel hover:bg-sanispa-ice"}`;
+    const directoryLink = "focus-ring inline-flex min-h-11 shrink-0 items-center rounded-md px-3 py-2 text-sm font-bold";
+    const navClass = (active: boolean) => `${directoryLink} border border-transparent ${active ? "bg-sanispa-ice text-sanispa-navy" : "text-sanispa-steel hover:bg-sanispa-ice"}`;
     return <AppShell compact>
-      <nav aria-label="Rubriques de l’administration" className="admin-directory-nav mb-5 flex gap-1 overflow-x-auto whitespace-nowrap rounded-xl border border-sanispa-line bg-white p-1.5 lg:flex-wrap">
-        <Link href="/admin" aria-current={tab === "diagnostics" ? "page" : undefined} className={navClass(tab === "diagnostics")}>Demandes</Link>
-        <Link href="/admin?tab=partners" aria-current={tab === "partners" ? "page" : undefined} className={navClass(tab === "partners")}>Partenaires</Link>
-        <Link href="/admin/interventions" className={navClass(false)}>Interventions</Link>
-        <Link href={adminClientsPath} aria-current={tab === "clients" ? "page" : undefined} className={navClass(tab === "clients")}>Clients</Link>
-        <Link href="/admin/visio" className={navClass(false)}>Visios et assistance</Link>
-        <Link href="/admin/premium" className={navClass(false)}>Premium et coût IA</Link>
-        <Link href="/admin/forum" className={navClass(false)}>Forum Premium</Link>
+      <nav aria-label="Rubriques de l’administration" className="admin-directory-nav mb-5 flex gap-1 overflow-x-auto whitespace-nowrap rounded-xl p-1.5 lg:flex-wrap">
+        <Link href="/admin" aria-current={tab === "diagnostics" ? "page" : undefined} className={directoryLink}>Demandes</Link>
+        <Link href="/admin?tab=partners" aria-current={tab === "partners" ? "page" : undefined} className={directoryLink}>Partenaires</Link>
+        <Link href="/admin/interventions" className={directoryLink}>Interventions</Link>
+        <Link href={adminClientsPath} aria-current={tab === "clients" ? "page" : undefined} className={directoryLink}>Clients</Link>
+        <Link href="/admin/visio" className={directoryLink}>Visios et assistance</Link>
+        <Link href="/admin/premium" className={directoryLink}>Premium et coût IA</Link>
+        <Link href="/admin/forum" className={directoryLink}>Forum Premium</Link>
       </nav>
       <header className="mb-4 flex flex-wrap items-start justify-between gap-x-5 gap-y-2">
         <div>

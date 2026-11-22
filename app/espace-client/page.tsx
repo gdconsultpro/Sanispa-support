@@ -413,8 +413,8 @@ export default function EspaceClientPage() {
   }
   return (
     <AppShell compact clientSpace clientHome={view === "accueil"}>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-x-3">
-        <h1 className="sanispa-display-title text-3xl text-sanispa-navy sm:text-4xl">Mon espace spa</h1>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3">
+        {view !== "accueil" ? <h1 className="sanispa-display-title text-3xl text-sanispa-navy sm:text-4xl">Mon espace spa</h1> : null}
         <div className="flex flex-wrap items-center gap-x-3">
           {view === "coordonnees" ? null : (
             <button type="button" onClick={() => selectView("coordonnees")}
@@ -431,7 +431,8 @@ export default function EspaceClientPage() {
 
       {view === "accueil" ? (
         <div className="mb-4">
-          <LagoonHero firstName={profile.first_name} signedIn>
+          <LagoonHero firstName={profile.first_name} signedIn
+            casePreview={dossierToHighlight ? <ClientCaseCard dossier={dossierToHighlight} compact /> : undefined}>
             <ButtonLink href={availableDrafts.length ? "/diagnostic?new=1" : "/diagnostic"}>
               {availableDrafts.length ? "Nouvelle demande" : "Déclarer une panne"}
             </ButtonLink>
@@ -446,10 +447,10 @@ export default function EspaceClientPage() {
           {availableDrafts.length > 1 ? <button type="button" onClick={() => selectView("demandes")} className="focus-ring mt-2 min-h-11 font-bold underline">Voir tous mes brouillons</button> : null}
         </section>
       ) : null}
-      <nav aria-label="Rubriques de mon espace spa" className="mb-5 flex gap-1.5 overflow-x-auto whitespace-nowrap rounded-xl border border-sanispa-line bg-white p-1.5 sm:flex-wrap">
+      <nav aria-label="Rubriques de mon espace spa" className="client-space-nav mb-5 flex gap-1.5 overflow-x-auto whitespace-nowrap rounded-xl p-1.5 sm:flex-wrap">
         {views.map(([key, label]) => (
           <button type="button" key={key} onClick={() => selectView(key)} aria-current={view === key ? "page" : undefined}
-            className={`focus-ring min-h-11 shrink-0 rounded-lg px-3 py-2 text-sm font-bold sm:px-4 ${view === key ? "bg-sanispa-ice text-sanispa-blue" : "text-sanispa-steel hover:bg-sanispa-ice"}`}>
+            className="focus-ring min-h-11 shrink-0 rounded-lg px-3 py-2 text-sm font-bold sm:px-4">
             {label}
           </button>
         ))}
@@ -465,12 +466,6 @@ export default function EspaceClientPage() {
         {error ? <p className="rounded-md bg-red-50 p-3 text-red-700" role="alert">{error}</p> : null}
         {view === "accueil" ? (
           <>
-            {dossierToHighlight ? (
-              <section aria-label="Votre demande à suivre">
-                <h2 className="mb-2 text-xl font-bold">{reportsToRead.length ? "Action à faire" : "Ma demande à suivre"}</h2>
-                <ClientCaseCard dossier={dossierToHighlight} compact />
-              </section>
-            ) : null}
             <section aria-label="L’entretien de votre spa">
               <h2 className="mb-2 text-xl font-bold">Mon entretien</h2>
               <CarePreviewCards care={care} spas={spas} compact />

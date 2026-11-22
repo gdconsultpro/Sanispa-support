@@ -24,5 +24,5 @@ export function PrivateFile({url,name,photo=false,label,photoFit="cover"}:{url:s
     }catch{setError("Téléchargement impossible. Reconnectez-vous puis réessayez.");}
     finally{setBusy(false);}
   }
-  return <div>{photo && src && <Image unoptimized src={src} width={400} height={200} alt={name} className={`h-36 w-full rounded-md ${photoFit === "contain" ? "object-contain" : "object-cover"}`}/>}<button type="button" onClick={download} disabled={busy} className="focus-ring mt-2 rounded-md border border-sanispa-line px-3 py-2 text-sm font-bold">{busy?'Téléchargement…':label ?? (photo?name:'Télécharger')}</button>{error && <p role="alert" className="text-sm text-red-700">{error}</p>}</div>;
+  return <div>{photo && src && <Image unoptimized src={src} width={400} height={200} alt={name} className={`h-36 w-full rounded-md ${photoFit === "contain" ? "object-contain" : "object-cover"}`}/>}<button type="button" onClick={download} disabled={busy} className="focus-ring mt-2 rounded-md border border-sanispa-line px-3 py-2 text-sm font-bold">{busy?'Téléchargement…':label ?? (photo?name:'Télécharger')}</button>{error && <p role="alert" className="mt-2 rounded-md bg-red-50 p-2 text-sm text-red-800">{error}</p>}</div>;
 }

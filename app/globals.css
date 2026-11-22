@@ -5,42 +5,19 @@
 
 :root {
   color-scheme: light;
-  --sanispa-navy: 20 32 49;
-  --sanispa-blue: 37 55 79;
-  --sanispa-ice: 237 242 248;
-  --sanispa-line: 214 223 234;
-  --sanispa-steel: 81 87 99;
-  --sanispa-background: #f6f8fb;
-  --sanispa-accent-surface: #e9eff6;
-  --sanispa-display-font: Georgia, "Times New Roman", serif;
-  --sanispa-display-weight: 400;
+  --sanispa-navy: 16 30 70;
+  --sanispa-blue: 27 68 132;
+  --sanispa-ice: 233 243 251;
+  --sanispa-line: 205 223 238;
+  --sanispa-steel: 68 89 117;
+  --sanispa-background: #f5f8fc;
+  --sanispa-accent-surface: #e0f4fc;
+  --sanispa-display-font: Ubuntu, Poppins, Arial, sans-serif;
+  --sanispa-display-weight: 700;
   --sanispa-display-spacing: -0.035em;
-}
-
-[data-sanispa-space="partner"] {
-  --sanispa-navy: 19 46 67;
-  --sanispa-blue: 21 81 140;
-  --sanispa-ice: 232 240 246;
-  --sanispa-line: 209 223 231;
-  --sanispa-steel: 60 83 103;
-  --sanispa-background: #f3f6f8;
-  --sanispa-accent-surface: #e6eff5;
-  --sanispa-display-font: Ubuntu, Poppins, Arial, sans-serif;
-  --sanispa-display-weight: 700;
-  --sanispa-display-spacing: normal;
-}
-
-[data-sanispa-space="admin"] {
-  --sanispa-navy: 21 49 67;
-  --sanispa-blue: 25 78 103;
-  --sanispa-ice: 235 242 247;
-  --sanispa-line: 213 224 232;
-  --sanispa-steel: 64 87 102;
-  --sanispa-background: #f5f8fa;
-  --sanispa-accent-surface: #eaf1f5;
-  --sanispa-display-font: Ubuntu, Poppins, Arial, sans-serif;
-  --sanispa-display-weight: 700;
-  --sanispa-display-spacing: normal;
+  --sanispa-cyan: #97e9ff;
+  --sanispa-cobalt-gradient: linear-gradient(125deg, #101e46 4%, #1b4484 55%, #16648e);
+  --sanispa-cyan-gradient: linear-gradient(110deg, #a9caff, var(--sanispa-cyan));
 }
 
 * {
@@ -84,57 +61,82 @@ button {
   background: radial-gradient(ellipse at top left, var(--sanispa-accent-surface), transparent 45%), var(--sanispa-background);
   color: rgb(var(--sanispa-navy));
 }
-.lagoon-hero {
-  isolation: isolate;
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(115deg, #142031, #293c55);
-  color: white;
+.app-header,
+.cobalt-hero,
+.partner-navigation,
+.admin-directory-nav,
+.client-space-nav {
+  background: var(--sanispa-cobalt-gradient);
 }
-.lagoon-hero__image,
-.lagoon-hero__shade {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
+.app-header__brand {
+  background: white;
+  border-radius: .5rem;
+  padding: .25rem .5rem;
 }
-.lagoon-hero__image img {
+.cobalt-hero {
+  color: #f4f8ff;
+}
+.cobalt-hero__image img {
   object-fit: cover;
-  object-position: center 47%;
+  object-position: center 58%;
 }
-.lagoon-hero__shade {
-  background: linear-gradient(90deg, #142031 0%, #142031 35%, rgb(20 32 49 / .92) 48%, rgb(20 32 49 / .36) 65%, transparent 84%);
-}
-.lagoon-hero__heading {
+.cobalt-hero h1 {
   text-wrap: balance;
 }
-.lagoon-actions > a:first-child {
-  background: rgb(var(--sanispa-ice));
-  color: #142031;
+.cobalt-hero__case,
+.cobalt-declaration {
+  background: linear-gradient(150deg, #13254d 5%, #1a3f69);
+  color: #f4f8ff;
+  border-color: #41678d;
+}
+.cobalt-hero__case {
+  background: linear-gradient(145deg, #1e3b79, #175375);
+}
+.cobalt-declaration {
+  --sanispa-ice: 25 70 120;
+  --sanispa-line: 87 127 162;
+  --sanispa-steel: 197 218 242;
+}
+.cobalt-hero__actions > a:first-child,
+.app-header nav > a.bg-sanispa-blue {
+  background: var(--sanispa-cyan-gradient);
+  color: #09294b;
   border-radius: .5rem;
 }
-.lagoon-actions > a:first-child:hover {
-  background: white;
+.cobalt-hero__actions > a:first-child:hover,
+.app-header nav > a.bg-sanispa-blue:hover {
+  background: #e1faff;
 }
-.lagoon-actions .focus-ring {
-  --tw-ring-offset-color: #142031;
-}
-.lagoon-actions .focus-ring:focus-visible {
-  outline: 2px solid white;
+.app-header .focus-ring:focus-visible,
+.cobalt-hero .focus-ring:focus-visible,
+.cobalt-declaration .focus-ring:focus-visible {
+  outline: 2px solid var(--sanispa-cyan);
   outline-offset: 3px;
 }
-.partner-navigation {
-  background-color: rgb(var(--sanispa-navy));
+.partner-navigation a,
+.admin-directory-nav a,
+.client-space-nav button {
+  color: #f4f8ff;
 }
 .partner-navigation a:hover,
-.partner-navigation a[aria-current="page"] {
-  background-color: #31556b;
-  color: white;
+.admin-directory-nav a:hover,
+.client-space-nav button:hover {
+  background: rgb(255 255 255 / .12);
 }
-.partner-navigation a:focus-visible {
-  outline: 2px solid #cfe7f7;
+.partner-navigation a[aria-current="page"],
+.admin-directory-nav a[aria-current="page"],
+.client-space-nav button[aria-current="page"] {
+  background: var(--sanispa-cyan-gradient);
+  color: #09294b;
+}
+.partner-navigation a:focus-visible,
+.admin-directory-nav a:focus-visible,
+.client-space-nav button:focus-visible {
+  outline: 2px solid var(--sanispa-cyan);
   outline-offset: -2px;
 }
-.admin-directory-nav {
+.admin-directory-nav,
+.client-space-nav {
   scrollbar-width: thin;
 }
 .sanispa-service-banner {
@@ -147,22 +149,6 @@ button {
 }
 [data-sanispa-space="admin"] .sanispa-service-banner {
   display: none;
-}
-@media (min-width: 640px) {
-  .lagoon-hero__image {
-    left: 36%;
-  }
-}
-@media (max-width: 639px) {
-  .lagoon-hero--photo {
-    padding-top: 8rem;
-  }
-  .lagoon-hero__image {
-    height: 10rem;
-  }
-  .lagoon-hero__shade {
-    background: linear-gradient(180deg, transparent 15%, #142031 48%, #142031 100%);
-  }
 }
 .declaration-step {
   border-top: 2px solid rgb(var(--sanispa-line));

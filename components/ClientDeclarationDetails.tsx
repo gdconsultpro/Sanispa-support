@@ -32,7 +32,7 @@ export function ClientDeclarationDetails({ load }: { load: () => Promise<Declara
     }}>
       <summary className="focus-ring cursor-pointer rounded py-3 text-sm font-bold">Réponses et photos envoyées</summary>
       {loading ? <p className="pb-4 text-sm" role="status">Chargement des réponses et des photos…</p> : null}
-      {failed ? <p className="pb-4 text-sm text-red-800" role="alert">
+      {failed ? <p className="mb-4 rounded-md bg-red-50 p-2 text-sm text-red-800" role="alert">
         Impossible de charger la déclaration.{" "}
         <button type="button" className="focus-ring font-bold underline" onClick={() => void fetchDeclaration()}>Réessayer</button>
       </p> : null}

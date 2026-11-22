@@ -133,7 +133,7 @@ export function InterventionWorkspace({ id, role }: { id: string; role: "client"
       {role === "partner" && data.job && (workState === "upcoming" || workState === "contact" || Boolean(!closed && data.appointment && Date.parse(data.appointment.ends_at) > Date.now())) ?
         <PartnerAssignedVisitInfo id={id} key={id} job={data.job} /> : null}
       {role === "client" ? (
-        <section className="rounded-2xl border border-sanispa-line bg-white p-5">
+        <section className="cobalt-declaration rounded-2xl border p-5">
           <h2 className="text-xl font-bold">{waiting ? "Votre compte rendu est prêt" : closed || data.dossierStatus === "CLOSED" || data.dossierStatus === "terminé" ? "Votre dossier est terminé" : "Votre demande est enregistrée"}</h2>
           <p className="mt-2">{waiting ? "Lisez le compte rendu, puis indiquez où en est votre spa." : "Retrouvez ci-dessous les informations communiquées pour votre demande."}</p>
           {waiting ? <a href="#validation" className="mt-3 inline-block font-bold underline">Valider le rapport</a> : null}

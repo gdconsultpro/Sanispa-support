@@ -78,22 +78,28 @@ export function DraftCard({ draft, spas, onCancel }: { draft: DraftListItem; spa
 export function ClientCaseCard({ dossier, compact = false }: { dossier: ClientCase; compact?: boolean }) {
   const progress = clientCaseProgress(dossier);
   const company = dossier.intervened_company_name || dossier.assigned_partner?.company_name;
-  const statusClass = progress.needsAttention ? "bg-amber-50 text-amber-900" : "bg-sanispa-ice text-sanispa-blue";
-  if (compact) return (
-    <Link href={progress.href} className={card + " focus-ring block hover:border-sanispa-blue"}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="break-words text-base font-bold">{problemLabel(dossier.problem_type)}</h3>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass}`}>{progress.label}</span>
-      </div>
-      <p className="mt-2 text-sm text-sanispa-steel">
-        {progress.label === "Rendez-vous confirmé" && dossier.appointment
-          ? <time dateTime={dossier.appointment.starts_at}>{formatDate(dossier.appointment.starts_at)}</time>
-          : progress.description}
-      </p>
-      {company ? <p className="mt-1 break-words text-sm text-sanispa-steel">Intervenant · {company}</p> : null}
-      <span className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-sanispa-blue">{progress.action}<ArrowRight aria-hidden="true" size={16} /></span>
-    </Link>
-  );
+  if (compact) {
+    const appointment = progress.label === "Rendez-vous confirmé" ? dossier.appointment : null;
+    const start = appointment ? new Date(appointment.starts_at) : null;
+    return (
+      <Link href={progress.href} className="cobalt-hero__case focus-ring block rounded-xl border p-4 sm:p-5">
+        <h2 className="text-sm font-bold text-white/90">{progress.label}</h2>
+        {start && appointment ? (
+          <time className="mt-2 block" dateTime={appointment.starts_at}>
+            <span className="block text-4xl font-bold tracking-tight tabular-nums sm:text-5xl">
+              {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
+            </span>
+            <span className="mt-1 block text-sm capitalize">
+              {start.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Paris" })}
+            </span>
+          </time>
+        ) : <p className="mt-2 text-sm">{progress.description}</p>}
+        <p className="mt-3 text-sm font-semibold">{problemLabel(dossier.problem_type)}</p>
+        {company ? <p className="mt-1 break-words text-sm text-white/90">Intervenant · {company}</p> : null}
+        <span className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[var(--sanispa-cyan)] underline underline-offset-4">{progress.action}<ArrowRight aria-hidden="true" size={16} /></span>
+      </Link>
+    );
+  }
   return (
     <article className={card}>
       <p className="text-sm font-semibold text-sanispa-steel">Dossier n°{dossier.public_reference || "Référence en cours"}</p>
