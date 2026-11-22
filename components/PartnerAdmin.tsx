@@ -18,6 +18,8 @@ const emptyForm = {
   departments: "",
 };
 
+const partnerDate = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" });
+
 export function PartnerAdmin({
   initialPartners,
 }: {
@@ -33,6 +35,7 @@ export function PartnerAdmin({
   const [checked, setChecked] = useState(false);
   const [correction, setCorrection] = useState("");
   const [showEditor, setShowEditor] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const isEditing = Boolean(form.id);
   const editingPartner = partners.find((partner) => partner.id === form.id);
 
@@ -164,6 +167,32 @@ export function PartnerAdmin({
       setMessage("Entreprise vérifiée. Vous pouvez désormais la sélectionner pour un dossier.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Vérification impossible.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deletePartner(partner: PartnerAdminItem) {
+    setSaving(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/partners/${partner.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const payload = await response.json();
+        setMessage(payload.error || "Suppression impossible.");
+        setDeleteId(null);
+        return;
+      }
+      setPartners(current => current.filter(item => item.id !== partner.id));
+      if (form.id === partner.id) {
+        setShowEditor(false);
+        setForm(emptyForm);
+      }
+      setReviewId(current => current === partner.id ? null : current);
+      setDeleteId(null);
+      setMessage(`${partner.company_name} a été supprimé de la liste des partenaires.`);
+    } catch {
+      setMessage("Connexion interrompue. Réessayez pour confirmer la suppression.");
     } finally {
       setSaving(false);
     }
@@ -311,6 +340,12 @@ export function PartnerAdmin({
                   {partner.company_name}
                 </h3>
                 <p className="mt-1 text-sm text-sanispa-steel">
+                  {partner.registered_at ? "Inscription le " : "Fiche ajoutée le "}
+                  <time dateTime={partner.registered_at ?? partner.created_at}>
+                    {partnerDate.format(new Date(partner.registered_at ?? partner.created_at))}
+                  </time>
+                </p>
+                <p className="mt-1 text-sm text-sanispa-steel">
                   {partner.contact_name || "Contact non renseigné"} ·{" "}
                   {partner.email}
                 </p>
@@ -352,8 +387,37 @@ export function PartnerAdmin({
                 >
                   {partner.active ? "Désactiver" : "Réactiver"}
                 </button>
+                <button
+                  type="button"
+                  aria-expanded={deleteId === partner.id}
+                  aria-controls={deleteId === partner.id ? `supprimer-${partner.id}` : undefined}
+                  disabled={saving}
+                  onClick={() => {
+                    setMessage("");
+                    setDeleteId(deleteId === partner.id ? null : partner.id);
+                  }}
+                  className="focus-ring rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-800 disabled:opacity-50"
+                >
+                  Supprimer le partenaire
+                </button>
               </div>
             </div>
+            {deleteId === partner.id ? (
+              <div id={`supprimer-${partner.id}`} className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                <p className="font-bold">Supprimer définitivement {partner.company_name} ?</p>
+                <p className="mt-1">La fiche et les accès à cette entreprise seront supprimés.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" disabled={saving} onClick={() => void deletePartner(partner)}
+                    className="focus-ring min-h-11 rounded-md bg-red-800 px-3 py-2 font-bold text-white disabled:opacity-50">
+                    {saving ? "Suppression en cours…" : "Confirmer la suppression"}
+                  </button>
+                  <button type="button" disabled={saving} onClick={() => setDeleteId(null)}
+                    className="focus-ring min-h-11 rounded-md border border-red-200 bg-white px-3 py-2 font-bold disabled:opacity-50">
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {reviewId === partner.id ? (
               <div className="mt-4 grid gap-3 rounded-lg bg-sanispa-ice p-4 text-sm">
                 <h4 className="font-bold">Vérification de {partner.company_name}</h4>

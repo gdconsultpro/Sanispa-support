@@ -28,12 +28,17 @@ test("public partner registration is atomic and idempotent, owns one company and
 test("confirmed email can claim only its unused pre-created company; existing or disabled memberships cannot be taken over",async()=>{
  const db=await fullDatabase();try{
  await db.query("insert into auth.users(id,email,email_confirmed_at) values($1,'tech@example.invalid',now()),($2,'other@example.invalid',now()),($3,'third@example.invalid',now())",[user,other,third]);
- const company=(await db.query<any>("insert into partners(company_name,email) values('Entreprise préinscrite TEST','Tech@Example.invalid') returning id")).rows[0].id;
+ const company=(await db.query<any>("insert into partners(company_name,email,created_at) values('Entreprise préinscrite TEST','Tech@Example.invalid','2026-09-01') returning id")).rows[0].id;
  let status=(await db.query<any>("select partner_onboarding_status($1,'tech@example.invalid') state",[user])).rows[0].state;assert.equal(status.candidate.company_name,"Entreprise préinscrite TEST");
  assert.equal((await db.query<any>("select partner_onboarding_status($1,'other@example.invalid') state",[other])).rows[0].state.candidate,null);
  await assert.rejects(db.query("select register_partner_self($1,'tech@example.invalid',$2)",[user,JSON.stringify(profile)]),/EXISTING_COMPANY_CONFIRMATION_REQUIRED/);
  await assert.rejects(db.query("select register_partner_self($1,'other@example.invalid',$2)",[other,JSON.stringify({...profile,mode:"claim"})]),/COMPANY_NOT_FOUND/);
  await db.exec("set role service_role");assert.equal((await db.query<any>("select register_partner_self($1,'tech@example.invalid',$2) id",[user,JSON.stringify({...profile,mode:"claim"})])).rows[0].id,company);await db.exec("reset role");
+ const dates=(await db.query<{ registered: boolean; original: boolean }>(
+   "select registered_at = h.created_at as registered, p.created_at < p.registered_at as original from partners p join partner_access_history h on h.partner_id=p.id where p.id=$1",
+   [company],
+ )).rows[0];
+ assert.deepEqual(dates,{registered:true,original:true});
  await db.query("update partner_users set active=false where user_id=$1",[user]);
  await assert.rejects(db.query("select register_partner_self($1,'tech@example.invalid',$2)",[third,JSON.stringify({...profile,mode:"claim"})]),/PARTNER_ACCESS_INACTIVE/);
  status=(await db.query<any>("select partner_onboarding_status($1,'tech@example.invalid') state",[third])).rows[0].state;assert.equal(status.blocked,true);

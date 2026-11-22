@@ -127,6 +127,7 @@ export type PartnerAdminItem = {
   siret?: string | null;
   verification_status?: "existing" | "pending" | "verified";
   verified_at?: string | null;
+  registered_at: string | null;
   id: string;
   company_name: string;
   contact_name: string | null;

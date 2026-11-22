@@ -15,6 +15,27 @@ const partnerSchema = z.object({
     departments: z.array(z.string()).optional()
 }).strict();
 const commandSchema=z.union([z.object({verify:z.literal(true),expectedSiret:z.string().regex(/^\d{14}$/)}).strict(),partnerSchema]);
+type Context = { params: Promise<{ id: string }> };
+
+export async function DELETE(request: Request, { params }: Context) {
+    try {
+        const { supabase, user } = await administrator(request.headers);
+        requireSameOrigin(request);
+        const id = z.string().uuid().parse((await params).id);
+        const { error } = await supabase.rpc("delete_admin_partner", { p_partner: id, p_actor: user.id });
+        if (error?.message === "ADMIN_REQUIRED")
+            return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 });
+        if (error?.message === "PARTNER_HAS_HISTORY" || error?.code === "23503")
+            return NextResponse.json({
+                error: "Cette entreprise est liée à des dossiers, des documents ou des données de travail. Vous pouvez désactiver son accès."
+            }, { status: 409 });
+        if (error) throw error;
+        return NextResponse.json({ deleted: true });
+    } catch (error) {
+        return apiError(error);
+    }
+}
+
 export async function PATCH(request: Request, { params }: {
     params: Promise<{
         id: string;
