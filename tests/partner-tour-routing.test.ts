@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getPartnerRoadRoute } from "../lib/partner-road-route";
-import { minutesMissingBetweenStops, orderTourStops, scheduledTechnicianDays, type TourStop } from "../lib/partner-tour-routing";
+import { minutesMissingBetweenStops, moveTourStep, orderTourStops, proposeTourTimes, scheduledTechnicianDays, type TourStop } from "../lib/partner-tour-routing";
+import { fullDatabase } from "./helpers/full-database";
 
 function stop(id: string, hour: string, longitude: number | null, technicianId = "camille"): TourStop {
   return {
@@ -52,4 +53,89 @@ test("failed or mismatched road results leave durations unavailable", async cont
     [{ latitude: 48.58, longitude: 7.7 }, { latitude: 48.58, longitude: 7.8 }], new AbortController().signal,
   );
   assert.deepEqual(response, { legs: [null], lines: [] });
+});
+
+test("manual order preserves locked visits and calculates the beginning and end of each future stop", () => {
+  const booking = (id: string, hour: string): TourStop => ({
+    ...stop(id, hour, 7.75),
+    reschedule: { source: "private", id, version: "2026-11-01T09:00Z" },
+  });
+  const locked = booking("locked", "08");
+  const first = booking("first", "10");
+  const second = booking("second", "11");
+  const now = Date.parse("2026-11-23T08:15Z");
+  const original = [locked, first, second];
+  assert.equal(moveTourStep(original, 0, 1, now), original);
+  const reordered = moveTourStep(original, 2, -1, now);
+  assert.deepEqual(reordered.map(stop => stop.id), ["locked", "second", "first"]);
+  const newStart = Date.parse("2026-11-23T09:45Z");
+  const preview = proposeTourTimes(reordered, [15, 12], newStart, now);
+  assert.deepEqual(preview.map(step => new Date(step.startsAt!).toISOString()),
+    ["2026-11-23T08:00:00.000Z", "2026-11-23T09:45:00.000Z", "2026-11-23T10:27:00.000Z"]);
+  assert.equal(preview[2].endsAt! - preview[2].startsAt!, 30 * 60000);
+  assert.equal(proposeTourTimes(reordered, [15, null], newStart, now)[2].startsAt, null);
+  const closed = { ...booking("closed", "10"), reschedule: { ...first.reschedule!, closed: true } };
+  assert.equal(proposeTourTimes([second, closed], [20], newStart, now)[1].missesFixedTime, true);
+});
+
+test("applying a mixed tour is atomic, keeps the original durations and rejects out-of-date or incomplete proposals", async () => {
+  const db = await fullDatabase();
+  const id = (number: number) => `8f15e167-e13d-4a4f-a19a-${String(number).padStart(12, "0")}`;
+  const [actor, partner, technician, client, visit, customer, dossier, nextDay, otherPartner, otherActor, otherTech, oldVisit] =
+    Array.from({ length: 12 }, (_, index) => id(index + 1));
+  try {
+    const { rows: [time] } = await db.query<{ day: string; start: string }>(`select
+      ((now() at time zone 'Europe/Paris')::date + 2)::text as "day",
+      (((now() at time zone 'Europe/Paris')::date + 2)::timestamp at time zone 'Europe/Paris')::text as "start"`);
+    const at = (hours: number) => new Date(Date.parse(time.start) + hours * 3600000).toISOString();
+    const oldStart = at(-63);
+    const { rows: [{ day: previousDay }] } = await db.query<{ day: string }>(
+      'select ($1::date-3)::text as "day"', [time.day]);
+    await db.exec(`
+      insert into auth.users(id,email) values ('${actor}','manual@example.invalid'),('${otherActor}','outside@example.invalid');
+      insert into public.partners(id,company_name,email) values ('${partner}','Équipe','manual@example.invalid'),('${otherPartner}','Hors équipe','outside@example.invalid');
+      insert into public.partner_users(partner_id,user_id) values ('${partner}','${actor}'),('${otherPartner}','${otherActor}');
+      insert into public.partner_planning_technicians(partner_id,id,name)
+        values ('${partner}','${technician}','Camille'),('${otherPartner}','${otherTech}','Robin');
+      insert into public.partner_private_clients(partner_id,id,name,street,postal_code,city)
+        values ('${partner}','${client}','Client QA','','','');
+      insert into public.partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at,technician_id)
+        values ('${partner}','${visit}','${client}','SAV','${at(9)}','${at(9.5)}','${technician}'),
+          ('${partner}','${nextDay}','${client}','Mise en service','${at(24.5)}','${at(25)}','${technician}'),
+          ('${partner}','${oldVisit}','${client}','Entretien','${oldStart}','${at(-62)}','${technician}');
+      insert into public.customers(id,name,phone,email,address,spa_brand,spa_year,installation_type,power_supply)
+        values ('${customer}','Test','0000000000','client@example.invalid','','','','exterieur','230V');
+      insert into public.diagnostics(id,customer_id,problem_type,status,assigned_partner_id)
+        values ('${dossier}','${customer}','fuite','ASSIGNED','${partner}');
+      insert into public.partner_appointments(diagnostic_id,partner_id,starts_at,ends_at,technician_id)
+        values ('${dossier}','${partner}','${at(10)}','${at(11)}','${technician}');
+      set role service_role;
+    `);
+    const versions = await db.query<{ id: string; version: string }>(`select id,updated_at::text version
+      from public.partner_private_visits union all select diagnostic_id,updated_at::text from public.partner_appointments`);
+    const edit = (source: "private" | "sanispa", id: string, starts_at: string) => ({
+      source, id, starts_at, expected_at: versions.rows.find(row => row.id === id)!.version,
+    });
+    const apply = (stops: ReturnType<typeof edit>[], onDay = time.day, who = actor, team = partner, tech = technician) =>
+      db.query<{ updated: number }>("select public.apply_partner_tour($1,$2,$3,$4,$5::jsonb) updated", [team, who, tech, onDay, JSON.stringify(stops)]);
+    const firstProposal = edit("private", visit, at(11.25));
+    const secondProposal = edit("sanispa", dossier, at(23.75));
+    await assert.rejects(apply([firstProposal, secondProposal]), /TOUR_OVERLAP/);
+    assert.equal(new Date((await db.query<{ start: string }>("select starts_at::text start from public.partner_private_visits where id=$1", [visit])).rows[0].start).toISOString(), at(9));
+    assert.equal((await db.query("select * from public.diagnostic_activity where event_type='appointment_scheduled'")).rows.length, 0);
+    await assert.rejects(apply([firstProposal]), /TOUR_CHANGED/);
+    await assert.rejects(apply([firstProposal, secondProposal], time.day, otherActor), /ASSIGNED_PARTNER_REQUIRED/);
+    await assert.rejects(apply([firstProposal, secondProposal], time.day, otherActor, otherPartner, otherTech), /TOUR_CHANGED/);
+    await assert.rejects(apply([edit("private", oldVisit, at(-62.5))], previousDay), /TOUR_STOP_LOCKED/);
+    const successful = [edit("sanispa", dossier, at(9)), firstProposal];
+    assert.equal((await apply(successful)).rows[0].updated, 2);
+    await assert.rejects(apply(successful), /TOUR_CHANGED/);
+    const privateRow = (await db.query("select extract(epoch from ends_at-starts_at)::integer seconds, technician_id from public.partner_private_visits where id=$1", [visit])).rows[0];
+    const assignedRow = (await db.query("select extract(epoch from ends_at-starts_at)::integer seconds, technician_id from public.partner_appointments where diagnostic_id=$1", [dossier])).rows[0];
+    assert.deepEqual(privateRow, { seconds: 1800, technician_id: technician });
+    assert.deepEqual(assignedRow, { seconds: 3600, technician_id: technician });
+    assert.equal((await db.query("select * from public.diagnostic_activity where event_type='appointment_scheduled'")).rows.length, 1);
+  } finally {
+    await db.close();
+  }
 });

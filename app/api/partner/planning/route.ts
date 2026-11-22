@@ -70,7 +70,15 @@ const coordinateInput = z.object({
 const tourRouteInput = z.object({
   action: z.literal("routeTour"), stops: z.array(coordinateInput.nullable()).min(2).max(maximumTourRouteStops),
 }).strict();
-const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, tourRouteInput]);
+const applyTourInput = z.object({
+  action: z.literal("applyTour"),
+  day: z.string().date().min(10).max(10),
+  technician_id: z.string().uuid(),
+  stops: z.array(z.object({
+    source: z.enum(["private", "sanispa"]), id: z.string().uuid(), expected_at: timestamp, starts_at: timestamp,
+  }).strict()).min(1).max(maximumTourRouteStops),
+}).strict();
+const actions = z.discriminatedUnion("action", [privateClientInput, privateVisitInput, stockInput, locateClientInput, technicianInput, moveInput, tourInput, tourRouteInput, applyTourInput]);
 const rangeInput = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
@@ -270,11 +278,28 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { partner, supabase, user } = await requirePlanner(request);
-    const command = actions.parse(await readJson(request, 14000));
+    const command = actions.parse(await readJson(request, 22000));
     if (command.action === "routeTour") {
       await rateLimit(supabase, `partner-tour-route:${partner.id}`, 12);
       return NextResponse.json(await getPartnerRoadRoute(command.stops, request.signal),
         { headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (command.action === "applyTour") {
+      await rateLimit(supabase, `partner-tour-apply:${partner.id}`, 12);
+      const { data, error } = await supabase.rpc("apply_partner_tour", {
+        p_partner: partner.id, p_actor: user.id, p_technician: command.technician_id, p_day: command.day, p_stops: command.stops,
+      });
+      const code = error?.message ?? "";
+      if (code.includes("TOUR_CHANGED") || error?.code === "40P01" || error?.code === "40001")
+        throw new HttpError(409, "Le planning a changé. Rechargez la tournée avant de la valider.", "TOUR_CHANGED");
+      if (code.includes("TOUR_STOP_LOCKED"))
+        throw new HttpError(409, "Un rendez-vous est déjà commencé ou clôturé. Rechargez la tournée.", "TOUR_CHANGED");
+      if (code.includes("TOUR_OVERLAP"))
+        throw new HttpError(409, "Un horaire proposé chevauche un autre rendez-vous du technicien.");
+      if (code.includes("INVALID_TOUR") || code.includes("TECHNICIAN_NOT_FOUND"))
+        throw new HttpError(400, "Vérifiez le jour, les horaires et le technicien de la tournée.");
+      if (error) throw interventionError(error);
+      return NextResponse.json({ updated: data });
     }
     await rateLimit(supabase, `partner-private-planner:${partner.id}`, 30);
     const updated_at = new Date().toISOString();

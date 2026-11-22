@@ -76,6 +76,7 @@ export type PlannerMapIntervention = {
   client?: PrivatePartnerClient;
   visit?: PrivatePartnerVisit | PendingPrivatePartnerVisit;
   dossierId?: string;
+  reschedule?: { source: "private" | "sanispa"; id: string; version: string; closed?: boolean };
 };
 
 export type TourBooking = {

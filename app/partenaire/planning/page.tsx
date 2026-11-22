@@ -17,7 +17,7 @@ import {
   type PlannerPeriod, type PlannerSlot, type PlannerTechnician, type PrivatePartnerClient,
   type PrivatePartnerStock, type PrivatePartnerVisit, type SanispaPartnerVisit, type TourBooking,
 } from "@/lib/partner-planner";
-import type { TourDrivingRoute } from "@/lib/partner-tour-routing";
+import type { TourDrivingRoute, TourReschedule } from "@/lib/partner-tour-routing";
 
 const path = "/partenaire/planning";
 const endpoint = "/api/partner/planning";
@@ -42,7 +42,7 @@ type Editor = FormEditor | { type: "pickClient"; id: string; slot: PlannerSlot }
 const periods = { day: "Jour", week: "Semaine", month: "Mois" } as const;
 const stockLabels = { piece: "Pièce détachée", spa: "Spa" } as const;
 class PlannerRequestError extends Error {
-  constructor(message: string, readonly status: number) { super(message); }
+  constructor(message: string, readonly status: number, readonly code?: string) { super(message); }
 }
 
 async function plannerRequest(url: string, options: { signal?: AbortSignal; payload?: object } = {}) {
@@ -58,7 +58,7 @@ async function plannerRequest(url: string, options: { signal?: AbortSignal; payl
   });
   if (redirectPartnerAccess(response, next)) return null;
   const result = await response.json();
-  if (!response.ok) throw new PlannerRequestError(result.error || "Votre planning est temporairement indisponible.", response.status);
+  if (!response.ok) throw new PlannerRequestError(result.error || "Votre planning est temporairement indisponible.", response.status, result.code);
   return result;
 }
 
@@ -196,6 +196,18 @@ export default function PartnerPlanningPage() {
     return route;
   }, []);
 
+  async function applyDrivingTour(tour: TourReschedule) {
+    setSaving(true);
+    try {
+      const result = await plannerRequest(endpoint, { payload: { action: "applyTour", ...tour } });
+      if (!result) throw new Error("Reconnectez-vous pour valider la tournée.");
+      setRevision(current => current + 1);
+      return result.updated as number;
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function moveFromGrid(appointment: PlannerAppointment, start: Date, technician: string | null) {
     if (!Number.isFinite(+start)) {
       setGridError("Choisissez une date et une heure valides.");
@@ -329,12 +341,15 @@ export default function PartnerPlanningPage() {
       endsAt: visit.ends_at ?? undefined, address: partnerClientAddress(visit.client),
       latitude: visit.latitude ?? visit.client.latitude, longitude: visit.longitude ?? visit.client.longitude,
       approximateLocation: visit.approximateLocation, client: visit.client, visit,
+      reschedule: { source: "private" as const, id: visit.id, version: visit.updated_at },
     }));
     const scheduled = agenda.sanispa.map(visit => ({
       id: "sanispa:" + visit.diagnostic_id, dossierId: visit.diagnostic_id, startsAt: visit.starts_at, endsAt: visit.ends_at, technicianId: visit.technician_id,
       title: `${problemLabel(visit.diagnostic.problem_type)} · ${visit.diagnostic.customer?.name || "Client"}`,
       address: visit.diagnostic.customer?.address ?? "", latitude: visit.latitude ?? null, longitude: visit.longitude ?? null,
       approximateLocation: visit.approximateLocation,
+      reschedule: { source: "sanispa" as const, id: visit.diagnostic_id, version: visit.updated_at,
+        closed: visit.diagnostic.status === "CLOSED" || visit.diagnostic.status === "terminé" },
     }));
     const pending = (agenda.pendingDossiers ?? []).map(dossier => ({
       id: "sanispa:" + dossier.id, dossierId: dossier.id, startsAt: null, technicianId: null,
@@ -468,18 +483,18 @@ export default function PartnerPlanningPage() {
       </div> : <div className="mt-3 flex flex-wrap gap-2" aria-label="Période de la carte">
         {(["day", "week"] as const).map(option => <Button type="button" key={option}
           aria-pressed={mapPeriod === option} variant={mapPeriod === option ? "primary" : "secondary"}
-          onClick={() => setMapPeriod(option)}>{periods[option]}</Button>)}
+          disabled={saving} onClick={() => setMapPeriod(option)}>{periods[option]}</Button>)}
       </div>}
       <div className="mb-3 mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 sm:max-w-md">
-        <Button type="button" variant="secondary" aria-label="Période précédente" onClick={() => stepAgenda(-1)}>‹</Button>
+        <Button type="button" variant="secondary" aria-label="Période précédente" disabled={saving} onClick={() => stepAgenda(-1)}>‹</Button>
         <label className="min-w-0 text-sm font-bold">Date du planning
-          <input type="date" min="1900-01-01" max="2099-12-31" value={day} className={inputClass + " mt-1"} onChange={event => {
+          <input type="date" min="1900-01-01" max="2099-12-31" value={day} className={inputClass + " mt-1"} disabled={saving} onChange={event => {
             if (event.target.value) { setMapped(null); setDay(event.target.value); }
           }} />
         </label>
-        <Button type="button" variant="secondary" aria-label="Période suivante" onClick={() => stepAgenda(1)}>›</Button>
+        <Button type="button" variant="secondary" aria-label="Période suivante" disabled={saving} onClick={() => stepAgenda(1)}>›</Button>
       </div>
-      {day !== plannerDate(new Date()) ? <button type="button" className={actionClass + " mb-2"} onClick={() => {
+      {day !== plannerDate(new Date()) ? <button type="button" className={actionClass + " mb-2"} disabled={saving} onClick={() => {
         setMapped(null);
         setDay(plannerDate(new Date()));
       }}>Aujourd’hui</button> : null}
@@ -491,6 +506,7 @@ export default function PartnerPlanningPage() {
         {mapWeek ? <p className="mb-3 font-bold">Semaine du {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" })
           .formatRange(mapWeek, plannerDay(plannerDate(mapWeek), 6))}</p> : null}
         <PartnerTourMap items={mapItems} team={team} period={mapPeriod} scope={day} busy={saving} onBook={saveTourVisit} loadRoute={loadDrivingTour}
+          applyTour={applyDrivingTour} reloadTour={() => setRevision(current => current + 1)}
           onVisit={visit => edit({ type: "visit", id: visit.id, client: visit.client, visit })}
           onAddress={client => edit({ type: "client", id: client.id, client, returnToMap: true })} />
       </> : null}

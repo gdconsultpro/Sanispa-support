@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/Button";
-import { PartnerDrivingTour, type LoadDrivingTour } from "@/components/PartnerDrivingTour";
+import { PartnerDrivingTour, type ApplyDrivingTour, type LoadDrivingTour } from "@/components/PartnerDrivingTour";
 import { matchesPlannerMapFilters, nearbyPendingVisits, partnerDirections, plannerDate, plannerTime, suggestedTourStart,
   type PartnerMapPoint, type PendingPrivatePartnerVisit, type PlannerMapIntervention, type PlannerTechnician,
   type PrivatePartnerClient, type PrivatePartnerVisit, type TourBooking } from "@/lib/partner-planner";
@@ -17,7 +17,7 @@ const PrivateMap = dynamic(() => import("@/components/PartnerPrivateMap"), {
 const filterClass = "focus-ring mt-1 min-h-12 w-full rounded-lg border border-sanispa-line bg-white px-3 text-base";
 const linkClass = "focus-ring inline-flex min-h-11 items-center font-bold text-sanispa-blue underline";
 
-export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute }: {
+export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAddress, onBook, loadRoute, applyTour, reloadTour }: {
   items: PlannerMapIntervention[] | null;
   team: PlannerTechnician[];
   period: "day" | "week";
@@ -27,6 +27,8 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
   onAddress: (client: PrivatePartnerClient) => void;
   onBook: (booking: TourBooking) => Promise<void>;
   loadRoute: LoadDrivingTour;
+  applyTour: ApplyDrivingTour;
+  reloadTour: () => void;
 }) {
   const [status, setStatus] = useState<"all" | "scheduled" | "pending">("all");
   const [technician, setTechnician] = useState("all");
@@ -66,7 +68,8 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
     <div className="mb-3 grid gap-3 sm:grid-cols-2">
       <div>
         <label htmlFor={filterId + "-technician"} className="text-sm font-bold">Technicien</label>
-        <select id={filterId + "-technician"} className={filterClass} value={showTour ? tourTechnician?.id ?? "all" : technician} onChange={event => setTechnician(event.target.value)}>
+        <select id={filterId + "-technician"} className={filterClass} value={showTour ? tourTechnician?.id ?? "all" : technician} disabled={busy}
+          onChange={event => setTechnician(event.target.value)}>
           <option value="all">{showTour ? "Choisir un technicien" : "Toute l’équipe"}</option>
           {!showTour ? <option value="">À affecter</option> : null}
           {team.map(member => <option value={member.id} key={member.id}>{member.name}</option>)}
@@ -83,11 +86,12 @@ export function PartnerTourMap({ items, team, period, scope, busy, onVisit, onAd
       </div>
     </div>
     <label className="mb-3 flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm font-bold">
-      <input type="checkbox" className="h-5 w-5 accent-sanispa-blue" checked={showTour}
+      <input type="checkbox" className="h-5 w-5 accent-sanispa-blue" checked={showTour} disabled={busy}
         onChange={event => setShowTour(event.target.checked)} />
       Afficher la tournée
     </label>
-    {showTour ? <PartnerDrivingTour items={items} technician={tourTechnician} scope={scope} loadRoute={loadRoute} /> : <>
+    {showTour ? <PartnerDrivingTour items={items} technician={tourTechnician} scope={scope} loadRoute={loadRoute}
+      applyTour={applyTour} reloadTour={reloadTour} saving={busy} /> : <>
     {items && status !== "scheduled" ? <p className="mb-2 text-sm font-bold">
       {waitingCount} {waitingCount === 1 ? "intervention à planifier" : "interventions à planifier"}
     </p> : null}
