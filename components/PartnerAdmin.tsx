@@ -152,15 +152,15 @@ export function PartnerAdmin({
     );
   }
 
-  async function verifyPartner(partner: PartnerAdminItem) {
-    if (saving || !checked || !partner.siret) return;
+  async function confirmPartner(partner: PartnerAdminItem, sendOnly = false) {
+    if (saving || (!sendOnly && (!checked || !partner.siret))) return;
     setSaving(true);
     setMessage("");
     try {
       const response = await fetch(`/api/admin/partners/${partner.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ verify: true, expectedSiret: partner.siret }),
+        body: JSON.stringify(sendOnly ? { sendApproval: true } : { verify: true, expectedSiret: partner.siret }),
       });
       const payload = await response.json();
       if (payload.partner) setPartners(current => current.map(item => item.id === partner.id ? payload.partner : item));
@@ -170,7 +170,11 @@ export function PartnerAdmin({
       }
       setReviewId(null);
       setChecked(false);
-      setMessage("Entreprise vérifiée. Vous pouvez désormais la sélectionner pour un dossier.");
+      const emailStatus = payload.approvalEmail === "sent" ? "E-mail de validation envoyé à " + payload.partner.email + "."
+        : payload.approvalEmail === "delivery_unknown" || payload.approvalEmail === "cancelled"
+          ? "L’envoi de l’e-mail n’est pas confirmé. Vérifiez l’adresse de contact."
+          : "E-mail de validation en attente d’envoi. Vous pouvez vérifier son statut depuis la fiche.";
+      setMessage((sendOnly ? "" : "Entreprise vérifiée. ") + emailStatus);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Vérification impossible.");
     } finally {
@@ -380,6 +384,11 @@ export function PartnerAdmin({
                   setCorrection("");
                   setMessage("");
                 }} className="focus-ring rounded-md bg-sanispa-blue px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Examiner les coordonnées et le SIRET</button> : null}
+                {partner.active && partner.verification_status === "verified" ? <button
+                  type="button" disabled={saving} onClick={() => void confirmPartner(partner, true)}
+                  className="focus-ring rounded-md border border-sanispa-line bg-white px-3 py-2 text-sm font-bold text-sanispa-navy disabled:opacity-50">
+                  Envoyer le mail de validation
+                </button> : null}
                 <button
                   type="button"
                   onClick={() => editPartner(partner)}
@@ -448,9 +457,10 @@ export function PartnerAdmin({
                   J’ai vérifié l’établissement, ses coordonnées et sa zone d’intervention.
                 </label>
                 <button type="button" disabled={!checked || saving || !partner.siret}
-                  className="focus-ring w-fit rounded-md bg-sanispa-blue px-4 py-3 font-bold text-white disabled:opacity-50" onClick={() => void verifyPartner(partner)}>
+                  className="focus-ring w-fit rounded-md bg-sanispa-blue px-4 py-3 font-bold text-white disabled:opacity-50" onClick={() => void confirmPartner(partner)}>
                   Confirmer la validation de l’entreprise
                 </button>
+                <p>L’e-mail de validation sera envoyé à {partner.email}.</p>
                 <details className="rounded-md border border-sanispa-line bg-white p-3">
                   <summary className="cursor-pointer font-bold">Demander une correction</summary>
                   <label className="mt-2 block">Information à corriger

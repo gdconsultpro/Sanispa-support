@@ -1,5 +1,6 @@
 import { administrator, requireSameOrigin } from "@/lib/admin-auth";
 import { apiError } from "@/lib/http";
+import { processNotifications } from "@/lib/notifications";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 const partnerSchema = z.object({
@@ -14,7 +15,11 @@ const partnerSchema = z.object({
     active: z.boolean().optional(),
     departments: z.array(z.string()).optional()
 }).strict();
-const commandSchema=z.union([z.object({verify:z.literal(true),expectedSiret:z.string().regex(/^\d{14}$/)}).strict(),partnerSchema]);
+const commandSchema=z.union([
+    z.object({verify:z.literal(true),expectedSiret:z.string().regex(/^\d{14}$/)}).strict(),
+    z.object({sendApproval:z.literal(true)}).strict(),
+    partnerSchema,
+]);
 type Context = { params: Promise<{ id: string }> };
 
 export async function DELETE(request: Request, { params }: Context) {
@@ -46,14 +51,24 @@ export async function PATCH(request: Request, { params }: {
         requireSameOrigin(request);
         const id = z.string().uuid().parse((await params).id);
         const payload = commandSchema.parse(await request.json());
-        if ("verify" in payload) {
-            const result=await supabase.rpc("verify_partner_registration",{
-                p_partner:id,p_actor:user.id,p_expected_siret:payload.expectedSiret
+        if ("verify" in payload || "sendApproval" in payload) {
+            const verifying = "verify" in payload;
+            const result = await supabase.rpc("notify_partner_approval",{
+                p_partner:id,p_actor:user.id,p_expected_siret:verifying ? payload.expectedSiret : null,
             });
             if(result.error?.message==="SIRET_CHANGED")
                 return NextResponse.json({error:"Le SIRET a changé. Examinez le nouveau numéro avant de le valider.",partner:await loadPartner(supabase,id)},{status:409});
-            if(result.error) return NextResponse.json({error:"Vérification impossible. Renseignez le SIRET, le contact et l’adresse complète de l’entreprise active."},{status:409});
-            return NextResponse.json({partner:await loadPartner(supabase,id)});
+            if(result.error?.message==="INCOMPLETE_REGISTRATION" || result.error?.message==="PARTNER_NOT_VERIFIED")
+                return NextResponse.json({error:verifying
+                    ? "Vérification impossible. Renseignez le SIRET, le contact et l’adresse complète de l’entreprise active."
+                    : "La confirmation est disponible pour les entreprises actives et vérifiées."},{status:409});
+            if (result.error) throw result.error;
+            await processNotifications(result.data).catch(() => undefined);
+            const [partner, job] = await Promise.all([
+                loadPartner(supabase,id),
+                supabase.from("notification_jobs").select("state").eq("key",result.data).maybeSingle(),
+            ]);
+            return NextResponse.json({partner, approvalEmail: job.data?.state ?? "pending"});
         }
         const { departments, ...partnerPayload } = payload;
         if (Object.keys(partnerPayload).length) {

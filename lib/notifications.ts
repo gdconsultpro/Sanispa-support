@@ -6,6 +6,7 @@ import {
   sendCustomerConfirmation,
   sendDiagnosticNotification,
   sendPartnerLeadNotification,
+  sendPartnerApprovalNotification,
   sendPartnerRegistrationNotification,
   sendWaterAssistanceResumeLink,
 } from "./email";
@@ -116,8 +117,12 @@ export async function processNotifications(prefix?: string) {
           continue;
         }
         result = await sendClientReportNotification({ ...job.payload, email: recipient }, job.kind === "client_review_reminder");
-      } else if (job.kind === "partner_registration") {
-        const { data: partner, error } = await supabase.from("partners").select("id").eq("id", job.payload.partnerId).maybeSingle();
+      } else if (job.kind === "partner_registration" || job.kind === "partner_approval") {
+        const approval = job.kind === "partner_approval";
+        const company = supabase.from("partners").select("id").eq("id", job.payload.partnerId);
+        if (approval) company.eq("active", true).eq("verification_status", "verified")
+          .eq("verified_at", job.payload.verifiedAt).eq("email", job.payload.email);
+        const { data: partner, error } = await company.maybeSingle();
         if (error) throw error;
         const firstAttempt = Date.parse(job.first_delivery_attempt_at || "");
         const canRetry = Number.isFinite(firstAttempt) && Date.now() - firstAttempt < 23 * 3600000 &&
@@ -128,7 +133,9 @@ export async function processNotifications(prefix?: string) {
           if (updated.error) throw updated.error;
           continue;
         }
-        result = await sendPartnerRegistrationNotification(job.payload.companyName, job.key);
+        result = approval
+          ? await sendPartnerApprovalNotification(job.payload.email, job.payload.companyName, job.key)
+          : await sendPartnerRegistrationNotification(job.payload.companyName, job.key);
       } else if (job.kind === "admin")
         result = await sendDiagnosticNotification(job.payload);
       else if (job.kind === "partner_accepted") {

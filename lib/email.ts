@@ -189,6 +189,23 @@ export async function sendPartnerRegistrationNotification(companyName: string, k
     </div>`,
   });
 }
+export async function sendPartnerApprovalNotification(email: string, companyName: string, key: string) {
+  const url = new URL("/partenaire/connexion", process.env.NEXT_PUBLIC_APP_URL || "https://support.sani-spa.fr");
+  return sendTransactionalEmail({
+    to: email,
+    privateRecipient: true,
+    idempotencyKey: key,
+    replyTo: process.env.EMAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL,
+    subject: "SANISPA Support — Votre inscription partenaire est validée",
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;color:#0a2342;line-height:1.6">
+      <img src="${escapeHtml(url.origin)}/sanispa-logo.png" width="120" alt="SANISPA"/>
+      <h1>Votre inscription partenaire est validée</h1>
+      <p>SANISPA a validé l’inscription de <strong>${escapeHtml(companyName)}</strong>. Votre espace professionnel est accessible avec votre compte SANISPA.</p>
+      <p><a href="${escapeHtml(url.href)}" style="display:inline-block;background:#0a2342;color:white;padding:14px 20px;border-radius:8px;text-decoration:none">Ouvrir mon espace partenaire</a></p>
+      <p>L’équipe SANISPA Support</p>
+    </div>`,
+  });
+}
 export async function sendPartnerLeadNotification(
   payload: PartnerLeadNotificationPayload,
 ) {

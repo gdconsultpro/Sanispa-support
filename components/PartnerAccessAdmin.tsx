@@ -2,9 +2,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Field } from "@/components/Field";
 import type { PartnerAdminItem } from "@/lib/types";
-type Access = { user_id: string; contact_name: string | null; email: string; active: boolean; passwordChangeRequired: boolean; role: string };
+type Access = { user_id: string; contact_name: string | null; email: string; active: boolean; passwordChangeRequired: boolean; role: string; technician_id: string | null };
+type PlanningLine = { id: string; name: string };
 export function PartnerAccessAdmin({ partner, technicianOnly = false }: { partner: PartnerAdminItem; technicianOnly?: boolean }) {
   const [accesses, setAccesses] = useState<Access[]>([]);
+  const [lines, setLines] = useState<PlanningLine[]>([]);
+  const [lineId, setLineId] = useState("");
+  const [expectedLine, setExpectedLine] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [existingMode, setExistingMode] = useState(technicianOnly);
   const [loadError, setLoadError] = useState("");
@@ -23,7 +27,7 @@ export function PartnerAccessAdmin({ partner, technicianOnly = false }: { partne
       const response = await fetch(`/api/admin/partners/${partner.id}/access`, { cache: "no-store", signal: AbortSignal.timeout(20000) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Impossible de charger les accès.");
-      setAccesses(body.accesses); setLoadError(""); setLoaded(true);
+      setAccesses(body.accesses); setLines(body.planningLines); setLoadError(""); setLoaded(true);
     } catch (error) { setLoadError(error instanceof Error && error.name === "Error" ? error.message : "Chargement des accès interrompu. Réessayez."); }
   }, [partner.id]);
   useEffect(() => { void load(); }, [load]);
@@ -31,19 +35,28 @@ export function PartnerAccessAdmin({ partner, technicianOnly = false }: { partne
     if (pending.current) return;
     pending.current = true; setSaving(true); setMessage("");
     try {
-      const body = mode === "create" ? { mode, name, email, password, role } : mode === "lookup" ? { mode, name, email } : { mode, name, email, existingUserId: existing, reactivate, role };
+      const planningLine = role === "technician" && lineId ? { id: lineId, expected: expectedLine } : undefined;
+      const body = mode === "create" ? { mode, name, email, password, role } : mode === "lookup" ? { mode, name, email }
+        : { mode, name, email, existingUserId: existing, reactivate, role, planningLine };
       const response = await fetch(`/api/admin/partners/${partner.id}/access`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
       const result = await response.json();
-      if (result.conflict && result.existingUserId) { setExisting(result.existingUserId); setExistingMode(true); setPassword(""); setMessage(result.message); return; }
+      if (result.conflict && result.existingUserId) {
+        const currentLine = accesses.find(access => access.user_id === result.existingUserId)?.technician_id ?? null;
+        setExpectedLine(currentLine);
+        setLineId(currentLine ?? "");
+        setExisting(result.existingUserId); setExistingMode(true); setPassword(""); setMessage(result.message); return;
+      }
       if (technicianOnly && response.status === 404) throw new Error("Aucun compte SANISPA trouvé pour cette adresse.");
       if (!response.ok) throw new Error(result.error || "L’accès n’a pas pu être confirmé.");
       if (!result.ready) throw new Error("L’accès n’a pas pu être confirmé. Vérifiez la liste avant de réessayer.");
-      setPassword(""); setExisting(null); setMessage(result.message); await load();
+      setPassword(""); setExisting(null); setReactivate(false); setMessage(result.message); await load();
     } catch (error) {
+      if (mode === "link") setExisting(null);
       setMessage(error instanceof Error && error.name === "Error" ? error.message : "Réponse interrompue : vérifiez la liste des accès avant de réessayer. L’opération a peut-être été enregistrée.");
       await load();
     } finally { pending.current = false; setSaving(false); }
   }
+  const occupiedLines = new Set(accesses.filter(access => access.user_id !== existing && access.technician_id).map(access => access.technician_id));
   return <section className="mt-6 border-t border-sanispa-line pt-5">
     <h3 className="text-lg font-bold text-sanispa-navy">{technicianOnly ? "Rattacher un technicien" : "Accès à l’espace partenaire"}</h3>
     <p className="mt-2 text-sm text-sanispa-steel">
@@ -52,6 +65,7 @@ export function PartnerAccessAdmin({ partner, technicianOnly = false }: { partne
     {loadError ? <p role="alert" className="mt-3 text-sm text-red-800">{loadError} <button onClick={() => void load()} className="underline">Réessayer</button></p> : !loaded ? <p role="status" className="my-3 text-sm">Chargement des accès enregistrés…</p> : accesses.length ? <ul className="my-3 grid gap-2">{accesses.map(access => <li key={access.user_id} className="rounded-md bg-sanispa-ice p-3 text-sm">
       <strong>{access.contact_name || "Contact partenaire"}</strong> · {access.role === "technician" ? "Technicien" : "Responsable"} · {access.email}<br />
       {access.active ? access.passwordChangeRequired ? "Accès rattaché · mot de passe personnel à choisir" : "Accès rattaché et actif" : "Accès désactivé"}
+      {access.technician_id ? <span> · Planning — {lines.find(line => line.id === access.technician_id)?.name}</span> : null}
     </li>)}</ul> : <p className="my-3 text-sm">Aucun accès enregistré pour cette entreprise.</p>}
     <form onSubmit={event => { event.preventDefault(); void save(existing ? "link" : existingMode ? "lookup" : "create"); }} className="mt-4 grid gap-4 sm:grid-cols-2" aria-busy={saving}>
       {!technicianOnly ? <>
@@ -69,14 +83,25 @@ export function PartnerAccessAdmin({ partner, technicianOnly = false }: { partne
       {!existingMode ? <><Field label="Mot de passe provisoire (12 caractères minimum)" name="partner-temporary-password" type={show ? "text" : "password"} value={password} onChange={setPassword} required minLength={12} maxLength={128} autoComplete="new-password" />
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={show} onChange={e => setShow(e.target.checked)} />Afficher le mot de passe provisoire</label></> : existing ? <div className="rounded-md bg-amber-50 p-3 text-sm sm:col-span-2">
         <p>Confirmez l’accès {role === "technician" ? "technicien" : "responsable"} de <strong>{email}</strong> pour <strong>{partner.company_name}</strong>. Le compte garde son mot de passe.</p>
+        {role === "technician" && <div className="mt-3">
+          <label className="grid gap-2 font-bold">Ligne du planning
+            <select value={lineId} onChange={event => setLineId(event.target.value)} disabled={saving}
+              className="focus-ring min-h-12 rounded-md border border-sanispa-line bg-white p-3 font-normal">
+              <option value="">{expectedLine ? "Conserver la ligne actuelle" : "Choisir plus tard"}</option>
+              {lines.map(line => <option key={line.id} value={line.id} disabled={occupiedLines.has(line.id)}>
+                {line.name}{occupiedLines.has(line.id) ? " · Déjà rattachée" : ""}
+              </option>)}
+            </select>
+          </label>
+          <p className="mt-2">{lines.length ? "Les rendez-vous de cette ligne apparaîtront dans « Ma journée »."
+            : "Aucune ligne n’est encore disponible. Le responsable peut en ajouter une depuis le planning de l’entreprise."}</p>
+        </div>}
         <label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={reactivate} onChange={e => setReactivate(e.target.checked)} />Réactiver aussi son accès à cette entreprise s’il était désactivé</label>
       </div> : <p className="text-sm sm:col-span-2">Vérifiez d’abord cette adresse, puis confirmez le rattachement proposé. Aucun mot de passe ne sera demandé ni remplacé.</p>}
-      <button type="submit" disabled={saving || !partner.active} className="focus-ring rounded-md bg-sanispa-navy px-4 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? "Vérification de l’accès…" : existing ? technicianOnly ? "Confirmer l’accès technicien" : "Confirmer le rattachement du compte existant" : existingMode ? "Vérifier le compte existant" : "Créer le compte et son accès partenaire"}</button>
+      <button type="submit" disabled={saving || !partner.active || (role === "technician" && existingMode && (!loaded || Boolean(loadError)))} className="focus-ring rounded-md bg-sanispa-navy px-4 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? "Vérification de l’accès…" : existing ? technicianOnly ? "Confirmer l’accès technicien" : "Confirmer le rattachement du compte existant" : existingMode ? "Vérifier le compte existant" : "Créer le compte et son accès partenaire"}</button>
       {!partner.active ? <p className="text-sm sm:col-span-2">Réactivez l’entreprise avant de créer un accès.</p> : null}
     </form>
     {message ? <p role="status" className="mt-4 rounded-md bg-sanispa-ice p-3 text-sm">{message}</p> : null}
-    <p className="mt-3 text-sm text-sanispa-steel">{technicianOnly
-      ? "Le responsable de l’entreprise peut ensuite associer le compte à sa ligne dans Planning → Comptes techniciens."
-      : "Seuls les nouveaux comptes créés avec un mot de passe provisoire doivent le remplacer lors de leur première connexion."}</p>
+    {!technicianOnly && <p className="mt-3 text-sm text-sanispa-steel">Seuls les nouveaux comptes créés avec un mot de passe provisoire doivent le remplacer lors de leur première connexion.</p>}
   </section>;
 }

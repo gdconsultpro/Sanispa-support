@@ -7,8 +7,9 @@ const accessRole = z.enum(["owner", "technician"]).optional();
 export const partnerAccessSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("lookup"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150) }).strict(),
   z.object({ mode: z.literal("create"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150), password: z.string().min(12).max(128), role: accessRole }).strict(),
-  z.object({ mode: z.literal("link"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150), existingUserId: z.string().uuid(), reactivate: z.boolean().default(false), role: accessRole }).strict()
-]);
+  z.object({ mode: z.literal("link"), email: z.string().trim().email().max(254), name: z.string().trim().min(1).max(150), existingUserId: z.string().uuid(), reactivate: z.boolean().default(false), role: accessRole,
+    planningLine: z.object({ id: z.string().uuid(), expected: z.string().uuid().nullable() }).strict().optional() }).strict()
+]).refine(input => input.mode !== "link" || !input.planningLine || input.role === "technician");
 export type PartnerAccessInput = z.infer<typeof partnerAccessSchema>;
 
 type AccessAccount = Pick<User, "id" | "email_confirmed_at" | "banned_until" | "app_metadata">;
@@ -46,11 +47,17 @@ export async function createPartnerAccess(supabase: SupabaseClient, partnerId: s
   if (!user) throw new HttpError(503, "La création du compte n’a pas pu être confirmée.");
   if (!user.email_confirmed_at || (user.banned_until && Date.parse(user.banned_until) > Date.now()))
     throw new HttpError(409, "Ce compte doit être confirmé ou réactivé avant de pouvoir accéder à l’espace partenaire. Son mot de passe n’a pas été modifié.");
-  const linked = await supabase.rpc("link_partner_account", { p_partner: partnerId, p_user: user.id, p_actor: actorId,
-    p_contact: input.name, p_reactivate: input.mode === "link" && input.reactivate,
-    ...(input.role === "technician" ? { p_role: input.role } : {}) });
+  const link = { p_partner: partnerId, p_user: user.id, p_actor: actorId,
+    p_contact: input.name, p_reactivate: input.mode === "link" && input.reactivate };
+  const line = input.mode === "link" ? input.planningLine : undefined;
+  const linked = line
+    ? await supabase.rpc("link_partner_technician_account", { ...link, p_technician: line.id, p_expected: line.expected })
+    : await supabase.rpc("link_partner_account", { ...link, ...(input.role === "technician" ? { p_role: input.role } : {}) });
   if (linked.error) {
-    const reason = linked.error.message === "ACCOUNT_LINKED_ELSEWHERE" ? "Ce compte est déjà rattaché à une autre entreprise. Aucun transfert automatique n’a été effectué."
+    const reason = linked.error.code === "23505" && line ? "Cette ligne du planning est déjà liée à un autre compte technicien."
+      : linked.error.code === "23503" && line ? "Cette ligne ne fait plus partie du planning de l’entreprise."
+      : linked.error.message === "TECHNICIAN_LINK_CHANGED" ? "La ligne de ce compte a changé. Vérifiez le compte à nouveau avant de confirmer."
+      : linked.error.message === "ACCOUNT_LINKED_ELSEWHERE" ? "Ce compte est déjà rattaché à une autre entreprise. Aucun transfert automatique n’a été effectué."
       : linked.error.message === "PARTNER_ROLE_CONFLICT" ? "Ce compte possède déjà un accès responsable pour cette entreprise."
       : linked.error.message === "ACCESS_INACTIVE" ? "Le rattachement existant est désactivé. Confirmez explicitement sa réactivation."
       : "Le rattachement à l’entreprise n’a pas pu être confirmé. Vérifiez l’accès puis réessayez.";
@@ -58,6 +65,7 @@ export async function createPartnerAccess(supabase: SupabaseClient, partnerId: s
   }
   return { ready: true as const, userId: user.id, passwordChangeRequired: needsPartnerPasswordChange(user),
     message: created ? "Accès créé et rattaché à cette entreprise. Transmettez le mot de passe provisoire au contact par un canal sûr ; il devra le remplacer à sa première connexion. Aucun e-mail n’a été envoyé."
+      : line ? "Compte rattaché à la ligne du planning. Le technicien retrouve ses rendez-vous dans « Ma journée »."
       : input.role === "technician" ? "Compte rattaché comme technicien. Il peut utiliser son mot de passe SANISPA habituel."
       : "Compte existant rattaché à cette entreprise. Son mot de passe a été conservé. Aucun e-mail n’a été envoyé." };
 }
