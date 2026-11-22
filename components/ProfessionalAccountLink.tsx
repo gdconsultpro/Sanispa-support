@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { partnerAccountPath, partnerLoginPath, withPartnerTimeout } from "@/lib/partner-navigation";
 import { useClientSession } from "./SessionPrivacy";
 
-type Access = { status: "guest" | "checking" | "other" } | { status: "partner"; passwordChangeRequired: boolean; role?: string };
+type Access = { status: "guest" | "checking" | "other" | "registration" } | { status: "partner"; passwordChangeRequired: boolean; role?: string };
 const ProfessionalAccount = createContext<Access>({ status: "guest" });
 export const useProfessionalAccount = () => useContext(ProfessionalAccount);
 
@@ -27,6 +27,8 @@ export function ProfessionalAccountProvider({ children }: { children: ReactNode 
         if (response.ok) {
           const { partner, passwordChangeRequired } = await response.json();
           if (partner?.id && typeof passwordChangeRequired === "boolean") access = { status: "partner", passwordChangeRequired, role: partner.role };
+        } else if (response.status === 403 && (await response.json()).code === "PARTNER_REGISTRATION_REQUIRED") {
+          access = { status: "registration" };
         }
       } catch { /* L’espace partenaire peut toujours vérifier la session lors de son ouverture. */ }
       if (!controller.signal.aborted) setResolved({ token: accessToken, access });
@@ -43,7 +45,8 @@ export function ProfessionalAccountProvider({ children }: { children: ReactNode 
 export function ProfessionalAccountLink({ clientSpace }: { clientSpace: boolean }) {
   const { status } = useProfessionalAccount();
   const label = status === "partner" ? "Mon compte" : status === "guest" ? "Professionnels" : "Espace pro";
-  const href = status === "partner" || status === "checking" ? partnerAccountPath : partnerLoginPath(partnerAccountPath);
+  const href = status === "partner" || status === "checking" ? partnerAccountPath
+    : status === "registration" ? "/partenaire/inscription" : partnerLoginPath(partnerAccountPath);
   return <Link href={href} className={`focus-ring rounded-full border border-sanispa-line bg-white px-4 py-3 ${clientSpace && status !== "partner" ? "hidden sm:inline-flex" : ""}`}>
     {label}
   </Link>;

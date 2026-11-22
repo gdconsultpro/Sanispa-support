@@ -112,7 +112,7 @@ export default function PartnerRegistration() {
         <p className="my-4 text-sm font-bold text-sanispa-steel">{email ? "E-mail confirmé · Étape 2 sur 2" : "Votre compte · Étape 1 sur 2"}</p>
         {!loaded ? <p role="status">Vérification de votre compte…</p> : null}
         {loaded && !email && !error ? <>
-          <p className="my-4 leading-7">Créez votre compte, confirmez votre e-mail puis renseignez votre entreprise et votre SIRET.</p>
+          <p className="my-4 leading-7">Connectez-vous à votre compte SANISPA ou créez-en un pour renseigner votre entreprise et votre SIRET.</p>
           <CreateAccountForm intent="partenaire" />
         </> : null}
         {loaded && status?.blocked ? <p role="alert" className="rounded-xl bg-amber-50 p-4">{status.message}</p> : null}

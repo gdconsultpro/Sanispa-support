@@ -21,7 +21,14 @@ export default function PartnerLoginPage() {
   const navigating = useRef(false);
   const [resuming, setResuming] = useState(false);
   useEffect(() => {
-    if (access.status !== "partner" || pending.current || navigating.current) return;
+    if (pending.current || navigating.current) return;
+    if (access.status === "registration") {
+      navigating.current = true;
+      setResuming(true);
+      router.replace("/partenaire/inscription");
+      return;
+    }
+    if (access.status !== "partner") return;
     const next = partnerLoginDestination(new URLSearchParams(window.location.search).get("next"), access.role);
     navigating.current = true;
     setResuming(true);
@@ -47,7 +54,7 @@ export default function PartnerLoginPage() {
   }
   return <AppShell compact>
     <StepHeader eyebrow="Espace partenaire" title="Connexion partenaire" description="Connectez-vous avec votre adresse e-mail et votre mot de passe pour retrouver votre espace professionnel gratuit." />
-    {resuming || access.status === "checking" || access.status === "partner" && !loading ? <p role="status">Ouverture de votre espace partenaire…</p>
+    {resuming || access.status === "checking" || access.status === "registration" || access.status === "partner" && !loading ? <p role="status">Ouverture de votre espace partenaire…</p>
       : <form onSubmit={submit} className="grid gap-4 rounded-md border border-sanispa-line bg-white p-5 shadow-soft" aria-busy={loading}>
       <Field label="Adresse e-mail" type="email" name="email" value={email} onChange={setEmail} required autoComplete="username" />
       <Field label="Mot de passe" type="password" name="password" value={password} onChange={setPassword} required autoComplete="current-password" />

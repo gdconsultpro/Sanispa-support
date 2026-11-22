@@ -1,4 +1,4 @@
-import { adminDossierId, adminDossierSection } from "./admin-navigation";
+import { adminDirectoryTab, adminDossierId, adminDossierSection } from "./admin-navigation";
 import { problemTypes } from "./questions";
 import type { DiagnosticDraft } from "./types";
 export function publicClientIntent(value: string | null) {
@@ -26,7 +26,8 @@ export function clientTokenConfirmationUrl(origin: string, token: string, intent
     url.searchParams.set("dossier", adminId);
     url.searchParams.set("section", adminDossierSection(adminDestination?.section));
   }
-  if (intent === "admin" && adminDestination?.tab === "partners") url.searchParams.set("tab", "partners");
+  const directory = intent === "admin" ? adminDirectoryTab(adminDestination?.tab) : null;
+  if (directory) url.searchParams.set("tab", directory);
   url.hash = new URLSearchParams({ token_hash: token, type: intent === "recovery" ? "recovery" : "email" }).toString();
   return url.href;
 }

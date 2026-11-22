@@ -141,3 +141,14 @@ export type PartnerAdminItem = {
   created_at: string;
   departments: string[];
 };
+
+export type AdminClientAccount = {
+  id: string;
+  email: string;
+  name: string | null;
+  created_at: string | null;
+  email_confirmed_at: string | null;
+  banned_until: string | null;
+  shared_access: boolean;
+  has_history: boolean;
+};

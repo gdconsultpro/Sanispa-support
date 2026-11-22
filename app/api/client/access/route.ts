@@ -14,7 +14,7 @@ const schema = z.object({
   problemType: z.string().max(60).optional(),
   dossier: z.string().uuid().optional(),
   section: z.enum(["diagnostic", "followup", "documents", "history"]).optional(),
-  tab: z.literal("partners").optional(),
+  tab: z.enum(["partners", "clients"]).optional(),
 }).strict();
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 

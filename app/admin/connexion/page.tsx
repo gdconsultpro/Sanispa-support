@@ -7,7 +7,7 @@ import { StepHeader } from "@/components/StepHeader";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
-import { adminDossierId, adminDossierPath, adminDossierSection } from "@/lib/admin-navigation";
+import { adminDirectoryTab, adminDossierId, adminDossierPath, adminDossierSection } from "@/lib/admin-navigation";
 import { authHeaders } from "@/lib/storage";
 
 type Factor = { id: string; friendly_name?: string };
@@ -53,9 +53,10 @@ export default function AdminLogin() {
       if (method === "email") {
         const query = new URLSearchParams(window.location.search);
         const dossier = adminDossierId(query.get("dossier"));
+        const tab = adminDirectoryTab(query.get("tab"));
         const response = await fetch("/api/client/access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
           email, next: "admin", ...(dossier ? { dossier, section: adminDossierSection(query.get("section")) } : {}),
-          ...(query.get("tab") === "partners" ? { tab: "partners" } : {}),
+          ...(tab ? { tab } : {}),
         }) });
         if (!response.ok) throw new Error("Le lien n’a pas pu être envoyé. Vérifiez l’adresse et réessayez dans une minute.");
         setMessage("Si cette adresse correspond à un administrateur autorisé, un lien de connexion vient de lui être envoyé. Ouvrez-le. Si votre téléphone n’est pas encore associé, ajoutez SANISPA avec le code QR proposé ; sinon, saisissez le code de votre application.");

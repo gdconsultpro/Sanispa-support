@@ -37,7 +37,7 @@ async function fixture(run:(s:any)=>Promise<void>){
 }
 test("one password signup sends one confirmation, creates no browser session, and keeps credentials out of its response and e-mail",()=>fixture(async s=>{
  const r=await POST(request({email:" Client@Example.invalid ",password,next:"diagnostic",problemType:"fuite"}));assert.equal(r.status,200);assert.deepEqual(await r.json(),{ok:true});assert.equal(r.headers.get("cache-control"),"no-store");assert.equal(r.headers.get("set-cookie"),null);
- const auth=s.calls.find((c:any)=>c.path.endsWith("generate_link"));assert.deepEqual(auth.body,{type:"signup",email:"client@example.invalid",password});assert.equal(s.calls.filter((c:any)=>c.path.endsWith("generate_link")).length,1);assert.equal(s.sent.length,1);
+ const auth=s.calls.find((c:any)=>c.path.endsWith("generate_link"));assert.deepEqual(auth.body,{type:"signup",email:"client@example.invalid",password,data:{sanispa_signup_audience:"customer"}});assert.equal(s.calls.filter((c:any)=>c.path.endsWith("generate_link")).length,1);assert.equal(s.sent.length,1);
  assert.equal(s.sent[0].subject,"SANISPA Support — Confirmation de création de compte");assert.ok(s.sent[0].html.includes(app+"/auth/retour?next=diagnostic"));assert.ok(s.sent[0].html.includes("#token_hash="+token));assert.ok(!JSON.stringify(s.sent).includes(password));assert.ok(!s.calls.some((c:any)=>c.path.includes("/token")));
  assert.ok(s.calls.filter((c:any)=>c.path.endsWith("consume_request_limit")).every((c:any)=>!JSON.stringify(c.body).includes(password)&&!JSON.stringify(c.body).includes("client@example.invalid")));
 }));
@@ -49,6 +49,13 @@ test("existing or blocked accounts cannot be overwritten or receive a signup ses
  for(const code of ["email_exists","user_already_exists"]){s.authError=code;assert.equal((await POST(request({email:"existing@example.invalid",password,next:"compte"}))).status,409);}
  s.authError="";s.confirmed=true;assert.equal((await POST(request({email:"existing@example.invalid",password,next:"compte"}))).status,409);s.confirmed=false;s.banned=true;assert.equal((await POST(request({email:"blocked@example.invalid",password,next:"partenaire"}))).status,409);
  assert.equal(s.sent.length,0);assert.ok(s.calls.every((c:any)=>c.path.endsWith("generate_link")||c.path.endsWith("consume_request_limit")));
+}));
+test("partner signup directs an existing customer to reuse their account without a new confirmation",()=>fixture(async s=>{
+ s.authError="user_already_exists";
+ const response=await POST(request({email:"existing@example.invalid",password,next:"partenaire"}));
+ assert.equal(response.status,409);
+ assert.equal((await response.json()).code,"ACCOUNT_EXISTS");
+ assert.equal(s.sent.length,0);
 }));
 test("rate limits stop signup and failed delivery does not report success",()=>fixture(async s=>{
  s.limited=true;assert.equal((await POST(request({email:"client@example.invalid",password,next:"compte"}))).status,429);assert.equal(s.calls.length,1);assert.equal(s.sent.length,0);

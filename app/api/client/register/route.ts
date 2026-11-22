@@ -30,13 +30,18 @@ export async function POST(request:Request){
   await rateLimit(supabase,`access:cooldown:${hash(p.email)}`,1,60);
   // Auth hashes the password. generateLink(signup) never replaces a password
   // on an existing account, and creates no authenticated browser session.
-  const generated=await supabase.auth.admin.generateLink({type:"signup",email:p.email,password:p.password});
+  const generated=await supabase.auth.admin.generateLink({
+   type:"signup",email:p.email,password:p.password,
+   options:{data:{sanispa_signup_audience:p.next==="partenaire"?"partner":"customer"}},
+  });
   if(generated.error){
-   if(["email_exists","user_already_exists"].includes(generated.error.code||""))throw new HttpError(409,"Cette adresse possède déjà un compte. Connectez-vous ou utilisez « Mot de passe oublié » pour créer ou retrouver votre mot de passe.");
+   if(["email_exists","user_already_exists"].includes(generated.error.code||""))throw new HttpError(409,"Cette adresse possède déjà un compte. Connectez-vous ou utilisez « Mot de passe oublié » pour retrouver votre accès.","ACCOUNT_EXISTS");
    if(generated.error.code==="weak_password")throw new HttpError(400,"Choisissez un mot de passe plus long et unique, d’au moins 12 caractères.");
    throw new HttpError(503,"Le compte n’a pas pu être créé. Réessayez dans une minute.");
   }
   const user=generated.data.user,token=generated.data.properties?.hashed_token;
+  if(user?.email?.toLowerCase()===p.email&&user.email_confirmed_at)
+   throw new HttpError(409,"Cette adresse possède déjà un compte. Connectez-vous avec votre mot de passe actuel.","ACCOUNT_EXISTS");
   if(!user||user.email?.toLowerCase()!==p.email||user.email_confirmed_at||(user.banned_until&&Date.parse(user.banned_until)>Date.now()))throw new HttpError(409,"Utilisez la connexion ou « Mot de passe oublié » pour accéder à votre compte existant.");
   if(!token||!/^[A-Za-z0-9_-]{32,256}$/.test(token))throw new Error("Invalid signup confirmation");
   const url = new URL(clientTokenConfirmationUrl(origin, token, p.next, p.draft?.payload.problemType || p.problemType));

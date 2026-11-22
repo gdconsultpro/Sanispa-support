@@ -1,4 +1,4 @@
-import { adminDossierId, adminDossierSection, adminLoginPath } from "@/lib/admin-navigation";
+import { adminClientsPath, adminDirectoryTab, adminDossierId, adminDossierSection, adminLoginPath } from "@/lib/admin-navigation";
 import { adminInboxFlags, adminInboxViews, adminInboxView } from "@/lib/admin-inbox";
 import { interventionSummaryFields } from "@/lib/admin-intervention-summary";
 import { partnerDispatchDecision } from "@/lib/partner-release";
@@ -16,8 +16,9 @@ import { protectedPhotos } from "@/lib/photos";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { PartnerAdmin } from "@/components/PartnerAdmin";
+import { AdminClientAccounts } from "@/components/AdminClientAccounts";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { AdminDiagnostic, PartnerAdminItem } from "@/lib/types";
+import { AdminDiagnostic, AdminClientAccount, PartnerAdminItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -32,21 +33,28 @@ export default async function AdminPage({ searchParams }: {
         inbox?: string;
         dossier?: string;
         section?: string;
+        page?: string;
     }>;
 }) {
     const params = await searchParams;
     const initialDossier = adminDossierId(params?.dossier);
     const initialSection = adminDossierSection(params?.section);
-    try { await administrator(await headers()); }
-    catch { redirect(adminLoginPath(initialDossier, initialSection, params?.tab)); }
-    const tab = params?.tab === "partners" ? "partners" : "diagnostics";
+    const context = await administrator(await headers())
+        .catch(() => redirect(adminLoginPath(initialDossier, initialSection, params?.tab)));
+    const tab = adminDirectoryTab(params?.tab) ?? "diagnostics";
+    const clientQuery = typeof params?.q === "string" ? params.q.trim().slice(0, 150) : "";
+    const clientPage = typeof params?.page === "string" && /^\d{1,5}$/.test(params.page) ? Math.max(1, Number(params.page)) : 1;
     const dispatchFilter = ["pending","internal","released","legacy"].includes(params?.diffusion || "") ? params!.diffusion! : "";
     const dueOnly = params?.actions === "due";
     const showArchived = !dueOnly && params?.archived === "1";
-    const [{ diagnostics, error }, { partners, error: partnerError }] = await Promise.all([
+    const [{ diagnostics, error }, { partners, error: partnerError }, clients] = await Promise.all([
         tab === "diagnostics" ? loadDiagnostics(showArchived, params?.q, params?.status, dueOnly, dispatchFilter) : { diagnostics: [], error: null },
         tab === "partners" ? loadPartners() : { partners: [], error: null },
+        tab === "clients" ? context.supabase.rpc("list_admin_customer_accounts", {
+            p_actor: context.user.id, p_search: clientQuery, p_page: clientPage,
+        }) : null,
     ]);
+    const clientDirectory = clients?.data as { total: number; accounts: AdminClientAccount[] } | undefined;
     const pinnedResult = tab === "diagnostics" && initialDossier && !diagnostics.some(dossier => dossier.id === initialDossier)
         ? await loadDiagnostics(false, undefined, undefined, false, "", initialDossier) : null;
     const pinned = pinnedResult?.diagnostics[0];
@@ -102,21 +110,27 @@ export default async function AdminPage({ searchParams }: {
     return <AppShell compact>
       <header className="mb-4">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">Administration</p>
-        <h1 className="mt-1 text-2xl font-bold text-sanispa-navy sm:text-3xl">{tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"}</h1>
+        <h1 className="mt-1 text-2xl font-bold text-sanispa-navy sm:text-3xl">{tab === "clients" ? "Comptes clients" : tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"}</h1>
         <p className="mt-2 text-sm text-sanispa-steel">{tab === "partners"
             ? "Gérez les entreprises partenaires, leurs accès, leurs départements couverts et la facturation des leads."
+            : tab === "clients" ? "Retrouvez les comptes particuliers et gérez leurs accès."
             : "Repérez le client et le motif, puis ouvrez le dossier pour le consulter ou le traiter."}</p>
       </header>
       <AdminSignOut />
       <nav aria-label="Rubriques de l’administration" className="mb-4 flex flex-wrap gap-2">
         <Link href="/admin" aria-current={tab === "diagnostics" ? "page" : undefined} className={navClass(tab === "diagnostics")}>Demandes</Link>
         <Link href="/admin?tab=partners" aria-current={tab === "partners" ? "page" : undefined} className={navClass(tab === "partners")}>Partenaires</Link>
+        <Link href={adminClientsPath} aria-current={tab === "clients" ? "page" : undefined} className={navClass(tab === "clients")}>Clients</Link>
         <Link href="/admin/interventions" className={navClass(false)}>Interventions</Link>
         <Link href="/admin/visio" className={navClass(false)}>Visios et assistance</Link>
         <Link href="/admin/premium" className={navClass(false)}>Premium et coût IA</Link>
         <Link href="/admin/forum" className={navClass(false)}>Forum Premium</Link>
       </nav>
-      {tab === "partners" ? <>
+      {tab === "clients" ? clientDirectory && !clients?.error ? (
+        <AdminClientAccounts accounts={clientDirectory.accounts} total={clientDirectory.total}
+          page={clientPage} query={clientQuery} now={now} />
+      ) : <p role="alert" className="rounded-md border border-red-200 bg-white p-4 text-sm">Les comptes clients sont temporairement indisponibles.</p>
+      : tab === "partners" ? <>
         {partnerError ? <div className="mb-5 rounded-md border border-sanispa-line bg-white p-5 text-sm leading-6 text-sanispa-steel">
           <p className="font-bold text-sanispa-navy">Tables partenaires non configurées.</p><p className="mt-2">{partnerError}</p>
         </div> : null}

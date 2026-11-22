@@ -9,9 +9,15 @@ export function adminDossierSection(input?: string | null): AdminDossierSection 
 }
 
 export const adminPartnersPath = "/admin?tab=partners";
+export const adminClientsPath = "/admin?tab=clients";
+
+export function adminDirectoryTab(input?: string | null) {
+  return input === "partners" || input === "clients" ? input : null;
+}
 
 function adminDestination(path: string, input?: string | null, section?: string | null, tab?: string | null) {
-  if (tab === "partners") return path + "?tab=partners";
+  const directory = adminDirectoryTab(tab);
+  if (directory) return path + "?tab=" + directory;
   const id = adminDossierId(input);
   if (!id) return path;
   const params = new URLSearchParams({ dossier: id });
