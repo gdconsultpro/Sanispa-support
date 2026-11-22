@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { ShopLinks } from "@/components/ShopLinks";
 import { ButtonLink } from "@/components/Button";
 import { clientRequest } from "@/lib/client-browser-api";
+import { clientDossierPath } from "@/lib/client-case-navigation";
 import { clientCaseProgress, type ClientCase } from "@/lib/client-case-progress";
 import { clearDraft, readDraft } from "@/lib/storage";
 
@@ -31,6 +33,7 @@ export default function Confirmation() {
   }, []);
 
   const progress = dossier ? clientCaseProgress(dossier) : null;
+  const activeWaterAssistant = dossier?.choice === "remote" && dossier.problem_type === "traitement-eau";
   return (
     <AppShell compact>
       <section className="mx-auto max-w-2xl rounded-2xl border border-sanispa-line bg-white p-6">
@@ -39,18 +42,19 @@ export default function Confirmation() {
           <>
             <p className="mt-3 font-bold">Dossier n°{dossier.public_reference || "Référence en cours"}</p>
             <div className="mt-4 rounded-xl bg-sanispa-ice p-4">
-              <p className="font-bold">{progress.label}</p>
+              {progress.label !== "Demande reçue" ? <p className="font-bold">{progress.label}</p> : null}
               <p className="mt-1 text-sm">{progress.description}</p>
             </div>
             <div className="mt-5 flex flex-wrap items-center gap-4">
-              <ButtonLink href={progress.href}>{progress.action}</ButtonLink>
-              <Link href="/espace-client?view=demandes" className="font-bold underline">Toutes mes demandes</Link>
+              <ButtonLink href={clientDossierPath(dossier.id)}>Suivre ma demande</ButtonLink>
+              {activeWaterAssistant ? <ButtonLink href={`/premium/assistant?topic=eau&diagnosticId=${encodeURIComponent(dossier.id)}`} variant="secondary">Ouvrir l’assistant de traitement d’eau</ButtonLink> : null}
             </div>
             {dossier.problem_type !== "demenagement" && !dossier.visios?.length ? (
-              <Link href={`/visio?diagnosticId=${dossier.id}`} className="mt-4 inline-block text-sm font-bold underline">
-                Demander une aide en visio
+              <Link href={`/visio?diagnosticId=${encodeURIComponent(dossier.id)}`} className="focus-ring mt-2 inline-flex min-h-11 items-center text-sm font-bold underline">
+                Demander une visio
               </Link>
             ) : null}
+            <ShopLinks problemType={dossier.problem_type} compact />
           </>
         ) : (
           <>
