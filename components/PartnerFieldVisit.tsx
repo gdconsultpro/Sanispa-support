@@ -13,6 +13,8 @@ import { compressPhoto } from "@/lib/compress-photo";
 import { downloadBlob } from "@/lib/download";
 import { partnerAuthError } from "@/lib/partner-browser";
 import type { FieldReport, FieldSource, FieldVisit } from "@/lib/partner-field";
+import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoLabels, fieldReportRows, requiredFieldPhotos,
+  type FieldPhotoKind } from "@/lib/partner-field-forms";
 import { partnerClientPath, partnerDirections, partnerEditVisitPath, partnerPrivateVisitPath, partnerSpaOption, plannerDate } from "@/lib/partner-planner";
 import { plannerDownload, plannerRequest } from "@/lib/partner-planner-browser";
 import { workStatusLabels, workspacePath } from "@/lib/partner-workspace";
@@ -21,8 +23,8 @@ const card = "min-w-0 rounded-2xl border border-sanispa-line bg-white p-4 sm:p-5
 const input = "focus-ring mt-1 block min-h-11 w-full min-w-0 rounded-lg border border-sanispa-line bg-white p-2.5 text-base font-normal";
 const link = "focus-ring inline-flex min-h-11 items-center text-sm font-bold text-sanispa-blue underline";
 const dateLabel = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-type Draft = { id: string; performed: string; findings: string; actions: string; nextSteps: string; onSite: boolean };
-const emptyDraft: Draft = { id: "", performed: "", findings: "", actions: "", nextSteps: "", onSite: false };
+type Draft = { id: string; performed: string; findings: string; actions: string; nextSteps: string; onSite: boolean; fieldAnswers: Record<string, string> };
+const emptyDraft: Draft = { id: "", performed: "", findings: "", actions: "", nextSteps: "", onSite: false, fieldAnswers: {} };
 
 function draftOnDevice(key: string, reports: FieldVisit["reports"], start?: string) {
   try {
@@ -30,7 +32,10 @@ function draftOnDevice(key: string, reports: FieldVisit["reports"], start?: stri
     if (saved?.id && reports.some(report => report.id === saved.id)) localStorage.removeItem(key);
     else if (saved?.id && typeof saved.performed === "string" && typeof saved.findings === "string" &&
       typeof saved.actions === "string" && typeof saved.nextSteps === "string" && typeof saved.onSite === "boolean")
-      return { id: saved.id, performed: saved.performed, findings: saved.findings, actions: saved.actions, nextSteps: saved.nextSteps, onSite: saved.onSite };
+      return { id: saved.id, performed: saved.performed, findings: saved.findings, actions: saved.actions, nextSteps: saved.nextSteps, onSite: saved.onSite,
+        fieldAnswers: saved.fieldAnswers && typeof saved.fieldAnswers === "object"
+          ? Object.fromEntries(Object.entries(saved.fieldAnswers).filter(([, value]) => typeof value === "string")) : {},
+      };
   } catch { /* The form still works when local storage is unavailable. */ }
   return { ...emptyDraft, performed: start ? localDateTime(new Date(start)) : "" };
 }
@@ -45,9 +50,10 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [formError, setFormError] = useState("");
   const [confirmValidation, setConfirmValidation] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
-  const [pendingPhotos, setPendingPhotos] = useState<{ id: string; file: File }[]>([]);
+  const [pendingPhotos, setPendingPhotos] = useState<{ id: string; file: File; kind: FieldPhotoKind }[]>([]);
   const working = useRef(false);
   const draftKey = useRef("");
 
@@ -77,6 +83,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   }, [available]);
 
   function editDraft(changes: Partial<Draft>) {
+    setFormError("");
     const next = { ...draft, id: draft.id || crypto.randomUUID(), ...changes };
     setDraft(next);
     try {
@@ -105,17 +112,17 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
     finally { working.current = false; setBusy(false); }
   }
 
-  function photoUrl(session: string, photo: string) {
-    return base + "?" + new URLSearchParams({ session, photo });
+  function photoUrl(session: string, photo: string, kind: FieldPhotoKind = "extra") {
+    return base + "?" + new URLSearchParams({ session, photo, kind });
   }
   function uploadPhotos() {
     const session = data?.session;
     if (!session || !pendingPhotos.length) return;
     void action(async () => {
-      for (const { id, file } of pendingPhotos) {
+      for (const { id, file, kind } of pendingPhotos) {
         const encoded = await compressPhoto(file);
         const blob = await (await fetch(encoded)).blob();
-        if (!await plannerRequest(photoUrl(session.id, id), { photo: blob })) return null;
+        if (!await plannerRequest(photoUrl(session.id, id, kind), { photo: blob })) return null;
         setPendingPhotos(current => current.filter(photo => photo.id !== id));
       }
       return true;
@@ -153,6 +160,22 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
 
   const session = data?.session;
   const spa = data?.spas.find(item => item.id === data.spaId);
+  const template = data?.reportTemplate;
+  const requiredPhotos = template ? requiredFieldPhotos[template] : [];
+  const photoKinds: FieldPhotoKind[] = [...requiredPhotos, "extra", ...(template === "sav" ? ["receipt" as const] : [])];
+  const fieldAnswers = {
+    nature: "Réparation de panne", observations: draft.findings, works: draft.actions,
+    spa: (spa ? [spa.brand, spa.model].filter(Boolean).join(" ") : data?.declaredSpa) || "",
+    ...draft.fieldAnswers,
+  } as Record<string, string>;
+  function queuePhotos(files: FileList | null, kind: FieldPhotoKind) {
+    const count = kind === "receipt" ? 1 : 12 - (data?.photos.length ?? 0) - pendingPhotos.length;
+    const selected = Array.from(files ?? []).slice(0, Math.max(0, count));
+    if (selected.length) {
+      setFormError("");
+      setPendingPhotos(current => [...current, ...selected.map(file => ({ id: crypto.randomUUID(), file, kind }))]);
+    }
+  }
   const draftOpen = Boolean(session && !session.submitted_at);
   const active = data && !["review", "validated", "closed", "followup"].includes(data.workStatus);
   const phone = data?.customer.phone?.replace(/[^+\d]/g, "");
@@ -225,29 +248,39 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
         <h2 id="field-photos" className="text-lg font-bold">Photos d’intervention</h2>
         {draftOpen ? <>
           <p className="mt-1 text-sm">{source === "sanispa" ? "Les photos seront accessibles au client avec le compte rendu." : "Les photos sont visibles dans votre entreprise."}</p>
-          <div className="my-2 flex flex-wrap items-center gap-2">
-            <label className="focus-within:ring-2 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-sanispa-line px-3 text-sm font-bold">
-              <Camera aria-hidden="true" size={18} /> Prendre une photo
-              <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="sr-only"
-                disabled={busy || data.photos.length + pendingPhotos.length >= 12} onChange={event => {
-                  const file = event.target.files?.[0];
-                  if (file) setPendingPhotos(current => [...current, { id: crypto.randomUUID(), file }]);
-                  event.target.value = "";
-                }} />
-            </label>
-            <label className="focus-within:ring-2 inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-sanispa-line px-3 text-sm font-bold">
-              Choisir des photos
-              <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only"
-                disabled={busy || data.photos.length + pendingPhotos.length >= 12} onChange={event => {
-                  const files = Array.from(event.target.files ?? []).slice(0, 12 - data.photos.length - pendingPhotos.length);
-                  setPendingPhotos(current => [...current, ...files.map(file => ({ id: crypto.randomUUID(), file }))]);
-                  event.target.value = "";
-                }} />
-            </label>
+          <div className="my-3 grid gap-2 sm:grid-cols-2">
+            {photoKinds.map(kind => {
+              const saved = data.photos.filter(photo => photo.kind === kind).length;
+              const queued = pendingPhotos.filter(photo => photo.kind === kind).length;
+              const disabled = busy || data.photos.length + pendingPhotos.length >= 12 || (kind === "receipt" && saved + queued > 0);
+              return <fieldset key={kind} className="min-w-0 rounded-lg border border-sanispa-line p-2.5" disabled={disabled}>
+                <legend className="px-1 text-sm font-bold">{fieldPhotoLabels[kind]} {requiredPhotos.includes(kind) ? "*" : "(facultatif)"}</legend>
+                {kind === "receipt" ? <p className="mb-1 text-xs text-sanispa-steel">Visible dans votre espace partenaire.</p> : null}
+                {saved || queued ? <p className="mb-1 text-xs">{saved} enregistrée{saved > 1 ? "s" : ""}{queued ? ` · ${queued} à enregistrer` : ""}</p> : null}
+                <div className="flex flex-wrap gap-2">
+                  <label className="focus-within:ring-2 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-sanispa-line px-2.5 text-sm font-bold">
+                    <Camera aria-hidden="true" size={17} /> Prendre une photo
+                    <input type="file" aria-label={"Prendre une photo · " + fieldPhotoLabels[kind]} accept="image/jpeg,image/png,image/webp"
+                      capture="environment" className="sr-only" onChange={event => {
+                        queuePhotos(event.target.files, kind);
+                        event.target.value = "";
+                      }} />
+                  </label>
+                  <label className="focus-within:ring-2 inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-sanispa-line px-2.5 text-sm font-bold">
+                    Choisir des photos
+                    <input type="file" aria-label={"Choisir des photos · " + fieldPhotoLabels[kind]} accept="image/jpeg,image/png,image/webp"
+                      multiple={kind !== "receipt"} className="sr-only" onChange={event => {
+                        queuePhotos(event.target.files, kind);
+                        event.target.value = "";
+                      }} />
+                  </label>
+                </div>
+              </fieldset>;
+            })}
           </div>
           {pendingPhotos.length ? <div>
-            <ul className="text-sm">{pendingPhotos.map(({ id, file }) => <li key={id} className="flex items-center gap-3 break-all">
-              {file.name}<button type="button" className={link} disabled={busy} onClick={() => setPendingPhotos(current => current.filter(photo => photo.id !== id))}>Retirer de la sélection</button>
+            <ul className="text-sm">{pendingPhotos.map(({ id, file, kind }) => <li key={id} className="flex items-center gap-3 break-all">
+              {fieldPhotoLabels[kind]} · {file.name}<button type="button" className={link} disabled={busy} onClick={() => setPendingPhotos(current => current.filter(photo => photo.id !== id))}>Retirer de la sélection</button>
             </li>)}</ul>
             <Button type="button" variant="secondary" onClick={uploadPhotos} disabled={busy}>Enregistrer les photos sélectionnées</Button>
           </div> : null}
@@ -257,6 +290,7 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={photo.url} className="aspect-square w-full rounded-lg object-cover" loading="lazy" alt={`Photo d’intervention ${index + 1}`} />
           </a>
+          <p className="mt-1 text-xs font-semibold">{fieldPhotoLabels[photo.kind]}</p>
           {draftOpen && session ? <button type="button" className={link} disabled={busy} onClick={() =>
             void action(() => plannerRequest(photoUrl(session.id, photo.id), { method: "DELETE" }), "Photo retirée.")}>Retirer la photo {index + 1}</button> : null}
         </li>)}</ul> : null}
@@ -266,12 +300,15 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
         <h2 id="field-report" className="text-lg font-bold">Compte rendu</h2>
         {draftOpen && session ? <form className="mt-3" onSubmit={event => {
           event.preventDefault();
-          if (pendingPhotos.length) { setError("Enregistrez ou retirez les photos sélectionnées avant de transmettre le compte rendu."); return; }
+          if (pendingPhotos.length) { setFormError("Enregistrez ou retirez les photos sélectionnées avant de valider."); return; }
+          const missing = requiredPhotos.filter(kind => !data.photos.some(photo => photo.kind === kind));
+          if (missing.length) { setFormError("Ajoutez les photos obligatoires avant de valider."); return; }
           const performed = new Date(draft.performed);
           if (!draft.id || !Number.isFinite(+performed) || !draft.onSite) return;
           void action(() => plannerRequest(base, { payload: {
             action: "report", session: session.id, id: draft.id, performedAt: performed.toISOString(),
             findings: draft.findings, actions: draft.actions, nextSteps: draft.nextSteps, onSite: draft.onSite,
+            ...(template ? { details: fieldAnswers } : {}),
           } }), source === "sanispa" ? "Compte rendu validé et transmis au client." : "Compte rendu validé. Intervention terminée.", () => {
             try { localStorage.removeItem(draftKey.current); } catch { /* Cleared on the next load. */ }
             setDraft(emptyDraft);
@@ -280,17 +317,34 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
         }}>
           {draftNote ? <p role="status" className="mb-2 text-sm font-semibold text-sanispa-steel">{draftNote}</p> : null}
           <fieldset disabled={busy} className="grid min-w-0 gap-3">
+            {template ? <h3 className="text-lg font-bold">{fieldForms[template].title}</h3> : null}
             <label className="min-w-0 text-sm font-bold">Date et heure de l’intervention
               <input className={input} type="datetime-local" required value={draft.performed} onChange={event => editDraft({ performed: event.target.value })} />
             </label>
-            {([
+            {template ? fieldForms[template].fields.map(field => {
+              const change = (value: string) => editDraft({ fieldAnswers: { ...draft.fieldAnswers, [field.key]: value } });
+              return <label key={field.key} className="min-w-0 text-sm font-bold">
+                {field.label}{field.optional ? " (facultatif)" : " *"}
+                {field.type === "choice" ? <select required value={fieldAnswers[field.key] ?? ""} className={input} onChange={event => change(event.target.value)}>
+                  <option value="">Choisir</option>
+                  {(field.options ?? fieldChoices).map(option => <option key={option} value={option}>{option}</option>)}
+                </select> : field.type === "area" ? <textarea className={input} rows={3} required={!field.optional} maxLength={5000}
+                  value={fieldAnswers[field.key] ?? ""} onChange={event => change(event.target.value)} />
+                  : <input className={input} required maxLength={180} value={fieldAnswers[field.key] ?? ""} onChange={event => change(event.target.value)} />}
+              </label>;
+            }) : ([
               ["findings", "Constat sur place", 20, 5000], ["actions", "Travaux et contrôles effectués", 20, 5000],
               ["nextSteps", "Suite à donner", 5, 3000],
             ] as const).map(([key, label, min, max]) => <label key={key} className="text-sm font-bold">{label}
               <textarea className={input} rows={3} minLength={min} maxLength={max} required value={draft[key]} onChange={event => editDraft({ [key]: event.target.value })} />
             </label>)}
+            {template ? <label className="text-sm font-bold">Suite à donner{template === "sav" && fieldAnswers.finished === "Non" ? " *" : " (facultatif)"}
+              <textarea className={input} rows={2} minLength={5} maxLength={3000} required={template === "sav" && fieldAnswers.finished === "Non"}
+                value={draft.nextSteps} onChange={event => editDraft({ nextSteps: event.target.value })} />
+            </label> : null}
             <label className="flex items-start gap-2 py-2 text-sm"><input type="checkbox" required checked={draft.onSite}
               onChange={event => editDraft({ onSite: event.target.checked })} className="mt-0.5 h-5 w-5" /> Je confirme avoir réalisé l’intervention sur place.</label>
+            {formError ? <p role="alert" className="rounded-lg bg-red-50 p-2 text-sm text-red-800">{formError} <a href="#photos" className="font-bold underline">Voir les photos</a></p> : null}
             <Button type="submit"><ClipboardCheck aria-hidden="true" size={18} /> {source === "sanispa" ? "Valider et transmettre au client" : "Valider le compte rendu"}</Button>
           </fieldset>
         </form> : null}
@@ -333,13 +387,18 @@ export function PartnerFieldVisit({ id, source }: { id: string; source: FieldSou
   </div>;
 }
 
-function FieldReportDetails({ report }: { report: Pick<FieldReport, "performed_at" | "findings" | "actions" | "next_steps"> }) {
+function FieldReportDetails({ report }: { report: Pick<FieldReport, "performed_at" | "findings" | "actions" | "next_steps" | "details"> }) {
   return <>
     <p className="mt-1 text-sm font-semibold">{dateLabel.format(new Date(report.performed_at))}</p>
-    <dl className="mt-2 grid gap-1 text-sm">
+    {report.details ? <dl className="mt-2 space-y-2 text-sm">
+      {fieldReportRows(report.details).map(row => <div key={row.label}>
+        <dt className="font-bold">{row.label}</dt><dd className="whitespace-pre-wrap break-words">{row.value}</dd>
+      </div>)}
+      {report.next_steps !== emptyFieldNextSteps ? <div><dt className="font-bold">Suite à donner</dt><dd className="whitespace-pre-wrap break-words">{report.next_steps}</dd></div> : null}
+    </dl> : <dl className="mt-2 grid gap-1 text-sm">
       <dt className="font-bold">Constat</dt><dd className="whitespace-pre-wrap break-words">{report.findings}</dd>
       <dt className="mt-2 font-bold">Travaux et contrôles</dt><dd className="whitespace-pre-wrap break-words">{report.actions}</dd>
       <dt className="mt-2 font-bold">Suite à donner</dt><dd className="whitespace-pre-wrap break-words">{report.next_steps}</dd>
-    </dl>
+    </dl>}
   </>;
 }

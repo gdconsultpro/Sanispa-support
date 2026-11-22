@@ -8,6 +8,8 @@ import { interventionError, reportSchema } from "@/lib/interventions";
 import { processNotifications } from "@/lib/notifications";
 import { requirePartnerPlanner } from "@/lib/partner-auth";
 import type { FieldReport, FieldVisit } from "@/lib/partner-field";
+import { emptyFieldNextSteps, fieldChoices, fieldForms, fieldPhotoKinds, fieldPhotoLabels, fieldReportRows, fieldTemplate, requiredFieldPhotos,
+  type FieldReportDetails } from "@/lib/partner-field-forms";
 import { fieldPhotoBucket, fieldPhotoPath, loadFieldPhotos } from "@/lib/partner-field-photos";
 import { partnerClientAddress, partnerSpaOption } from "@/lib/partner-planner";
 import { privateWorkStatus, sanispaWorkStatus } from "@/lib/partner-workspace";
@@ -19,13 +21,14 @@ const timestamp = z.string().datetime({ offset: true });
 const headers = { "Cache-Control": "private, no-store" };
 const fieldCommands = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start") }).strict(),
-  reportSchema.extend({ session: uuid }),
+  reportSchema.extend({ session: uuid, details: z.record(z.string().max(5000)).optional(),
+    findings: z.string().trim().max(5000), actions: z.string().trim().max(5000), nextSteps: z.string().trim().max(3000) }),
   z.object({ action: z.literal("validate"), version: timestamp }).strict(),
   z.object({ action: z.literal("followup"), reportId: uuid }).strict(),
   z.object({ action: z.literal("spa"), spaId: uuid.nullable(), version: timestamp }).strict(),
 ]);
 const spaFields = "id,brand,model,serial_number,updated_at";
-const sessions = "id,started_at,started_by,appointment_start,report_id,submitted_at,performed_at,findings,actions,next_steps";
+const sessions = "id,started_at,started_by,appointment_start,report_id,submitted_at,performed_at,findings,actions,next_steps,report_details";
 const pdfDate = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" });
 
 async function fieldCase(request: Request, context: Context) {
@@ -37,7 +40,7 @@ async function fieldCase(request: Request, context: Context) {
       .eq("partner_id", partner.id).eq("id", id).maybeSingle();
     if (error) throw error;
     if (!visit) throw new HttpError(404, "Cette intervention est introuvable.");
-    return { source, id, partner, user, supabase, visit } as const;
+    return { source, id, partner, user, supabase, visit, template: fieldTemplate(source, visit.title) } as const;
   }
   const { data: dossier, error } = await supabase.from("diagnostics")
     .select("id,public_reference,problem_type,preview_description,status,intervened_at,created_at,customers(name,phone,address,spa_brand,spa_model),diagnostic_answers(question_key,answer)")
@@ -45,7 +48,7 @@ async function fieldCase(request: Request, context: Context) {
     .in("diagnostic_answers.question_key", ["description", "noise_description", "pump_details"]).maybeSingle();
   if (error) throw error;
   if (!dossier) throw new HttpError(404, "Ce dossier SANISPA est introuvable.");
-  return { source, id, partner, user, supabase, dossier } as const;
+  return { source, id, partner, user, supabase, dossier, template: fieldTemplate(source, dossier.problem_type) } as const;
 }
 
 function fieldError(error: { message?: string }) {
@@ -56,6 +59,8 @@ function fieldError(error: { message?: string }) {
     case "FIELD_TOO_EARLY": return new HttpError(409, "Le démarrage sera disponible à l’heure prévue du rendez-vous.");
     case "FIELD_ALREADY_FINISHED": return new HttpError(409, "Cette intervention est déjà terminée. Actualisez la fiche.");
     case "FIELD_PHOTO_LIMIT": return new HttpError(409, "Vous pouvez joindre jusqu’à 12 photos par intervention.");
+    case "FIELD_RECEIPT_EXISTS": return new HttpError(409, "Retirez le justificatif actuel avant de le remplacer.");
+    case "FIELD_REQUIRED_PHOTOS": return new HttpError(400, "Ajoutez les photos obligatoires avant de valider le compte rendu.");
     case "PARTNER_WORK_ROLE_REQUIRED": return new HttpError(403, "Demandez au technicien qui a démarré l’intervention de valider le compte rendu.");
     case "PARTNER_VISIT_STATE_CHANGED": return new HttpError(409, "L’intervention a évolué. Actualisez la fiche.");
     case "INVALID_FIELD_REPORT": return new HttpError(400, "Vérifiez la date et les trois réponses du compte rendu.");
@@ -96,14 +101,14 @@ export async function GET(request: Request, context: Context) {
       const workStatus = privateWorkStatus(visit, now);
       const reports: FieldReport[] = session?.report_id ? [{
         id: session.report_id, performed_at: session.performed_at, submitted_at: session.submitted_at,
-        findings: session.findings, actions: session.actions, next_steps: session.next_steps,
+        findings: session.findings, actions: session.actions, next_steps: session.next_steps, details: session.report_details,
       }] : [];
       result = {
         title: visit.title, description: visit.description, workStatus, version: visit.updated_at,
         customer: { name: client.name, phone: client.phone, address: partnerClientAddress(client), clientId: client.deleted_at ? null : visit.client_id },
         appointment: visit.starts_at && visit.ends_at ? { starts_at: visit.starts_at, ends_at: visit.ends_at } : null,
         session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
-        photos: session && !pdfReport ? await loadFieldPhotos(supabase, partner.id, session.id) : [], reports, previousReport: visit.previous_report,
+        photos: session && !pdfReport ? await loadFieldPhotos(supabase, partner.id, session.id, true) : [], reports, previousReport: visit.previous_report,
         spaId: visit.spa_id, spas: equipment.data,
         canStart: !session && !visit.completed_at && Boolean(visit.starts_at && Date.parse(visit.starts_at) <= now),
         canValidate: workStatus === "review" && (partner.role === "owner" || Boolean(session?.submitted_at && session.started_by === field.user.id)),
@@ -111,7 +116,7 @@ export async function GET(request: Request, context: Context) {
       };
     } else {
       const { dossier } = field;
-      const [last, appointmentResult, reportResult, contact] = await Promise.all([
+      const [last, appointmentResult, reportResult, contact, reportDetails] = await Promise.all([
         sessionResult,
         supabase.from("partner_appointments").select("diagnostic_id,starts_at,ends_at,technician_id,updated_at")
           .eq("diagnostic_id", id).eq("partner_id", partner.id).maybeSingle(),
@@ -119,11 +124,14 @@ export async function GET(request: Request, context: Context) {
           .eq("diagnostic_id", id).eq("partner_id", partner.id).order("submitted_at", { ascending: false }),
         supabase.from("partner_private_clients").select("id").eq("partner_id", partner.id)
           .eq("source_diagnostic_id", id).is("deleted_at", null).maybeSingle(),
+        supabase.from("partner_field_sessions").select("report_id,report_details").eq("partner_id", partner.id)
+          .eq("diagnostic_id", id).not("report_details", "is", null),
       ]);
-      if (last.error || appointmentResult.error || reportResult.error || contact.error)
-        throw last.error || appointmentResult.error || reportResult.error || contact.error;
+      if (last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error)
+        throw last.error || appointmentResult.error || reportResult.error || contact.error || reportDetails.error;
       const appointment = appointmentResult.data ?? undefined;
-      const reports = reportResult.data;
+      const details = new Map(reportDetails.data.map(item => [item.report_id, item.report_details]));
+      const reports = reportResult.data.map(report => ({ ...report, details: details.get(report.id) }));
       const session = last.data && (last.data.submitted_at === null || !appointment || last.data.appointment_start === appointment.starts_at) ? last.data : null;
       const clientId = contact.data?.id;
       const [equipment, link] = clientId ? await Promise.all([
@@ -139,7 +147,7 @@ export async function GET(request: Request, context: Context) {
         description: dossier.preview_description?.trim() || dossier.diagnostic_answers.map(answer => answer.answer).filter(Boolean).join("\n"),
         customer: { name: customer?.name || "Client", phone: customer?.phone, address: customer?.address, clientId },
         appointment: appointment ?? null, session: session && { id: session.id, started_at: session.started_at, submitted_at: session.submitted_at },
-        photos: session && !pdfReport ? await loadFieldPhotos(supabase, partner.id, session.id) : [],
+        photos: session && !pdfReport ? await loadFieldPhotos(supabase, partner.id, session.id, true) : [],
         workStatus, reports, spaId: link?.data?.spa_id ?? null, spas: equipment?.data ?? [],
         declaredSpa: [customer?.spa_brand, customer?.spa_model].filter(Boolean).join(" "),
         canStart: !session && Boolean(appointment && Date.parse(appointment.starts_at) <= now) && (workStatus === "scheduled" || workStatus === "due"),
@@ -153,15 +161,16 @@ export async function GET(request: Request, context: Context) {
         .eq("partner_id", partner.id).eq("report_id", report.id)
         .eq(field.source === "private" ? "private_visit_id" : "diagnostic_id", id).maybeSingle();
       if (session.error) throw session.error;
-      const photos: Uint8Array[] = [];
+      const photos: { bytes: Uint8Array; caption?: string }[] = [];
       if (session.data) {
         const sessionId = session.data.id;
-        const saved = await supabase.from("partner_field_photos").select("id").eq("session_id", sessionId).order("created_at").order("id");
+        const saved = await supabase.from("partner_field_photos").select("id,kind").eq("session_id", sessionId)
+          .neq("kind", "receipt").order("created_at").order("id");
         if (saved.error) throw saved.error;
         photos.push(...await Promise.all(saved.data.map(async photo => {
           const asset = await supabase.storage.from(fieldPhotoBucket).download(fieldPhotoPath(partner.id, sessionId, photo.id));
           if (asset.error) throw new HttpError(503, "Une photo est temporairement indisponible. Réessayez de télécharger le PDF.");
-          return new Uint8Array(await asset.data.arrayBuffer());
+          return { bytes: new Uint8Array(await asset.data.arrayBuffer()), caption: fieldPhotoLabels[z.enum(fieldPhotoKinds).parse(photo.kind)] };
         })));
       }
       const spa = result.spas.find(item => item.id === result.spaId);
@@ -171,15 +180,20 @@ export async function GET(request: Request, context: Context) {
         ...(result.customer.address ? ["Adresse : " + result.customer.address] : []),
         "Date : " + pdfDate.format(new Date(report.performed_at)),
         "Motif : " + result.title,
-        "Spa : " + ((spa ? partnerSpaOption(spa) : result.declaredSpa) || "Non renseigné"),
-        "Constat sur place", report.findings,
-        "Travaux et contrôles effectués", report.actions,
+        ...(report.details ? [
+          fieldForms[report.details.template].title,
+          ...fieldReportRows(report.details).map(row => row.label + " : " + row.value),
+        ] : [
+          "Spa : " + ((spa ? partnerSpaOption(spa) : result.declaredSpa) || "Non renseigné"),
+          "Constat sur place", report.findings,
+          "Travaux et contrôles effectués", report.actions,
+        ]),
         "Suite à donner", report.next_steps,
       ], { field: { company: partner.company_name, photos } });
       return new NextResponse(bytes, { headers: { ...headers, "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="compte-rendu-${report.id.slice(0, 8)}.pdf"` } });
     }
-    return NextResponse.json({ ...result, userId: field.user.id }, { headers });
+    return NextResponse.json({ ...result, reportTemplate: field.template, userId: field.user.id }, { headers });
   } catch (error) { return apiError(error); }
 }
 
@@ -187,7 +201,7 @@ export async function POST(request: Request, context: Context) {
   try {
     const field = await fieldCase(request, context);
     const { partner, supabase, user, source, id } = field;
-    const command = fieldCommands.parse(await readJson(request, 22000));
+    const command = fieldCommands.parse(await readJson(request, 65536));
     const actor = { p_partner: partner.id, p_actor: user.id };
     await rateLimit(supabase, `partner-field:${partner.id}`, 30);
     if (command.action === "start") {
@@ -195,9 +209,23 @@ export async function POST(request: Request, context: Context) {
       if (error) throw fieldError(error);
     } else if (command.action === "report") {
       await ownSession(field, command.session);
-      const { error } = await supabase.rpc("submit_partner_field_report", {
+      const details = field.template ? parseFieldDetails(field.template, command.details) : null;
+      const findings = details?.answers.observations || (details ? "Nature de l’intervention : " + details.answers.nature : command.findings);
+      const actions = details?.template === "installation"
+        ? fieldReportRows(details).filter(row => row.label !== "Observations").map(row => row.label + " : " + row.value).join("\n").slice(0, 5000)
+        : details?.answers.works || command.actions;
+      if (details?.template === "sav" && details.answers.finished === "Non" && !command.nextSteps)
+        throw new HttpError(400, "Indiquez la suite à donner avant de valider.");
+      const nextSteps = command.nextSteps || (details ? emptyFieldNextSteps : "");
+      const result = reportSchema.parse({
+        action: "report", id: command.id, performedAt: command.performedAt, onSite: command.onSite,
+        findings: details && findings.length < 20 ? "Observations du technicien : " + findings : findings,
+        actions: details && actions.length < 20 ? "Travaux effectués : " + actions : actions, nextSteps,
+      });
+      const { error } = await supabase.rpc(details ? "submit_structured_partner_field_report" : "submit_partner_field_report", {
         ...actor, p_session: command.session, p_report: command.id, p_performed: command.performedAt,
-        p_findings: command.findings, p_actions: command.actions, p_next: command.nextSteps,
+        p_findings: result.findings, p_actions: result.actions, p_next: result.nextSteps,
+        ...(details ? { p_details: details } : {}),
       });
       if (error) throw fieldError(error);
       if (source === "sanispa") {
@@ -230,12 +258,27 @@ export async function POST(request: Request, context: Context) {
   } catch (error) { return apiError(error); }
 }
 
+function parseFieldDetails(template: FieldReportDetails["template"], input?: Record<string, string>): FieldReportDetails {
+  const answers = Object.fromEntries(fieldForms[template].fields.map(field => {
+    const value = input?.[field.key]?.trim() || "";
+    if (!value && !field.optional || (value && field.type === "choice" && !(field.options ?? fieldChoices).includes(value)))
+      throw new HttpError(400, "Renseignez « " + field.label + " » avant de valider.");
+    if (field.type === "text" && value.length > 180) throw new HttpError(400, "« " + field.label + " » dépasse 180 caractères.");
+    return [field.key, value];
+  }));
+  return { template, answers };
+}
+
 async function changePhoto(request: Request, context: Context, remove: boolean) {
   const field = await fieldCase(request, context);
   const { partner, supabase, user } = field;
   const params = new URL(request.url).searchParams;
   const session = await ownSession(field, uuid.parse(params.get("session")));
   const photo = uuid.parse(params.get("photo"));
+  const kind = z.enum(fieldPhotoKinds).parse(params.get("kind") || "extra");
+  if (!remove && kind !== "extra" && !(kind === "receipt" && field.template === "sav") &&
+    !(field.template && requiredFieldPhotos[field.template].includes(kind)))
+    throw new HttpError(400, "Cette catégorie de photo ne correspond pas au rapport.");
   if (session.submitted_at) throw new HttpError(409, "Le compte rendu a déjà été transmis.");
   await rateLimit(supabase, `partner-field-photo:${partner.id}`, 45);
   const storage = supabase.storage.from(fieldPhotoBucket);
@@ -251,8 +294,8 @@ async function changePhoto(request: Request, context: Context, remove: boolean) 
       ["400", "409"].includes(String(uploadStatus?.statusCode)))) throw uploaded.error;
     created = !uploaded.error;
   }
-  const { error } = await supabase.rpc("change_partner_field_photo", {
-    p_partner: partner.id, p_actor: user.id, p_session: session.id, p_photo: photo, p_remove: remove,
+  const { error } = await supabase.rpc(remove ? "change_partner_field_photo" : "store_partner_field_photo", {
+    p_partner: partner.id, p_actor: user.id, p_session: session.id, p_photo: photo, ...(remove ? { p_remove: true } : { p_kind: kind }),
   });
   if (error) {
     if (created) {

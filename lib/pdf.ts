@@ -29,7 +29,7 @@ export function summaryPdfMode(choice?: string | null) {
 }
 export async function buildSummaryPdf(input: string[], options: {
   mode?: "matchmaking" | "company";
-  field?: { company: string; photos: Uint8Array[] };
+  field?: { company: string; photos: { bytes: Uint8Array; caption?: string }[] };
 } = {}) {
   const matchmaking = options.mode === "matchmaking";
   const field = options.field;
@@ -138,7 +138,7 @@ export async function buildSummaryPdf(input: string[], options: {
       y -= 8;
       continue;
     }
-    if (sections.has(raw) || field && ["Intervention", "Constat sur place", "Travaux et contrôles effectués", "Suite à donner"].includes(raw)) {
+    if (sections.has(raw) || field && ["Intervention", "Rapport SAV", "Installation et mise en service", "Constat sur place", "Travaux et contrôles effectués", "Suite à donner"].includes(raw)) {
       questionnaire = raw === "Réponses au questionnaire";
       ensure(72);
       y -= 8;
@@ -203,14 +203,14 @@ export async function buildSummaryPdf(input: string[], options: {
     newPage();
     text("Photos d’intervention", 48, y, 14, bold, teal);
     y -= 30;
-    for (const [index, bytes] of field.photos.entries()) {
+    for (const [index, { bytes, caption }] of field.photos.entries()) {
       const photo = await pdf.embedJpg(bytes);
       const scale = Math.min(499 / photo.width, 250 / photo.height, 1);
       const height = photo.height * scale;
       ensure(height + 36);
       page.drawImage(photo, { x: 48, y: y - height, width: photo.width * scale, height });
       y -= height + 15;
-      text(`Photo ${index + 1}`, 48, y, 9, regular, muted);
+      text(caption || `Photo ${index + 1}`, 48, y, 9, regular, muted);
       y -= 22;
     }
   }

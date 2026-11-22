@@ -85,3 +85,50 @@ test("technicians close private field reports, keep photos and can prepare a sin
     assert.equal((await db.query<{ n: number }>("select count(*)::int n from partner_field_photos where session_id=$1", [session])).rows[0].n, 1);
   } finally { await db.close(); }
 });
+
+test("structured SAV and installation reports require their evidence and keep extra photos optional", async () => {
+  const db = await fullDatabase();
+  const [actor, partner, client, sav, installation] = Array.from({ length: 5 }, () => randomUUID());
+  try {
+    await db.query("insert into auth.users(id,email) values($1,'specialist@example.invalid')", [actor]);
+    await db.query("insert into partners(id,company_name,email) values($1,'Entreprise fictive','specialist@example.invalid')", [partner]);
+    await db.query("insert into partner_users(partner_id,user_id,role) values($1,$2,'technician')", [partner, actor]);
+    await db.query("insert into partner_private_clients(partner_id,id,name,street,postal_code,city) values($1,$2,'Client fictif','Place Rapp','68000','Colmar')", [partner, client]);
+    await db.query(`insert into partner_private_visits(partner_id,id,client_id,title,starts_at,ends_at) values
+      ($1,$2,$3,'Intervention SAV',now()-interval '1 hour',now()+interval '1 hour'),
+      ($1,$4,$3,'Mise en service',now()-interval '1 hour',now()+interval '1 hour')`, [partner, sav, client, installation]);
+    await db.exec("set role service_role");
+    async function start(visit: string) {
+      return (await db.query<{ id: string }>("select start_partner_field_visit($1,$2,'private',$3) id", [partner, actor, visit])).rows[0].id;
+    }
+    const photo = (session: string, kind: string) => db.query("select store_partner_field_photo($1,$2,$3,$4,$5)", [partner, actor, session, randomUUID(), kind]);
+    const submit = (session: string, report: string, details: object) => db.query(
+      "select submit_structured_partner_field_report($1,$2,$3,$4,now(),'Constat détaillé pour essai','Travaux et mesures contrôlés','Aucune suite à prévoir.',$5)",
+      [partner, actor, session, report, JSON.stringify(details)]);
+
+    const savSession = await start(sav);
+    const savReport = randomUUID();
+    const savDetails = { template: "sav", answers: { spa: "Spa fictif B", finished: "Non" } };
+    await photo(savSession, "receipt");
+    await assert.rejects(photo(savSession, "receipt"), /FIELD_RECEIPT_EXISTS/);
+    await photo(savSession, "extra");
+    await assert.rejects(submit(savSession, savReport, savDetails), /FIELD_REQUIRED_PHOTOS/);
+    await photo(savSession, "finish");
+    await submit(savSession, savReport, savDetails);
+    const [saved] = (await db.query("select report_details from partner_field_sessions where id=$1", [savSession])).rows;
+    assert.deepEqual(saved, { report_details: savDetails });
+    await assert.rejects(photo(savSession, "extra"), /FIELD_ALREADY_FINISHED/);
+
+    const installationSession = await start(installation);
+    const installationReport = randomUUID();
+    const installationDetails = { template: "installation", answers: { checked: "Oui" } };
+    for (const kind of ["serial", "water", "electrical", "finish"]) await photo(installationSession, kind);
+    await assert.rejects(submit(installationSession, installationReport, installationDetails), /FIELD_REQUIRED_PHOTOS/);
+    await photo(installationSession, "heating");
+    await submit(installationSession, installationReport, installationDetails);
+    const next = (await db.query<{ id: string }>("select create_partner_field_followup($1,$2,'private',$3,$4,'Suite') id",
+      [partner, actor, installation, installationReport])).rows[0].id;
+    assert.deepEqual((await db.query("select previous_report->'details' details from partner_private_visits where id=$1", [next])).rows,
+      [{ details: installationDetails }]);
+  } finally { await db.close(); }
+});
