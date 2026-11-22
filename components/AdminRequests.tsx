@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { AdminActions } from "@/components/AdminActions";
 import { partnerDispatchLabels, type PartnerDispatchDecision } from "@/lib/partner-release";
 import type { AdminDossierSection } from "@/lib/admin-navigation";
 import { statusLabel } from "@/lib/display-labels";
@@ -12,6 +13,7 @@ export type AdminRequestItem = {
   subject: string;
   createdAt: string;
   status: string;
+  archived: boolean;
   dispatchDecision?: PartnerDispatchDecision | null;
   dispatchProgress?: string | null;
   nextAction?: string | null;
@@ -239,6 +241,12 @@ export function AdminRequests({ items, pinnedItem, initialDossier, initialSectio
             {selected.panels[tab.key]}
           </div>)}
         </div>
+        <footer className="max-h-[35dvh] shrink-0 overflow-y-auto border-t border-sanispa-line bg-white p-3 sm:px-6">
+          <AdminActions diagnosticId={selected.id} archived={selected.archived} onDone={message => {
+            closeDossier();
+            setNotice(message);
+          }} />
+        </footer>
       </div> : null}
     </dialog>
     <style jsx>{`

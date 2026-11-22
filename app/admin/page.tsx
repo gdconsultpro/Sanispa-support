@@ -79,6 +79,7 @@ export default async function AdminPage({ searchParams }: {
             subject: adminRequestSubject(diagnostic),
             createdAt: diagnostic.created_at,
             status: diagnostic.status,
+            archived: Boolean(diagnostic.archived_at),
             dispatchDecision: partnerDispatchDecision(diagnostic),
             dispatchProgress: diagnostic.assigned_partner_id ? "Pris en charge" : flags.declined ? "Partenaire indisponible · à réattribuer"
                 : flags.waiting ? "Proposée · réponse attendue" : null,

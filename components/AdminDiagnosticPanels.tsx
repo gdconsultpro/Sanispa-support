@@ -2,7 +2,6 @@ import { AdminInterventionOverview } from "./AdminInterventionOverview";
 import { AdminIntervention } from "./AdminIntervention";
 import Link from "next/link";
 import { AdminPartnerRelease } from "@/components/AdminPartnerRelease";
-import { AdminActions } from "@/components/AdminActions";
 import { AdminClientDocuments } from "@/components/AdminClientDocuments";
 import { AdminDossierHistory } from "@/components/AdminDossierHistory";
 import { AdminNextAction } from "@/components/AdminNextAction";
@@ -228,10 +227,6 @@ export function diagnosticPanels(
           <summary className="cursor-pointer font-bold">Enregistrer manuellement une intervention</summary>
           <AdminIntervention diagnosticId={diagnostic.id} partnerId={diagnostic.assigned_partner_id} partnerName={diagnostic.assigned_partner || undefined} />
         </details> : null}
-        <AdminActions
-          diagnosticId={diagnostic.id}
-          archived={Boolean(diagnostic.archived_at)}
-        />
       </div>
     ),
     history: (
