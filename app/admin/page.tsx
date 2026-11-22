@@ -107,26 +107,25 @@ export default async function AdminPage({ searchParams }: {
         else if (dueOnly) query.set("actions", "due");
         return query.size ? `/admin?${query}` : "/admin";
     }
-    const navClass = (active: boolean) => `focus-ring inline-flex min-h-11 items-center rounded-md border px-4 py-2 text-sm font-bold ${active ? "border-sanispa-blue bg-white text-sanispa-navy" : "border-sanispa-line text-sanispa-steel hover:bg-white"}`;
+    const navClass = (active: boolean) => `focus-ring inline-flex min-h-11 shrink-0 items-center rounded-md border px-3 py-2 text-sm font-bold ${active ? "border-transparent bg-sanispa-ice text-sanispa-navy" : "border-transparent text-sanispa-steel hover:bg-sanispa-ice"}`;
     return <AppShell compact>
-      <header className="mb-4">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">Administration</p>
-        <h1 className="mt-1 text-2xl font-bold text-sanispa-navy sm:text-3xl">{tab === "clients" ? "Comptes clients" : tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"}</h1>
-        <p className="mt-2 text-sm text-sanispa-steel">{tab === "partners"
-            ? "Gérez les entreprises partenaires, leurs accès, leurs départements couverts et la facturation des leads."
-            : tab === "clients" ? "Retrouvez les comptes particuliers et gérez leurs accès."
-            : "Repérez le client et le motif, puis ouvrez le dossier pour le consulter ou le traiter."}</p>
-      </header>
-      <AdminSignOut />
-      <nav aria-label="Rubriques de l’administration" className="mb-4 flex flex-wrap gap-2">
+      <nav aria-label="Rubriques de l’administration" className="admin-directory-nav mb-5 flex gap-1 overflow-x-auto whitespace-nowrap rounded-xl border border-sanispa-line bg-white p-1.5 lg:flex-wrap">
         <Link href="/admin" aria-current={tab === "diagnostics" ? "page" : undefined} className={navClass(tab === "diagnostics")}>Demandes</Link>
         <Link href="/admin?tab=partners" aria-current={tab === "partners" ? "page" : undefined} className={navClass(tab === "partners")}>Partenaires</Link>
-        <Link href={adminClientsPath} aria-current={tab === "clients" ? "page" : undefined} className={navClass(tab === "clients")}>Clients</Link>
         <Link href="/admin/interventions" className={navClass(false)}>Interventions</Link>
+        <Link href={adminClientsPath} aria-current={tab === "clients" ? "page" : undefined} className={navClass(tab === "clients")}>Clients</Link>
         <Link href="/admin/visio" className={navClass(false)}>Visios et assistance</Link>
         <Link href="/admin/premium" className={navClass(false)}>Premium et coût IA</Link>
         <Link href="/admin/forum" className={navClass(false)}>Forum Premium</Link>
       </nav>
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-x-5 gap-y-2">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-sanispa-blue">Administration</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-sanispa-navy sm:text-4xl">{tab === "clients" ? "Comptes clients" : tab === "partners" ? "Partenaires techniques" : "Demandes SANISPA"}</h1>
+          {tab === "partners" ? <p className="mt-2 text-sm text-sanispa-steel">Vérifiez les entreprises et gérez leurs accès.</p> : null}
+        </div>
+        <AdminSignOut />
+      </header>
       {tab === "clients" ? clientDirectory && !clients?.error ? (
         <AdminClientAccounts accounts={clientDirectory.accounts} total={clientDirectory.total}
           page={clientPage} query={clientQuery} now={now} />
@@ -143,7 +142,7 @@ export default async function AdminPage({ searchParams }: {
         {!showArchived && !error ? <nav aria-label="Boîte de réception" className="mb-5 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
           {adminInboxViews.map(([value, label]) => <Link key={value} href={inboxUrl(value)}
             aria-current={inbox === value && !dueOnly ? "page" : undefined}
-            className={navClass(inbox === value && !dueOnly)}>
+            className={`focus-ring inline-flex min-h-11 min-w-0 items-center rounded-lg border px-3 py-2 text-sm font-bold ${inbox === value && !dueOnly ? "border-sanispa-blue bg-sanispa-blue text-white" : "border-sanispa-line bg-white text-sanispa-navy hover:bg-sanispa-ice"}`}>
             <span>{label} <strong className="ml-1">{entries.filter(entry => entry.flags[value]).length}</strong></span>
           </Link>)}
         </nav> : null}

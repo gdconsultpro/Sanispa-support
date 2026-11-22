@@ -42,6 +42,12 @@ function dateLabel(value: string, withTime = false) {
   }).format(date);
 }
 
+function requestStatusColor(status: string) {
+  if (["CLOSED", "terminé", "clôturé"].includes(status)) return "bg-emerald-50 text-emerald-900";
+  if (["ASSIGNED", "RDV demandé", "devis envoyé"].includes(status)) return "bg-blue-50 text-blue-900";
+  return "bg-sanispa-ice text-sanispa-navy";
+}
+
 export function AdminRequests({ items, pinnedItem, initialDossier, initialSection, canArchive }: {
   items: AdminRequestItem[];
   pinnedItem?: AdminRequestItem;
@@ -244,7 +250,7 @@ export function AdminRequests({ items, pinnedItem, initialDossier, initialSectio
       </div>
       {bulkError ? <p role="alert" className="mt-2 text-sm text-red-800">{bulkError}</p> : null}
     </div> : null}
-    {items.length > 0 ? <div className="overflow-hidden rounded-md border border-sanispa-line bg-white shadow-soft">
+    {items.length > 0 ? <div className="overflow-hidden rounded-xl border border-sanispa-line bg-white">
       <div aria-hidden="true" className={"hidden grid-cols-[90px_minmax(0,1fr)_95px_130px_140px_60px] gap-4 border-b border-sanispa-line bg-sanispa-ice px-4 py-3 text-xs font-bold uppercase tracking-wide text-sanispa-steel lg:grid" + (canArchive ? " lg:pl-16" : "")}>
         <span>Demande</span><span>Client · Motif</span><span>Date</span><span>Statut</span><span>Échéance</span><span />
       </div>
@@ -266,15 +272,15 @@ export function AdminRequests({ items, pinnedItem, initialDossier, initialSectio
           <button type="button" onClick={event => openRequest(item.id, event.currentTarget)}
             aria-label={`Ouvrir la demande ${item.shortId} de ${item.clientName} : ${item.subject}`}
             aria-haspopup="dialog"
-            className="group grid min-w-0 flex-1 grid-cols-2 gap-x-3 gap-y-3 p-4 text-left text-sm transition hover:bg-sanispa-ice focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sanispa-blue lg:grid-cols-[90px_minmax(0,1fr)_95px_130px_140px_60px] lg:items-center lg:gap-4">
-            <span className="whitespace-nowrap text-xs font-bold tracking-wide text-sanispa-blue">N° {item.shortId}</span>
+            className="grid min-w-0 flex-1 grid-cols-2 gap-x-3 gap-y-2 px-3 py-3 text-left text-sm transition hover:bg-sanispa-ice focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sanispa-blue lg:grid-cols-[90px_minmax(0,1fr)_95px_130px_140px_60px] lg:items-center lg:gap-4 lg:px-4">
+            <span className="break-words text-xs font-bold tracking-wide text-sanispa-blue">N° {item.shortId}</span>
             <span className="col-span-2 row-start-2 min-w-0 lg:col-span-1 lg:row-auto">
               <span className="block break-words text-base font-bold leading-snug text-sanispa-navy">{item.clientName}</span>
               <span className="mt-1 line-clamp-2 break-words leading-snug text-sanispa-steel">{item.subject}</span>
               {item.dispatchDecision?<span className={`mt-2 inline-block rounded px-2 py-1 text-xs font-bold ${item.dispatchDecision==="pending"?"bg-amber-100 text-amber-900":"bg-sanispa-ice text-sanispa-navy"}`}>{item.dispatchProgress || partnerDispatchLabels[item.dispatchDecision]}</span>:null}
             </span>
             <time dateTime={item.createdAt} className="col-start-2 row-start-1 text-right text-xs text-sanispa-steel lg:col-auto lg:row-auto lg:text-left">{dateLabel(item.createdAt)}</time>
-            <span className="col-start-1 row-start-3 min-w-0 self-start lg:col-auto lg:row-auto lg:self-auto"><span className="inline-block max-w-full break-words rounded-md bg-sanispa-ice px-2 py-1 text-xs font-bold leading-relaxed text-sanispa-navy group-hover:bg-white">{statusLabel(item.status)}</span></span>
+            <span className="col-start-1 row-start-3 min-w-0 self-start lg:col-auto lg:row-auto lg:self-auto"><span className={`inline-block max-w-full break-words rounded-md px-2 py-1 text-xs font-bold leading-relaxed ${requestStatusColor(item.status)}`}>{statusLabel(item.status)}</span></span>
             <span className={`col-span-2 row-start-4 min-w-0 text-left text-xs lg:col-span-1 lg:row-auto ${item.dueAt ? "block" : "hidden lg:block"} ${item.overdue ? "font-bold text-amber-800" : "text-sanispa-steel"}`}>
               {item.dueAt ? <><span className="block lg:sr-only">Échéance</span><time dateTime={item.dueAt}>{dateLabel(item.dueAt, true)}</time>{item.overdue ? <span className="mt-1 block">À traiter</span> : null}{item.nextAction ? <span className="mt-1 block break-words line-clamp-2">{item.nextAction}</span> : null}</> : <span className="hidden lg:inline">—</span>}
             </span>

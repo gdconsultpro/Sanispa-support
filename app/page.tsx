@@ -4,47 +4,37 @@ import { ClipboardCheck, ImagePlus, ShieldCheck, Wrench } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { DeclarationEntry } from "@/components/DeclarationEntry";
 import { ButtonLink } from "@/components/Button";
+import { LagoonHero } from "@/components/LagoonHero";
+
 export default function HomePage() {
   return (
     <AppShell>
       <AuthArrival />
-      <section className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-center">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-start">
         <div>
-          <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-sanispa-blue">
-            Pré-diagnostic technique de spa
-          </p>
-          <h1 className="text-4xl font-bold leading-tight text-sanispa-navy sm:text-5xl">
-            Votre spa a un souci ? On vous aide à y voir plus clair.
-          </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-8 text-sanispa-steel">
-            Décrivez ce que vous constatez, laissez-vous guider et ajoutez
-            quelques photos. Nous aurons les bons éléments pour orienter votre
-            demande. Aucune connaissance technique nécessaire.
-          </p>
-          <div className="mt-7 flex flex-wrap gap-3">
+          <LagoonHero description="Choisissez le symptôme, décrivez ce que vous observez et ajoutez quelques photos pour orienter le prédiagnostic.">
             <DeclarationEntry home />
             <ButtonLink href="/espace-client" variant="secondary">Mon espace spa</ButtonLink>
-          </div>
+          </LagoonHero>
           <p className="mt-4 text-sm"><Link href="/diagnostic?new=1&problemType=demenagement" className="focus-ring font-bold underline">Je souhaite déménager mon spa →</Link></p>
-          <p className="mt-4 max-w-xl text-sm leading-6 text-sanispa-steel">Déclaration simple, suivi de votre spa et services Premium gratuits pour le moment.</p>
         </div>
 
-        <div className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
+        <div className="rounded-2xl border border-sanispa-line bg-white p-5">
           <div className="grid gap-4">
             {[
               {
                 icon: ClipboardCheck,
-                title: "1. Choisissez votre problème",
+                title: "Choisissez votre problème",
                 text: "Des symptômes faciles à reconnaître, sans jargon.",
               },
               {
                 icon: ImagePlus,
-                title: "2. Montrez ce que vous voyez",
+                title: "Montrez ce que vous voyez",
                 text: "Quelques photos utiles, toujours sans démontage.",
               },
               {
                 icon: Wrench,
-                title: "3. Envoyez votre demande",
+                title: "Envoyez votre demande",
                 text: "Vérifiez votre résumé : SANISPA pourra orienter la suite.",
               },
               {
@@ -70,7 +60,7 @@ export default function HomePage() {
             ))}
           </div>
         </div>
-      </section>
+      </div>
     </AppShell>
   );
 }

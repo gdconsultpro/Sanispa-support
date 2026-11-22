@@ -9,16 +9,18 @@ export function AppShell({
   children,
   compact = false,
   clientSpace = false,
+  clientHome = false,
 }: {
   children: React.ReactNode;
   compact?: boolean;
   clientSpace?: boolean;
+  clientHome?: boolean;
 }) {
   return (
     <main className="app-background min-h-screen">
-      {paymentsPaused() ? <div className="bg-sanispa-blue px-4 py-2 text-center text-xs font-medium text-white">Services gratuits pour les particuliers et les partenaires · Sans carte bancaire</div> : null}
-      <header className="border-b border-white/80 bg-white/90">
-        <div className={`mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 sm:px-6 ${clientSpace ? "py-3 sm:py-5" : "py-5"}`}>
+      {paymentsPaused() ? <div className="sanispa-service-banner bg-sanispa-blue px-4 py-2 text-center text-xs font-medium text-white">Services gratuits pour les particuliers et les partenaires · Sans carte bancaire</div> : null}
+      <header className="border-b border-sanispa-line bg-white">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
           <Link href="/" className="inline-flex items-center focus-ring">
             <Image
               src="/sanispa-logo.png"
@@ -29,8 +31,8 @@ export function AppShell({
               className="h-12 w-auto object-contain"
             />
           </Link>
-          <nav aria-label="Navigation principale" className="flex flex-wrap items-center justify-end gap-2 text-sm font-bold">
-            <DeclarationEntry />
+          <nav aria-label="Navigation principale" className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm font-bold sm:justify-end">
+            {clientHome ? null : <DeclarationEntry />}
             <ClientAccountLink clientSpace={clientSpace} />
             <ProfessionalAccountLink clientSpace={clientSpace} />
           </nav>

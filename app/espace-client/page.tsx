@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button, ButtonLink } from "@/components/Button";
+import { LagoonHero } from "@/components/LagoonHero";
 import { Field, SelectField } from "@/components/Field";
 import { StepHeader } from "@/components/StepHeader";
 import { clearDraft, authHeaders, readLocalProgress } from "@/lib/storage";
@@ -79,10 +80,10 @@ const profileFields = [
   { key: "city", label: "Ville", autoComplete: "address-level2" },
 ] as const;
 const views = [
-  ["accueil", "Accueil"], ["demandes", "Mes demandes"],
+  ["accueil", "Accueil"], ["spas", "Mon spa"], ["demandes", "Mes demandes"],
   ["entretien", "Mon entretien"], ["documents", "Mes documents"],
 ] as const;
-type View = (typeof views)[number][0] | "spas" | "coordonnees";
+type View = (typeof views)[number][0] | "coordonnees";
 
 function currentView(): View {
   const requested = new URLSearchParams(window.location.search).get("view");
@@ -387,7 +388,7 @@ export default function EspaceClientPage() {
     );
   }
   return (
-    <AppShell compact clientSpace>
+    <AppShell compact clientSpace clientHome={view === "accueil"}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-x-3">
         <h1 className="text-2xl font-bold text-sanispa-navy sm:text-3xl">Mon espace spa</h1>
         <div className="flex flex-wrap items-center gap-x-3">
@@ -404,6 +405,15 @@ export default function EspaceClientPage() {
         </div>
       </div>
 
+      {view === "accueil" ? (
+        <div className="mb-4">
+          <LagoonHero firstName={profile.first_name} signedIn>
+            <ButtonLink href={availableDrafts.length ? "/diagnostic?new=1" : "/diagnostic"}>
+              {availableDrafts.length ? "Nouvelle demande" : "Déclarer une panne"}
+            </ButtonLink>
+          </LagoonHero>
+        </div>
+      ) : null}
       {view === "accueil" && availableDrafts[0] ? (
         <section className="mb-5" aria-label="Votre déclaration en cours">
           <h2 className="mb-2 text-xl font-bold">Reprendre ma déclaration</h2>
@@ -411,10 +421,10 @@ export default function EspaceClientPage() {
           {availableDrafts.length > 1 ? <button type="button" onClick={() => selectView("demandes")} className="focus-ring mt-2 min-h-11 font-bold underline">Voir tous mes brouillons</button> : null}
         </section>
       ) : null}
-      <nav aria-label="Rubriques de mon espace spa" className="mb-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+      <nav aria-label="Rubriques de mon espace spa" className="mb-5 flex gap-1.5 overflow-x-auto whitespace-nowrap rounded-xl border border-sanispa-line bg-white p-1.5 sm:flex-wrap">
         {views.map(([key, label]) => (
           <button type="button" key={key} onClick={() => selectView(key)} aria-current={view === key ? "page" : undefined}
-            className={`focus-ring min-h-12 rounded-xl border px-3 py-2 text-sm font-bold sm:rounded-full sm:px-5 ${view === key ? "border-sanispa-blue bg-sanispa-blue text-white" : "border-sanispa-line bg-white"}`}>
+            className={`focus-ring min-h-11 shrink-0 rounded-lg px-3 py-2 text-sm font-bold sm:px-4 ${view === key ? "bg-sanispa-ice text-sanispa-blue" : "text-sanispa-steel hover:bg-sanispa-ice"}`}>
             {label}
           </button>
         ))}
@@ -433,12 +443,12 @@ export default function EspaceClientPage() {
             {dossierToHighlight ? (
               <section aria-label="Votre demande à suivre">
                 <h2 className="mb-2 text-xl font-bold">{reportsToRead.length ? "Action à faire" : "Ma demande à suivre"}</h2>
-                <ClientCaseCard dossier={dossierToHighlight} />
+                <ClientCaseCard dossier={dossierToHighlight} compact />
               </section>
             ) : null}
             <section aria-label="L’entretien de votre spa">
               <h2 className="mb-2 text-xl font-bold">Mon entretien</h2>
-              <CarePreviewCards care={care} spas={spas} />
+              <CarePreviewCards care={care} spas={spas} compact />
             </section>
             <section className="min-w-0 rounded-2xl border border-sanispa-line bg-white p-4 sm:p-5">
               <h2 className="text-xl font-bold">Mes documents</h2>
@@ -448,10 +458,6 @@ export default function EspaceClientPage() {
               </p>
               <button type="button" className="focus-ring mt-2 min-h-11 font-bold underline" onClick={() => selectView("documents")}>Ouvrir mes documents</button>
             </section>
-            <div className="flex flex-wrap items-center gap-3">
-              <ButtonLink href={availableDrafts.length ? "/diagnostic?new=1" : "/diagnostic"} variant="secondary">{availableDrafts.length ? "Nouvelle demande" : "Déclarer une panne"}</ButtonLink>
-              <button type="button" className="focus-ring min-h-12 px-2 font-bold underline" onClick={() => selectView("spas")}>Mes spas</button>
-            </div>
           </>
         ) : null}
 

@@ -592,7 +592,7 @@ export default function PartnerPlanningPage() {
   return <AppShell compact>
     <PartnerNavigation current={workspaceLabels[view]}
       selection={day ? selection : undefined} onWorkspaceView={changeView} />
-    <h1 className="mb-4 text-3xl font-bold">{editingFromContact ? "Nouvelle intervention" : { agenda: "Mon planning", map: "Carte", clients: "Mes clients", stock: "Mon stock" }[view]}</h1>
+    <h1 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl">{editingFromContact ? "Nouvelle intervention" : { agenda: "Mon planning", map: "Carte", clients: "Mes clients", stock: "Mon stock" }[view]}</h1>
 
     {view === "clients" && clientId ? <button type="button" disabled={saving} className={actionClass + " mb-3"} onClick={() => showClient(null)}>← Retour à mes clients</button> : null}
     {notice ? <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
@@ -727,7 +727,7 @@ export default function PartnerPlanningPage() {
     {(view === "agenda" || view === "map") && day && !loadError ? <section className={panelClass}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-bold">{view === "map" ? "Carte des interventions" : period === "day" ? "Interventions du jour" : period === "week" ? "Interventions de la semaine" : "Calendrier du mois"}</h2>
-        <button type="button" disabled={saving} className={actionClass} onClick={() => edit({ type: "pickClient", id: crypto.randomUUID() })}>Nouvelle intervention</button>
+        <Button type="button" disabled={saving} className="!rounded-lg" onClick={() => edit({ type: "pickClient", id: crypto.randomUUID() })}>Nouvelle intervention</Button>
       </div>
       <PartnerWorkspaceFilters selection={selection} team={team} disabled={saving} onChange={updateSelection} />
       {view === "agenda" ? <PartnerPlanningResources resources={resources} error={resourceError} onChange={() => setResourceRevision(current => current + 1)} /> : null}

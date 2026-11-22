@@ -216,7 +216,7 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
         <button type="button" className="focus-ring min-h-11 text-sm font-bold underline" disabled={busy} onClick={() => setSelected(null)}>Fermer</button>
       </div> : null}
     </section> : null}
-    <div className={`grid min-w-0 gap-3 ${showQueue ? "lg:grid-cols-[minmax(14rem,19rem)_minmax(0,1fr)]" : ""}`}>
+    <div className={`grid min-w-0 gap-3 ${showQueue ? "lg:grid-cols-[minmax(13rem,16rem)_minmax(0,1fr)]" : ""}`}>
     {showQueue ? <section aria-labelledby="queue-heading" className="min-w-0 rounded-xl border border-sanispa-line bg-sanispa-ice p-3">
       <h4 id="queue-heading" className="font-bold">À planifier <span className="text-sanispa-blue">({queue.length})</span></h4>
       <label className="mt-2 block text-sm font-bold">Rechercher une intervention
@@ -314,7 +314,7 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
               className={`relative shrink-0 ${over === row.id ? "bg-sanispa-ice" : "bg-white"}`}
               style={{
                 width: length * columnWidth, minHeight: Math.max(1, endByLane.length) * 54 + 8,
-                backgroundImage: "linear-gradient(to right, transparent calc(100% - 1px), #d6e5f1 0)",
+                backgroundImage: "linear-gradient(to right, transparent calc(100% - 1px), rgb(var(--sanispa-line)) 0)",
                 backgroundSize: `${columnWidth}px 100%`,
               }}
               onDragOver={event => {
@@ -360,7 +360,7 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
                   draggable={draggable} disabled={busy}
                   title={`${appointment.title} · ${time}${status ? " · " + status : ""}${overlap ? " · Chevauchement" : ""}`}
                   aria-label={`Ouvrir le rendez-vous ${appointment.title}, ${time}${status ? ", " + status : ""}${overlap ? ", chevauchement" : ""}`}
-                  className={`focus-ring absolute z-[1] flex h-12 min-w-0 flex-col justify-center overflow-hidden rounded-lg border px-1.5 text-left text-xs font-bold disabled:opacity-75 ${draggable ? "cursor-grab" : ""} ${overlap ? "border-amber-500" : "border-transparent"} ${appointment.source === "sanispa" ? "bg-emerald-100 text-emerald-950" : "bg-sanispa-blue text-white"}`}
+                  className={`focus-ring absolute z-[1] flex h-12 min-w-0 flex-col justify-center overflow-hidden rounded-md border border-l-[3px] px-1.5 text-left text-xs font-bold disabled:opacity-75 ${draggable ? "cursor-grab" : ""} ${overlap ? "border-amber-500" : "border-transparent"} ${appointment.source === "sanispa" ? "border-l-emerald-700 bg-emerald-100 text-emerald-950" : "border-l-sanispa-blue bg-[#dbeaf8] text-sanispa-navy"}`}
                   style={{ top: 4 + 54 * lane, left: (begins - start) / hour * columnWidth, width: Math.max(2, (ends - begins) / hour * columnWidth - 2) }}
                   onClick={() => { setNewTechnician(null); setBooking(null); setSelected(appointment); }}
                   onDragStart={event => {
@@ -381,8 +381,8 @@ export function PartnerScheduleGrid({ day, period, appointments, occupied, techn
     </div>
     </div>
     {appointments.some(appointment => appointment.source === "sanispa") ? <div className="mt-2 flex flex-wrap gap-4 text-xs font-semibold">
-      <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sanispa-blue" /> Clients du partenaire</span>
-      <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-300" /> Dossiers SANISPA</span>
+      <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-sanispa-blue bg-[#dbeaf8]" /> Clients du partenaire</span>
+      <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-emerald-700 bg-emerald-100" /> Dossiers SANISPA</span>
     </div> : null}
   </div>;
 }
