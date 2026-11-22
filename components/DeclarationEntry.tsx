@@ -9,10 +9,12 @@ import { localDeclarationChanged, readLocalProgress, type LocalDeclarationState 
 
 export function DeclarationEntry({ home = false }: { home?: boolean }) {
   const pathname = usePathname();
+  const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
   const email = useClientSession()?.user.email?.toLowerCase();
   const [hasDraft, setHasDraft] = useState(false);
 
   useEffect(() => {
+    if (isAdmin) return;
     function update(draft: LocalDeclarationState) {
       setHasDraft(Boolean(draft && (!email || !draft.email || draft.email.trim().toLowerCase() === email)));
     }
@@ -31,8 +33,9 @@ export function DeclarationEntry({ home = false }: { home?: boolean }) {
       window.removeEventListener("storage", read);
       window.removeEventListener("pageshow", read);
     };
-  }, [email, pathname]);
+  }, [email, isAdmin, pathname]);
 
+  if (isAdmin) return null;
   const label = hasDraft ? "Reprendre ma déclaration" : "Déclarer une panne";
   const href = hasDraft ? "/reprendre?local=1" : "/diagnostic";
   if (!home) return <Link href={href} className="focus-ring rounded-full bg-sanispa-blue px-4 py-3 text-white">{label}</Link>;
