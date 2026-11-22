@@ -3,13 +3,15 @@ import { clientTokenConfirmationUrl } from "../lib/client-access";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { documentsForDossier, hasOverdueAction, type AdminClientDocument } from '../lib/admin-dossier';
+import { externalReportType } from '../lib/client-external-report';
 
 const document = (id:string, user_id:string, diagnostic_id:string|null):AdminClientDocument => ({
   id, user_id, diagnostic_id, file_name:`${id}.pdf`, document_type:'Document', created_at:null, spa_id:null,
 });
 test('administrative documents retain actual account and dossier links without inferring ownership', () => {
   const rows = [document('client-only','client-a',null), document('this-dossier','client-a','dossier-a'),
-    document('other-dossier-same-client','client-a','dossier-b'), document('other-client','client-b','dossier-c')];
+    document('other-dossier-same-client','client-a','dossier-b'), document('other-client','client-b','dossier-c'),
+    { ...document('external-report','client-a',null), document_type: externalReportType }];
   assert.deepEqual(documentsForDossier({id:'dossier-a',user_id:'client-a'},rows).map(d=>d.id),
     ['client-only','this-dossier','other-dossier-same-client']);
   assert.equal(rows[0].diagnostic_id,null, 'a client document is not reassigned to the dossier');

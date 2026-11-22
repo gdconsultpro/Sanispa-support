@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { externalReportType } from "./client-external-report";
 
 export type AdminActivity = {
   id: string;
@@ -44,8 +45,8 @@ export function documentsForDossier(
   dossier: { id: string; user_id: string | null },
   documents: AdminClientDocument[],
 ) {
-  return documents.filter(document => document.diagnostic_id === dossier.id ||
-    (Boolean(dossier.user_id) && document.user_id === dossier.user_id));
+  return documents.filter(document => document.document_type !== externalReportType &&
+    (document.diagnostic_id === dossier.id || (Boolean(dossier.user_id) && document.user_id === dossier.user_id)));
 }
 
 /** Called only after the administrator session has been checked on the server. */
