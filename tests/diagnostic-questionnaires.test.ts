@@ -48,7 +48,17 @@ test("pump accepts simultaneous symptoms, avoids duplicate questions, and remove
   assert.match(serializeAnswers(draft).find(a => a.question_key === "pump_symptoms")!.answer, /Bruit inhabituel ; Débit faible/);
   draft = updateDiagnosticAnswer(draft, "pump_symptoms", [pumpSymptoms.noise]);
   assert.equal(draft.answers.pump_stop_delay, undefined); assert.equal(draft.answers.pump_restart_observed, undefined);
-  assert.ok(visible(draft).includes("flow_ok"));
+  assert.ok(!visible(draft).includes("flow_ok"));
+});
+test("pump opens with five questions and shows targeted details only for selected symptoms", () => {
+  let draft = fixture("pompe", {});
+  assert.deepEqual(questionSets.pompe.filter(q => isQuestionVisible(q, draft.answers, questionSets.pompe)).map(q => q.id),
+    ["pump_symptoms", "pump_jets_affected", "started_when", "pump_details", "additional_issue"]);
+  draft = updateDiagnosticAnswer(draft, "pump_symptoms", [pumpSymptoms.leak, pumpSymptoms.stop]);
+  assert.ok(visible(draft).includes("pump_leak_detail"));
+  assert.ok(visible(draft).includes("pump_stop_delay"));
+  assert.ok(!visible(draft).includes("pump_trip_detail"));
+  assert.ok(!visible(draft).includes("pump_restart_observed"));
 });
 test("unknown choices are exclusive; invalid multiple radio/number answers are rejected", () => {
   assert.deepEqual(toggleAnswer([pumpSymptoms.stop], "Je ne sais pas"), ["Je ne sais pas"]);

@@ -5,15 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { clientRequest } from "@/lib/client-browser-api";
-
-type Manual = {
-  id: string;
-  brand: string;
-  model: string;
-  title: string;
-  source_url: string;
-  source_kind: string;
-};
+import { filterSpaManuals, type SpaManual } from "@/lib/spa-manuals";
 
 type KeypadPhoto = { file: string; model: string };
 
@@ -46,7 +38,7 @@ const keypadPhotos: Record<string, KeypadPhoto[]> = {
   ],
 };
 
-function ManualCard({ manual }: { manual: Manual }) {
+function ManualCard({ manual }: { manual: SpaManual }) {
   const { brand, model, title, source_url, source_kind } = manual;
   const photos = keypadPhotos[`${brand} · ${model}`];
   return (
@@ -84,12 +76,14 @@ function ManualCard({ manual }: { manual: Manual }) {
 }
 
 export default function ManualsPage() {
-  const [manuals, setManuals] = useState<Manual[] | null>(null);
+  const [manuals, setManuals] = useState<SpaManual[] | null>(null);
+  const [linkedManual, setLinkedManual] = useState("");
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
+    setLinkedManual(new URLSearchParams(window.location.search).get("ref") || "");
     clientRequest("/api/client/manuals", { signal: controller.signal })
       .then((result) => {
         if (!controller.signal.aborted) setManuals(result.manuals);
@@ -100,10 +94,9 @@ export default function ManualsPage() {
     return () => controller.abort();
   }, []);
 
-  const query = search.trim().toLowerCase();
-  const filtered = manuals?.filter((manual) =>
-    `${manual.brand} ${manual.model} ${manual.title}`.toLowerCase().includes(query),
-  );
+  const filtered = manuals && (linkedManual
+    ? manuals.filter(manual => manual.id === linkedManual)
+    : filterSpaManuals(manuals, search));
 
   return (
     <AppShell compact>
@@ -121,8 +114,9 @@ export default function ManualsPage() {
         <>
           <label className="mt-5 block font-bold">
             Marque ou modèle
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex. Balboa TP500, Gecko in.k300…" className="mt-2 w-full rounded-xl border border-sanispa-line bg-white p-3" />
+            <input value={search} onChange={(event) => { setLinkedManual(""); setSearch(event.target.value); }} placeholder="Ex. Balboa TP500, Gecko in.k300…" className="mt-2 w-full rounded-xl border border-sanispa-line bg-white p-3" />
           </label>
+          {linkedManual ? <button type="button" className="mt-3 font-bold underline" onClick={() => setLinkedManual("")}>Voir toutes les notices</button> : null}
           <div className="mt-5 grid gap-4">
             {filtered?.map((manual) => <ManualCard key={manual.id} manual={manual} />)}
           </div>

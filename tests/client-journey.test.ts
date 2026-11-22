@@ -40,7 +40,7 @@ test("a silent pump does not ask about running noise or flow; changing symptoms 
     pumpSymptoms.stop,
   ]);
   assert.ok(visible(running).includes("pump_stop_delay"));
-  assert.ok(visible(running).includes("flow_ok"));
+  assert.ok(!visible(running).includes("flow_ok"));
 });
 test("screen-off removes button, lock and code details, including nested children", () => {
   const draft = normalizeDiagnostic(

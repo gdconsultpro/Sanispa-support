@@ -105,6 +105,9 @@ export default function EspaceClientPage() {
   const [profileStatus, setProfileStatus] = useState<{ message: string; error?: boolean } | null>(null);
   const [diagnostics, setDiagnostics] = useState<ClientCase[]>([]);
   const [spas, setSpas] = useState<Spa[]>([]);
+  const [spasLoaded, setSpasLoaded] = useState(false);
+  const [spaFormOpen, setSpaFormOpen] = useState(false);
+  const [savingSpa, setSavingSpa] = useState(false);
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
   const [spaForm, setSpaForm] = useState({
     brand: "",
@@ -141,7 +144,10 @@ export default function EspaceClientPage() {
       setProfileLoaded(true);
     }
     if (cases.status === "fulfilled") setDiagnostics(cases.value.diagnostics ?? []);
-    if (spas.status === "fulfilled") setSpas(spas.value.spas ?? []);
+    if (spas.status === "fulfilled") {
+      setSpas(spas.value.spas ?? []);
+      setSpasLoaded(true);
+    }
     if (documents.status === "fulfilled") setDocuments(documents.value.documents ?? []);
     if (drafts.status === "fulfilled") {
       setDrafts(drafts.value.drafts ?? []);
@@ -237,18 +243,24 @@ export default function EspaceClientPage() {
   }
   async function addSpa(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (savingSpa) return;
+    setSavingSpa(true);
     setError("");
-    const response = await fetch("/api/client/spas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-      body: JSON.stringify(spaForm),
-    });
-    const data = await response.json();
-    if (data.spa) {
+    try {
+      const response = await fetch("/api/client/spas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify(spaForm),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.spa) throw new Error(data.error || "Ajout du spa impossible.");
       setSpas((current) => [data.spa, ...current]);
       setSpaForm({ brand: "", model: "", spa_year: "", installation_type: "" });
-    } else {
-      setError(data.error || "Ajout du spa impossible.");
+      setSpaFormOpen(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Ajout du spa impossible.");
+    } finally {
+      setSavingSpa(false);
     }
   }
   async function uploadDocument(event: React.FormEvent<HTMLFormElement>) {
@@ -527,8 +539,24 @@ export default function EspaceClientPage() {
         ) : null}
 
         <section hidden={view !== "spas"} className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold text-sanispa-navy">Mes spas</h2>
-          <form onSubmit={addSpa} className="mt-4 grid gap-4 sm:grid-cols-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="sanispa-display-title text-2xl text-sanispa-navy">Mes spas</h2>
+            {spas.length ? <button type="button" aria-expanded={spaFormOpen} disabled={savingSpa}
+              className="focus-ring min-h-11 text-sm font-semibold text-sanispa-blue underline"
+              onClick={() => setSpaFormOpen(open => !open)}>
+              {spaFormOpen ? "Fermer le formulaire" : "Ajouter un autre spa"}
+            </button> : null}
+          </div>
+          {spas.length ? <div className="mt-4 grid gap-3">
+            {spas.map((spa) => (
+              <div key={spa.id} className="rounded-md bg-sanispa-ice p-4 text-sm text-sanispa-steel">
+                <strong className="text-sanispa-navy">{spa.brand}</strong>{" "}
+                {spa.model ?? ""} {spa.spa_year ? `· ${spa.spa_year}` : ""}{" "}
+                {spa.installation_type ? `· ${installationLabel(spa.installation_type)}` : ""}
+              </div>
+            ))}
+          </div> : null}
+          {spasLoaded && (!spas.length || spaFormOpen) ? <form onSubmit={addSpa} className="mt-4 grid gap-4 sm:grid-cols-4">
             <Field
               label="Marque"
               name="brand"
@@ -569,24 +597,9 @@ export default function EspaceClientPage() {
               ]}
             />
             <div className="sm:col-span-4">
-              <Button type="submit">Ajouter ce spa</Button>
+              <Button type="submit" disabled={savingSpa}>{savingSpa ? "Ajout de votre spa…" : "Ajouter ce spa"}</Button>
             </div>
-          </form>
-
-          <div className="mt-4 grid gap-3">
-            {spas.map((spa) => (
-              <div
-                key={spa.id}
-                className="rounded-md bg-sanispa-ice p-4 text-sm text-sanispa-steel"
-              >
-                <strong className="text-sanispa-navy">{spa.brand}</strong>{" "}
-                {spa.model ?? ""} {spa.spa_year ? `· ${spa.spa_year}` : ""}{" "}
-                {spa.installation_type
-                  ? `· ${installationLabel(spa.installation_type)}`
-                  : ""}
-              </div>
-            ))}
-          </div>
+          </form> : null}
         </section>
 
         <section hidden={view !== "documents"} className="rounded-md border border-sanispa-line bg-white p-5 shadow-soft">

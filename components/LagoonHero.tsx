@@ -13,7 +13,7 @@ export function LagoonHero({ children, firstName, signedIn = false, description 
       {signedIn ? (
         <>
           <div className="lagoon-hero__image">
-            <Image src="/spa-accueil-lagon.webp" alt="" fill sizes="(max-width: 639px) 100vw, (max-width: 1280px) 63vw, 780px" />
+            <Image src="/spa-accueil-sanispa.webp" alt="" fill sizes="(max-width: 639px) 100vw, (max-width: 1280px) 63vw, 780px" />
           </div>
           <div className="lagoon-hero__shade" aria-hidden="true" />
         </>

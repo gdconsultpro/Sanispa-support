@@ -176,6 +176,10 @@ export const pumpSymptoms = {
   speed: "Une seule vitesse fonctionne (si plusieurs vitesses existent)",
   other: "Autre symptôme",
 };
+const pumpDetails = text("pump_details", "Un détail à ajouter ?", {
+  type: "textarea",
+  help: "Par exemple, un code affiché, une remise en eau récente ou ce que vous avez déjà essayé.",
+});
 const specific: Record<ProblemType, Question[]> = {
   demenagement: [
     text("moving_departure", "Adresse d’enlèvement du spa : numéro et rue", { required: true, section: "Les adresses de votre déménagement" }),
@@ -195,12 +199,6 @@ const specific: Record<ProblemType, Question[]> = {
     text("moving_details", "Autres précisions utiles pour le transport", { type: "textarea" }),
   ],
   pompe: [
-    radio("pump_type", "Quelle pompe semble concernée ?", [
-      "Pompe de massage",
-      "Pompe de circulation / filtration",
-      "Plusieurs pompes",
-      unknown,
-    ]),
     multi(
       "pump_symptoms",
       "Que constatez-vous sur la pompe ou les jets ?",
@@ -212,7 +210,7 @@ const specific: Record<ProblemType, Question[]> = {
           [pumpSymptoms.silent, pumpSymptoms.stop],
           [pumpSymptoms.immediateTrip, pumpSymptoms.delayedTrip],
         ],
-        help: "Si vous ne savez pas quelle pompe est concernée, décrivez simplement les jets qui ne fonctionnent plus.",
+        help: "Cochez seulement les signes que vous avez déjà observés.",
       },
     ),
     radio(
@@ -221,6 +219,7 @@ const specific: Record<ProblemType, Question[]> = {
       ["Oui", "Non", "Par intermittence", unknown, "Non observable"],
       {
         hideWhen: when("pump_symptoms", pumpSymptoms.silent, pumpSymptoms.hum),
+        legacyOnly: true,
       },
     ),
     radio(
@@ -228,6 +227,7 @@ const specific: Record<ProblemType, Question[]> = {
       "Lorsqu’elle fonctionne, émet-elle un bruit inhabituel ?",
       yesNo,
       {
+        legacyOnly: true,
         hideWhenAny: [
           when(
             "pump_symptoms",
@@ -244,6 +244,7 @@ const specific: Record<ProblemType, Question[]> = {
       "Lorsque la pompe tourne, le débit aux jets semble-t-il normal ?",
       yesNo,
       {
+        legacyOnly: true,
         hideWhenAny: [
           when(
             "pump_symptoms",
@@ -255,7 +256,7 @@ const specific: Record<ProblemType, Question[]> = {
         ],
       },
     ),
-    radio("pump_jets_affected", "Quels jets sont concernés ?", [
+    radio("pump_jets_affected", "Quels jets ou retours d’eau sont concernés ?", [
       "Tous les jets de massage",
       "Un groupe de jets",
       "Un seul jet",
@@ -283,11 +284,14 @@ const specific: Record<ProblemType, Question[]> = {
       "pump_restart_observed",
       "Un redémarrage ultérieur a-t-il déjà été observé ?",
       yesNo,
-      { showWhen: when("pump_symptoms", pumpSymptoms.stop) },
+      { showWhen: when("pump_symptoms", pumpSymptoms.stop), legacyOnly: true },
     ),
-    text("pump_details", "Précisions utiles sur les symptômes", {
-      type: "textarea",
-    }),
+    radio("pump_type", "Quelle pompe semble concernée ?", [
+      "Pompe de massage",
+      "Pompe de circulation / filtration",
+      "Plusieurs pompes",
+      unknown,
+    ], { legacyOnly: true }),
   ],
   electrique: [
     radio(
@@ -1009,6 +1013,8 @@ export const questionSets = Object.fromEntries(
               )
                 question = { ...question, legacyOnly: true };
             }
+            if (value === "pompe" && q.id !== "started_when")
+              question = { ...question, legacyOnly: true };
             if (
               ["bruit-anormal", "autre"].includes(value) &&
               ["has_error", "error_message"].includes(q.id)
@@ -1032,6 +1038,7 @@ export const questionSets = Object.fromEntries(
             : q,
         ),
         ...shared,
+        ...(value === "pompe" ? [pumpDetails] : []),
         ...(value === "demenagement" ? [] : additionalIssue),
       ],
     ];
