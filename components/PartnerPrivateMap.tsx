@@ -1,6 +1,6 @@
 "use client";
 
-import { divIcon, latLngBounds, layerGroup, map, marker, polyline, tileLayer, type LayerGroup } from "leaflet";
+import { divIcon, latLngBounds, layerGroup, map, marker, polyline, tileLayer, type LatLng, type LayerGroup, type Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
 import { partnerDirections, type PartnerMapPoint } from "@/lib/partner-planner";
@@ -13,10 +13,16 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
 }) {
   const element = useRef<HTMLDivElement>(null);
   const routeLayer = useRef<LayerGroup | null>(null);
+  const openedPoint = useRef<string | null>(null);
+  const lastViewport = useRef<{ center: LatLng; zoom: number } | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
     if (!element.current) return;
     const instance = map(element.current, { scrollWheelZoom: false, minZoom: 2 });
+    const reopenId = points.some(point => point.id === openedPoint.current) ? openedPoint.current : null;
+    openedPoint.current = reopenId;
+    let reopen: Marker | undefined;
+    let disposing = false;
     const groups = new Map<string, PartnerMapPoint[]>();
     for (const point of points) {
       const key = `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)}`;
@@ -25,7 +31,9 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
       else groups.set(key, [point]);
     }
     const highlighted = points.find(point => point.highlighted);
-    if (highlighted) {
+    if (reopenId && lastViewport.current) {
+      instance.setView(lastViewport.current.center, lastViewport.current.zoom, { animate: false });
+    } else if (highlighted) {
       instance.setView([highlighted.latitude, highlighted.longitude], overview ? 12 : 14);
     } else if (points.length) {
       const bounds = latLngBounds(points.map(point => [point.latitude, point.longitude]));
@@ -135,10 +143,23 @@ export default function PartnerPrivateMap({ points, label = "Carte de l’adress
         }
         return popup;
       }, { autoPanPadding: [14, 14] });
+      pin.on("popupopen", () => {
+        openedPoint.current = group.find(point => point.id === reopenId)?.id ?? first.id;
+      }).on("popupclose", () => {
+        if (!disposing && group.some(point => point.id === openedPoint.current)) openedPoint.current = null;
+      });
+      if (group.some(point => point.id === reopenId)) reopen = pin;
     }
+    reopen?.openPopup();
     const observer = new ResizeObserver(() => instance.invalidateSize());
     observer.observe(element.current);
-    return () => { observer.disconnect(); instance.remove(); routeLayer.current = null; };
+    return () => {
+      disposing = true;
+      lastViewport.current = { center: instance.getCenter(), zoom: instance.getZoom() };
+      observer.disconnect();
+      instance.remove();
+      routeLayer.current = null;
+    };
   }, [points, onAppointment, overview]);
   useEffect(() => {
     const layer = routeLayer.current;

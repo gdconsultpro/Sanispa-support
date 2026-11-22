@@ -43,6 +43,7 @@ export default function PrivateInterventionPage() {
   const current = file?.visit.id === id ? file : null;
   const visit = current?.visit;
   const timing = visit ? partnerClientVisitTiming(visit.ends_at, Date.now()) : null;
+  const backToContact = timing === "past" && visit && !visit.client.deleted_at;
   const technician = current?.technicians.find(member => member.id === visit?.technician_id)?.name;
   const title = timing === "past" ? "Intervention passée" : "Fiche d’intervention";
   async function change(action: "unplanVisit" | "deleteVisit") {
@@ -61,8 +62,8 @@ export default function PrivateInterventionPage() {
 
   return <AppShell compact>
     <PartnerNavigation current="Interventions" />
-    <Link className={link} href={visit && timing === "past" && !visit.client.deleted_at ? partnerClientPath(visit.client.id) : listPath}>
-      ← {timing === "past" ? "Fiche contact client" : "Mes interventions"}
+    <Link className={link} href={backToContact ? partnerClientPath(visit.client.id) : listPath}>
+      ← {backToContact ? "Fiche contact client" : "Mes interventions"}
     </Link>
     <h1 className="mt-2 text-3xl font-bold">{title}</h1>
     {error ? <div className="mt-3"><p role="alert" className="text-red-800">{error}</p>
